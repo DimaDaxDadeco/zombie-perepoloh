@@ -1,0 +1,480 @@
+// Раунд — вся симуляция игрового мира: герой, зомби, снаряды, пикапы, босс.
+// Round одновременно играет роль объекта `world`, который получают сущности
+// и оружие: через него они наносят урон, добавляют снаряды и взрывы.
+//
+// Round ничего не знает про экраны и меню — о событиях он сообщает колбэками
+// (onLevelUp, onBossAppear, onVictory, onDefeat). Склейкой занимается core/game.js.
+
+import { CONFIG } from '../config.js';
+import { Player } from '../entities/player.js';
+import { Pickup, PickupType } from '../entities/pickup.js';
+import { Spawner } from '../systems/spawner.js';
+import { createAbility } from '../systems/ability.js';
+import { createPet } from '../entities/pet.js';
+import { createModifier, modifierForRound } from '../systems/modifier.js';
+import { Particles } from '../systems/particles.js';
+import { resolveProjectileHits, resolvePlayerHits, separateEnemies } from '../systems/collisions.js';
+import { createWeapon, evolveWeapon } from '../weapons/weapons.js';
+import { Background } from '../render/background.js';
+import { bossTypeForRound } from '../entities/boss.js';
+import { bossSpawnPoint } from '../systems/spawner.js';
+
+// Длительность появления босса и паузы для зомби — в CONFIG.boss.
+
+const ZERO = { x: 0, y: 0 };
+// Множители ко-опа при одном игроке. Держим отдельной константой, чтобы
+// «одиночная игра ничего не умножает» было видно, а не выводилось из кода.
+const NO_COOP = { xpFactor: 1, chargeFactor: 1, spawnFactor: 1, maxAliveFactor: 1, bossHpFactor: 1 };
+
+export class Round {
+  // difficultySpec — запись из CONFIG.difficulties. Имя не `difficulty`
+  // намеренно: у Spawner так называется кривая по номеру раунда, и два разных
+  // смысла под одним именем в одной цепочке вызовов обязательно аукнутся.
+  constructor({ round, arena, audio, upgrades, players, difficulty = CONFIG.difficulties[0], callbacks }) {
+    this.round = round;
+    this.difficultySpec = difficulty;
+    this.arena = arena;
+    this.audio = audio;
+    this.callbacks = callbacks;
+
+    // Игроков может быть один или двое. `player` ниже — геттер «первый»:
+    // он остался ради совместимости (превью-стенды, автотест), а в боевом
+    // коде каждый спрашивает конкретного владельца или ближайшего.
+    const specs = players || [upgrades];
+    this.players = specs.map((spec, i) => this.createPlayer(spec, i, specs.length));
+    this.coopFactor = specs.length > 1 ? CONFIG.coop : NO_COOP;
+
+    this.enemies = [];
+    this.projectiles = [];
+    this.pickups = [];
+    this.particles = new Particles();
+    this.spawner = new Spawner(round, difficulty, this.coopFactor);
+    // Модификатор особого раунда правит уже посчитанные числа спавнера.
+    this.modifier = createModifier(modifierForRound(round));
+    this.modifier?.tuneSpawner(this.spawner);
+    this.bannerTimer = this.modifier ? CONFIG.specialRounds.bannerTime : 0;
+    this.background = new Background();
+    this.background.rebuild(round, arena);
+
+    // Опыт и уровень общие на команду. Две полосы ребёнок не читает, а при
+    // раздельном опыте активный игрок обгоняет тихого, и тот получает вдвое
+    // меньше карточек — то есть «второй испортил первому», только наоборот.
+    this.level = 1;
+    this.xp = 0;
+    this.xpToNext = CONFIG.xp.baseToLevel;
+
+    this.timeLeft = CONFIG.round.duration;
+    this.zombiesDefeated = 0;
+    this.coinsEarned = 0;
+    this.bossPhase = 'none'; // none -> intro -> fight -> done
+    this.bossIntroTimer = 0;
+    this.bossSpawnPoint = null; // где именно появится босс (внутри экрана)
+    this.freezeTimer = 0;       // пока идёт — обычные зомби стоят
+    this.shakeTimer = 0;
+    this.shakeMaxTime = 1;
+    this.shakeStrength = 0;
+    this.finished = false;
+    // Открытые в этом раунде наклейки. Round про Storage не знает — отдаёт их
+    // в getSummary(), а пишет уже Game, одним вызовом в конце раунда.
+    this.discovered = { zombies: new Set(), bosses: new Set() };
+  }
+
+  // Герой со всем снаряжением. Двое встают по разные стороны от центра,
+  // чтобы не начинать раунд, стоя друг в друге.
+  createPlayer(spec, index, count) {
+    const offset = count > 1 ? (index === 0 ? -70 : 70) : 0;
+    const player = new Player(this.arena.width / 2 + offset, this.arena.height / 2, spec);
+    player.index = index;
+    player.color = CONFIG.coop.colors[index % CONFIG.coop.colors.length];
+    const startWeapon = this.createStartingWeapon(spec.startWeapon, spec.startStars);
+    player.weapons.push(startWeapon);
+    player.activeWeapon = startWeapon;   // иначе первые секунды руки пустые
+    player.ability = createAbility(spec.ability);
+    player.pets = (spec.pets || [])
+      .map((petId) => createPet(petId, player.x, player.y, player))
+      .filter(Boolean);
+    return player;
+  }
+
+  get player() {
+    return this.players[0];
+  }
+
+  get isCoop() {
+    return this.players.length > 1;
+  }
+
+  // Питомцы всех игроков одним списком — для обновления и отрисовки.
+  get pets() {
+    return this.players.flatMap((p) => p.pets || []);
+  }
+
+  // Ближайший игрок — единственный правильный ответ на вопрос «к кому идти».
+  nearestPlayer(x, y) {
+    let best = this.players[0];
+    let bestDist = Infinity;
+    for (const p of this.players) {
+      if (p.downed && this.players.some((o) => !o.downed)) continue;
+      const dist = Math.hypot(p.x - x, p.y - y);
+      if (dist < bestDist) {
+        best = p;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  createStartingWeapon(weaponId, startStars) {
+    const weapon = createWeapon(weaponId || CONFIG.startingWeapon);
+    for (let i = 0; i < startStars; i++) weapon.upgrade();
+    // Правило «пятая звезда = превращение» должно работать и здесь. Иначе
+    // «Сильный старт» из магазина вывел бы оружие сразу на максимум, карточка
+    // апгрейда для него не выпадает — и эволюции не случилось бы никогда.
+    return weapon.isMaxed ? evolveWeapon(weapon) : weapon;
+  }
+
+  get bossActive() {
+    return this.bossPhase === 'intro' || this.bossPhase === 'fight';
+  }
+
+  // Арена изменилась (окно ресайзнули) — не даём герою остаться за краем.
+  onArenaResize(arena) {
+    this.arena = arena;
+    this.background.rebuild(this.round, arena);
+    this.player.clampToArena(arena);
+  }
+
+  // directions — по вектору на игрока. Одиночная игра передаёт массив из
+  // одного элемента.
+  update(dt, directions) {
+    if (this.finished) return;
+
+    this.updateBossPhase(dt);
+    this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+    this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+    // Принимаем и одиночный вектор: так старые сниппеты автотеста и консоли
+    // не превращаются молча в «бот стоит на месте».
+    const dirs = Array.isArray(directions) ? directions : [directions];
+    this.players.forEach((player, i) => player.update(dt, this, dirs[i] || ZERO));
+    // Питомцы — после героев (идут в их новую позицию) и до попаданий:
+    // укус должен успеть убить зомби вместе со всеми остальными.
+    for (const pet of this.pets) pet.update(dt, this);
+
+    // Пока появляется босс, зомби замирают: ребёнок должен успеть посмотреть
+    // на выход, а не получить удар в спину, пока любуется. Герой при этом
+    // продолжает бегать — отнимать управление нельзя, решит, что игра зависла.
+    const frozen = this.freezeTimer > 0;
+    if (!frozen) {
+      for (const enemy of this.enemies) enemy.update(dt, this);
+    }
+    for (const projectile of this.projectiles) projectile.update(dt, this);
+    for (const pickup of this.pickups) pickup.update(dt, this);
+
+    separateEnemies(this.enemies);
+    resolveProjectileHits(this);
+    if (!frozen) resolvePlayerHits(this);
+    this.modifier?.update(dt, this);
+    this.bannerTimer = Math.max(0, this.bannerTimer - dt);
+    this.particles.update(dt);
+    this.removeDead();
+
+    // Раунд проигран, только когда лежат все: падение одного не должно
+    // заканчивать игру напарнику.
+    if (this.players.every((p) => p.downed)) this.finish('defeat');
+  }
+
+  updateBossPhase(dt) {
+    if (this.bossPhase === 'none') {
+      this.timeLeft -= dt;
+      const progress = 1 - this.timeLeft / CONFIG.round.duration;
+      this.spawner.update(dt, this, Math.min(1, progress));
+      if (this.timeLeft <= 0) this.startBossIntro();
+      return;
+    }
+
+    if (this.bossPhase === 'intro') {
+      this.bossIntroTimer -= dt;
+      if (this.bossIntroTimer <= 0) this.spawnBoss();
+      return;
+    }
+
+    if (this.bossPhase === 'fight' && this.boss && !this.boss.alive) {
+      this.finish('victory');
+    }
+  }
+
+  startBossIntro() {
+    const type = bossTypeForRound(this.round);
+    this.bossPhase = 'intro';
+    this.bossIntroTimer = CONFIG.boss.introTime;
+    this.freezeTimer = CONFIG.boss.freezeTime;
+
+    // Точка появления — внутри экрана: выход босса надо увидеть.
+    this.bossSpawnPoint = bossSpawnPoint(this.arena, this.players);
+    this.particles.addBossEntrance(
+      this.bossSpawnPoint.x, this.bossSpawnPoint.y,
+      type.entrance, CONFIG.boss.radius * type.radius, CONFIG.boss.introTime,
+    );
+
+    this.audio.setBossMode(true);
+    this.audio.bossAppear();
+    // Босс каждый раунд новый, а ребёнок не читает — объявляем голосом.
+    this.callbacks.onBossAppear?.(type.name);
+  }
+
+  spawnBoss() {
+    const type = bossTypeForRound(this.round);
+    this.bossPhase = 'fight';
+    this.boss = this.spawner.createBoss(this.arena, this.players, this.bossSpawnPoint);
+    this.enemies.push(this.boss);
+
+    // Момент приземления: хлопок, тряска и звук удара.
+    this.particles.addBossArrival(this.boss.x, this.boss.y, type.entrance, this.boss.radius);
+    const shake = type.entrance === 'slam' ? CONFIG.boss.slamShake : CONFIG.boss.shake;
+    this.shake(shake.strength, shake.time);
+    this.audio.boom();
+  }
+
+  // Пробел: суперспособность героя. Не готова — молча ничего, заряд остаётся.
+  // Во время выхода босса не срабатывает: зомби и так замерли, и полная шкала
+  // сгорела бы впустую.
+  useAbility(playerIndex = 0) {
+    if (this.finished || this.freezeTimer > 0) return false;
+    const player = this.players[playerIndex];
+    return player?.ability?.tryActivate(this, player) ?? false;
+  }
+
+  // Тряска мира при появлении босса. HUD рисуется отдельно в game.js и
+  // не трясётся — интерфейс должен оставаться на месте.
+  shake(strength, time) {
+    this.shakeStrength = strength;
+    this.shakeTimer = time;
+    this.shakeMaxTime = time;
+  }
+
+  finish(outcome) {
+    if (this.finished) return;
+    this.finished = true;
+    this.audio.setBossMode(false);
+    if (outcome === 'victory') {
+      this.coinsEarned += CONFIG.round.victoryCoinsBase + this.round;
+      this.callbacks.onVictory(this.getSummary());
+    } else {
+      this.callbacks.onDefeat(this.getSummary());
+    }
+  }
+
+  getSummary() {
+    return {
+      round: this.round,
+      zombiesDefeated: this.zombiesDefeated,
+      // Множитель за сложность применяем один раз здесь, а не к каждой монете:
+      // так он накрывает и медальки, и добычу с босса, и бонус за победу,
+      // и не копится ошибка округления.
+      coinsEarned: Math.round(this.coinsEarned * this.difficultySpec.money),
+      discovered: {
+        zombies: [...this.discovered.zombies],
+        bosses: [...this.discovered.bosses],
+      },
+    };
+  }
+
+  removeDead() {
+    this.enemies = this.enemies.filter((e) => e.alive);
+    this.projectiles = this.projectiles.filter((p) => p.alive);
+    this.pickups = this.pickups.filter((p) => p.alive);
+  }
+
+  // --- API мира: этим пользуются оружие, снаряды и сущности ---
+
+  addProjectile(projectile) {
+    this.projectiles.push(projectile);
+  }
+
+  addEnemy(enemy) {
+    this.enemies.push(enemy);
+    // Зомби открывается, когда появился, а не когда убит: альбом не должен
+    // наказывать за поражение — увидел крота, погиб, наклейка всё равно
+    // осталась. У боссов правило другое, см. onEnemyDefeated.
+    if (enemy.type && !enemy.isBoss) this.discovered.zombies.add(enemy.type.id);
+  }
+
+  // Ближайший живой враг. options.exclude — множество уже задетых (для молнии).
+  // Оружие целится только в тех, кого видно: зомби заходят из-за края экрана,
+  // и стрелять по невидимой цели выглядит как «палит в пустоту».
+  findNearestEnemy(x, y, { exclude = null, maxDistance = Infinity, onScreenOnly = true } = {}) {
+    let best = null;
+    let bestDist = maxDistance;
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || (exclude && exclude.has(enemy))) continue;
+      if (enemy.isHidden) continue;   // крот под землёй — не цель
+      if (onScreenOnly && !this.isOnScreen(enemy)) continue;
+      const dist = Math.hypot(enemy.x - x, enemy.y - y);
+      if (dist < bestDist) {
+        best = enemy;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  // Враг считается видимым, когда вошёл в кадр хотя бы наполовину.
+  isOnScreen(enemy) {
+    const margin = enemy.radius * 0.5;
+    return enemy.x > -margin && enemy.x < this.arena.width + margin
+      && enemy.y > -margin && enemy.y < this.arena.height + margin;
+  }
+
+  damageEnemy(enemy, amount) {
+    if (!enemy.alive) return;
+    const killed = enemy.takeDamage(amount);
+    if (killed) this.onEnemyDefeated(enemy);
+  }
+
+  // Урон по площади: помидор и ракета.
+  explode(x, y, radius, damage, kind) {
+    const color = kind === 'tomato' ? '#e34b3a' : '#ffb703';
+    this.particles.addRing(x, y, radius, color);
+    this.particles.addBurst(x, y, 10, 0.9);
+    this.audio.boom();
+
+    for (const enemy of [...this.enemies]) {
+      if (!enemy.alive) continue;
+      if (Math.hypot(enemy.x - x, enemy.y - y) <= radius + enemy.radius) {
+        this.damageEnemy(enemy, damage);
+      }
+    }
+  }
+
+  onEnemyDefeated(enemy) {
+    this.zombiesDefeated += 1;
+    // Босс выходит каждый раунд сам — по появлению наклейка досталась бы
+    // даром. Это единственное в игре, что надо заслужить.
+    if (enemy.isBoss) this.discovered.bosses.add(enemy.type.id);
+    // Убийства копят суперспособность. Звоночек звучит один раз — ровно в тот
+    // момент, когда шкала наполнилась.
+    // Заряжаем шкалы обоих: атрибутировать убийство нечестно и дорого —
+    // молния бьёт цепью, помидор кладёт пятерых, а огонь догорает через три
+    // секунды после выстрела.
+    const charge = enemy.isBoss ? CONFIG.abilities.bossCharge : 1;
+    let ready = false;
+    for (const player of this.players) {
+      if (player.ability?.addCharge(charge / this.coopFactor.chargeFactor)) ready = true;
+    }
+    if (ready) this.audio.abilityReady();
+
+    this.audio.pop();
+    this.particles.addBurst(enemy.x, enemy.y, enemy.isBoss ? 60 : 16, enemy.isBoss ? 2 : 1);
+    this.dropLoot(enemy);
+    this.modifier?.onLoot(enemy, this);
+  }
+
+  dropLoot(enemy) {
+    if (enemy.isBoss) {
+      for (let i = 0; i < CONFIG.boss.coins; i++) {
+        this.pickups.push(new Pickup(enemy.x, enemy.y, PickupType.MONEY));
+      }
+      return;
+    }
+
+    // Медаль падает не с каждого зомби: так опыт ощущается наградой, а не фоном.
+    if (Math.random() < CONFIG.zombie.medalDropChance) {
+      const medals = Math.random() < CONFIG.zombie.doubleMedalChance ? 2 : 1;
+      for (let i = 0; i < medals; i++) {
+        this.pickups.push(new Pickup(enemy.x, enemy.y, PickupType.MEDAL));
+      }
+    }
+    if (Math.random() < CONFIG.zombie.moneyDropChance) {
+      this.pickups.push(new Pickup(enemy.x, enemy.y, PickupType.MONEY));
+    }
+  }
+
+  collectPickup(pickup) {
+    if (pickup.type === PickupType.MONEY) {
+      this.coinsEarned += 1;
+      this.audio.money();
+      return;
+    }
+    this.audio.medal();
+    if (this.addXp(CONFIG.pickups.medalXp * this.coopFactor.xpFactor)) {
+      this.audio.levelUp();
+      this.callbacks.onLevelUp();
+    }
+  }
+
+  // Возвращает true, если команда взяла уровень.
+  addXp(amount) {
+    this.xp += amount;
+    if (this.xp < this.xpToNext) return false;
+    this.xp -= this.xpToNext;
+    this.level += 1;
+    this.xpToNext += CONFIG.xp.perLevel;
+    return true;
+  }
+
+  onPlayerHealed() {
+    this.audio.medal();
+    this.particles.addBurst(this.player.x, this.player.y - this.player.radius, 6, 0.6);
+  }
+
+  onPlayerHurt() {
+    this.audio.hurt();
+    this.particles.addBurst(this.player.x, this.player.y, 8, 0.8);
+  }
+
+  // --- Отрисовка ---
+
+  draw(ctx) {
+    ctx.save();
+    this.applyShake(ctx);
+
+    this.background.draw(ctx, this.arena);
+
+    for (const pickup of this.pickups) pickup.draw(ctx);
+    // Сортировка по Y: кто ниже — тот ближе к зрителю.
+    const characters = [...this.enemies, ...this.players, ...this.pets]
+      .sort((a, b) => a.y - b.y);
+    for (const character of characters) character.draw(ctx);
+    for (const projectile of this.projectiles) projectile.draw(ctx);
+
+    this.modifier?.drawWorld(ctx, this);
+    this.particles.draw(ctx);
+    if (this.bossPhase === 'intro') this.drawBanner(ctx, bossTypeForRound(this.round).name);
+    else if (this.bannerTimer > 0) this.drawBanner(ctx, this.modifier.spec.name, this.bannerTimer);
+
+    ctx.restore();
+  }
+
+  // Смещение мира при тряске, затухающее к концу.
+  applyShake(ctx) {
+    if (this.shakeTimer <= 0) return;
+    const fade = this.shakeTimer / this.shakeMaxTime;
+    const amount = this.shakeStrength * fade;
+    ctx.translate(
+      (Math.random() - 0.5) * amount * 2,
+      (Math.random() - 0.5) * amount * 2,
+    );
+  }
+
+  // Крупная надпись на арене: имя вышедшего босса или название особого
+  // раунда. Кегль подбирается под ширину — «Толстяк в цилиндре» и «Волна-
+  // толпа» не влезают в узкое окно.
+  drawBanner(ctx, name, pulseTimer = this.bossIntroTimer) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const scale = 1 + Math.sin(pulseTimer * 12) * 0.08;
+    // Надпись держим в верхней части экрана: центр теперь занят эффектом
+    // появления босса, и перекрывать его нельзя.
+    ctx.translate(this.arena.width / 2, this.arena.height * 0.18);
+    ctx.scale(scale, scale);
+    const size = Math.min(56, Math.max(26, (this.arena.width * 0.85) / name.length * 1.5));
+    ctx.font = `bold ${Math.round(size)}px system-ui, sans-serif`;
+    ctx.lineWidth = Math.max(4, size * 0.14);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = '#ffd93d';
+    ctx.strokeText(name, 0, 0);
+    ctx.fillText(name, 0, 0);
+    ctx.restore();
+  }
+}

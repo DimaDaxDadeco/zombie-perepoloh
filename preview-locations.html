@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Локации</title>
+<style>
+  body { margin: 0; background: #1c1a38; font-family: system-ui, sans-serif; }
+  .bar {
+    padding: 12px 18px; background: #1c1a38; color: #fff;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+  }
+  .bar b { color: #ffd93d; font-size: 18px; }
+  .bar span { opacity: 0.85; font-size: 14px; }
+  .bar a { color: #9ad6ff; font-size: 14px; }
+  button {
+    font: inherit; padding: 7px 16px; border: 0; border-radius: 8px;
+    background: #ff6b3d; color: #fff; cursor: pointer;
+  }
+  button:hover { background: #ff8a5f; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px; padding: 18px;
+  }
+  .tile { background: #262346; border-radius: 14px; overflow: hidden; }
+  .tile h2 {
+    margin: 0; padding: 10px 14px 4px; color: #fff; font-size: 19px;
+  }
+  .tile p { margin: 0; padding: 0 14px 10px; color: rgba(255,255,255,0.6); font-size: 13px; }
+  .tile canvas { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Локации</b>
+    <span>На каждой — герой, зомби и добыча: так видно, что ничего не теряется на фоне</span>
+    <button id="toggle">Пауза</button>
+    <button id="night">Ночь: выкл</button>
+    <a href="./preview-zombies.html">→ стенд зомби</a>
+    <a href="./preview-bosses.html">→ стенд боссов</a>
+    <a href="./preview-heroes.html">→ стенд героев</a>
+  </div>
+  <div class="grid" id="grid"></div>
+
+<script type="module">
+// Стенд локаций. Импортирует настоящие модули игры, поэтому фон, декорации
+// и персонажи здесь ровно те же, что в бою.
+import { CONFIG } from './js/config.js';
+import { Background } from './js/render/background.js';
+import {
+  drawHero, drawZombie, drawShadow, drawMedalPickup, drawMoneyPickup,
+} from './js/render/sprites.js';
+
+const TILE_W = 640;
+const TILE_H = 340;
+const HERO = CONFIG.characters.find((c) => c.id === 'superS') || CONFIG.characters[0];
+
+let running = true;
+document.getElementById('toggle').onclick = (e) => {
+  running = !running;
+  e.target.textContent = running ? 'Пауза' : 'Продолжить';
+};
+
+// Ночь накладывается на все четыре темы разом: вопрос «читается ли она на
+// пляже и в космосе» — ровно про локации, отдельный стенд для него не нужен.
+let night = false;
+document.getElementById('night').onclick = (e) => {
+  night = !night;
+  e.target.textContent = night ? 'Ночь: вкл' : 'Ночь: выкл';
+};
+
+// Диапазон раундов, в которых встречается тема (дальше список идёт по кругу).
+function roundsForTheme(index) {
+  const per = CONFIG.roundsPerTheme;
+  const from = index * per + 1;
+  return `раунды ${from}–${from + per - 1}, дальше по кругу`;
+}
+
+const scenes = CONFIG.themes.map((theme, i) => {
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.innerHTML = `
+    <h2>${theme.name}</h2>
+    <p>${roundsForTheme(i)} · декорации «${theme.deco}»</p>
+    <canvas width="${TILE_W}" height="${TILE_H}"></canvas>
+  `;
+  document.getElementById('grid').appendChild(tile);
+
+  const arena = { width: TILE_W, height: TILE_H };
+  const background = new Background();
+  // Первый раунд этой темы — так Background выберет нужную и засеет декорации
+  background.rebuild(i * CONFIG.roundsPerTheme + 1, arena);
+
+  // По зомби каждого вида, чтобы проверить контраст силуэтов с фоном
+  const zombies = CONFIG.zombieTypes.map((type, k) => ({
+    type,
+    x: TILE_W * (0.32 + k * 0.14),
+    y: TILE_H * (0.34 + (k % 3) * 0.2),
+    phase: Math.random() * Math.PI * 2,
+  }));
+
+  return { theme, arena, background, zombies, ctx: tile.querySelector('canvas').getContext('2d') };
+});
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  for (const scene of scenes) {
+    const { ctx, arena, background, zombies } = scene;
+    background.draw(ctx, arena);
+
+    // Добыча: медаль и доллар — их читаемость на фоне важнее всего,
+    // зелёные деньги однажды уже терялись на траве
+    const pickupY = arena.height * 0.8;
+    [[arena.width * 0.12, 'medal'], [arena.width * 0.2, 'money']].forEach(([x, kind]) => {
+      ctx.save();
+      ctx.translate(x, pickupY);
+      if (kind === 'medal') drawMedalPickup(ctx, { radius: 13, phase: now / 400 });
+      else drawMoneyPickup(ctx, { radius: 14, phase: now / 400 });
+      ctx.restore();
+    });
+
+    // Герой
+    ctx.save();
+    ctx.translate(arena.width * 0.14, arena.height * 0.45);
+    drawShadow(ctx, 26);
+    drawHero(ctx, {
+      radius: 26, walkPhase: now / 160, facing: 1, blinking: false, look: HERO.look,
+    });
+    ctx.restore();
+
+    // Зомби бредут к герою и заходят снова с правого края
+    for (const z of zombies) {
+      if (running) {
+        z.x -= 22 * z.type.speed * dt;
+        z.phase += dt * 6;
+        if (z.x < -60) z.x = arena.width + 60;
+      }
+      ctx.save();
+      ctx.translate(z.x, z.y);
+      const radius = 20 * z.type.radius;
+      drawShadow(ctx, radius);
+      drawZombie(ctx, {
+        radius, walkPhase: z.phase, facing: -1, hurtFlash: false, look: z.type.look,
+      });
+      ctx.restore();
+    }
+  }
+  if (night) {
+    const spec = CONFIG.specialRounds.night;
+    for (const scene of scenes) {
+      const { ctx, arena } = scene;
+      const cx = arena.width / 2;
+      const cy = arena.height / 2;
+      const g = ctx.createRadialGradient(cx, cy, spec.lightRadius * 0.45, cx, cy, spec.lightRadius);
+      g.addColorStop(0, 'rgba(14,18,48,0)');
+      g.addColorStop(1, spec.tint);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, arena.width, arena.height);
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

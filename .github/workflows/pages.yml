@@ -1,0 +1,35 @@
+# Автодеплой на GitHub Pages.
+#
+# Сборки нет и не будет: игра — чистая статика на ES-модулях, поэтому папка
+# выкладывается как есть. Каждый push в main обновляет игру примерно за минуту.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:    # можно запустить руками из вкладки Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Одновременно идёт только один деплой; новый push отменяет предыдущий.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .        # весь репозиторий целиком
+      - id: deployment
+        uses: actions/deploy-pages@v4

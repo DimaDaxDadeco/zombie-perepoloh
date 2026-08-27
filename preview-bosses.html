@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Боссы: походка и ярость</title>
+<style>
+  body { margin: 0; background: #7ec850; font-family: system-ui, sans-serif; }
+  .bar {
+    padding: 12px 18px; background: #1c1a38; color: #fff;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .bar b { color: #ffd93d; font-size: 18px; }
+  .bar span { opacity: 0.85; font-size: 14px; }
+  .bar a { color: #9ad6ff; font-size: 14px; }
+  button {
+    font: inherit; padding: 7px 16px; border: 0; border-radius: 8px;
+    background: #ff6b3d; color: #fff; cursor: pointer;
+  }
+  button:hover { background: #ff8a5f; }
+  canvas { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Боссы: походка и ярость</b>
+    <span>Верхняя дорожка — обычные, нижняя — в ярости (быстрее и со своим эффектом)</span>
+    <button id="toggle">Пауза</button>
+    <button id="slow">Замедлить</button>
+    <button id="status">Стихия: нет</button>
+    <a href="./preview-zombies.html">→ стенд зомби</a>
+    <a href="./preview-locations.html">→ стенд локаций</a>
+    <a href="./preview-heroes.html">→ стенд героев</a>
+  </div>
+  <canvas id="stage" width="1400" height="1080"></canvas>
+
+<script type="module">
+// Стенд для просмотра боссов. Импортирует настоящие модули игры, поэтому
+// походка и эффекты здесь ровно те же, что увидит ребёнок.
+import { CONFIG } from './js/config.js';
+import { drawBoss, drawBossRage, drawShadow } from './js/render/sprites.js';
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const types = CONFIG.bossTypes;
+const LANE_HEIGHT = H / types.length;   // на каждого босса — своя полоса
+const RADIUS = 50;
+const WALK_SPEED = 70;        // пикселей в секунду, как у босса в игре примерно
+
+let running = true;
+let timeScale = 1;
+
+document.getElementById('toggle').onclick = (e) => {
+  running = !running;
+  e.target.textContent = running ? 'Пауза' : 'Продолжить';
+};
+document.getElementById('slow').onclick = (e) => {
+  timeScale = timeScale === 1 ? 0.25 : 1;
+  e.target.textContent = timeScale === 1 ? 'Замедлить' : 'Обычная скорость';
+};
+
+// Стихийные статусы босс получает наравне с зомби — по кнопке можно
+// посмотреть, как на нём сидят пламя и льдина.
+const STATUSES = ['none', 'burning', 'frozen'];
+const STATUS_NAMES = { none: 'нет', burning: 'огонь', frozen: 'лёд' };
+let status = 'none';
+let freezeAge = 0;   // растёт по кругу, чтобы было видно и трещины
+
+document.getElementById('status').onclick = (e) => {
+  status = STATUSES[(STATUSES.indexOf(status) + 1) % STATUSES.length];
+  freezeAge = 0;
+  e.target.textContent = `Стихия: ${STATUS_NAMES[status]}`;
+};
+
+// Два «бегуна» на каждого босса: спокойный и разъярённый.
+const walkers = [];
+types.forEach((type, i) => {
+  const laneTop = LANE_HEIGHT * i;
+  // Внутри полосы: спокойный идёт выше, разъярённый — ниже и стартует левее,
+  // чтобы сразу было видно, насколько он быстрее
+  walkers.push({ type, y: laneTop + LANE_HEIGHT * 0.42, x: W * 0.25, phase: 0, enraged: false, seed: i * 37 });
+  walkers.push({ type, y: laneTop + LANE_HEIGHT * 0.85, x: W * 0.25, phase: 0, enraged: true, seed: i * 91 + 5 });
+});
+
+function drawWalker(w) {
+  const radius = RADIUS * w.type.radius;
+  const rage = { radius, walkPhase: w.phase, look: w.type.look, style: w.type.rage };
+
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  drawShadow(ctx, radius);
+  if (w.enraged) drawBossRage(ctx, { ...rage, layer: 'back' });
+
+  ctx.save();
+  drawBoss(ctx, {
+    radius,
+    walkPhase: w.phase,
+    facing: 1,
+    hurtFlash: false,
+    look: w.type.look,
+    burning: status === 'burning',
+    frozen: status === 'frozen',
+    freezeProgress: freezeAge % 1,
+    freezeSeed: w.seed,
+  });
+  ctx.restore();
+
+  if (w.enraged) drawBossRage(ctx, { ...rage, layer: 'front' });
+  ctx.restore();
+}
+
+// Полосы чередуются оттенком — так пары не сливаются между собой
+function drawLanes() {
+  types.forEach((type, i) => {
+    const top = LANE_HEIGHT * i;
+    ctx.fillStyle = i % 2 ? '#78c04b' : '#7ec850';
+    ctx.fillRect(0, top, W, LANE_HEIGHT);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#1c1a38';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillText(type.name, 18, top + 30);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(28,26,56,0.65)';
+    ctx.fillText(`ярость: ${type.rage}`, 18, top + 52);
+
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText('обычный', 18, top + LANE_HEIGHT * 0.42);
+    ctx.fillStyle = 'rgba(180,40,60,0.85)';
+    ctx.fillText('в ярости', 18, top + LANE_HEIGHT * 0.85);
+  });
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000) * timeScale;
+  last = now;
+
+  if (running) {
+    freezeAge += dt * 0.2;   // полный цикл заморозки за пять секунд
+    for (const w of walkers) {
+      // Разъярённый идёт быстрее ровно во столько же раз, что и в игре
+      const speed = WALK_SPEED * (w.enraged ? CONFIG.boss.enrageSpeed : 1);
+      w.x += speed * dt;
+      w.phase += dt * 6 * (w.enraged ? CONFIG.boss.enrageSpeed : 1);
+      if (w.x > W + 120) w.x = -120;   // ушёл за край — заходит снова слева
+    }
+  }
+
+  drawLanes();
+  // Дальние (верхние) рисуются первыми, чтобы ближние перекрывали
+  [...walkers].sort((a, b) => a.y - b.y).forEach(drawWalker);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

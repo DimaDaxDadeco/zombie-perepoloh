@@ -1,0 +1,676 @@
+// Game — оркестратор: игровой цикл, машина состояний экранов и связь
+// между Round (симуляция), экранами (DOM) и сохранением.
+// Схема состояний описана в docs/architecture.md.
+
+import { CONFIG } from '../config.js';
+import { Input } from './input.js';
+import { Audio } from './audio.js';
+import { Speech } from './speech.js';
+import { Storage } from './storage.js';
+import { Album } from './album.js';
+import { Round } from './round.js';
+import { generateCards, CardKind } from '../systems/levelup.js';
+import { createWeapon, evolveWeapon } from '../weapons/weapons.js';
+import { MenuScreen } from '../screens/menu.js';
+import { CardsScreen } from '../screens/cards.js';
+import { ShopScreen } from '../screens/shop.js';
+import { EndScreen } from '../screens/endscreen.js';
+import { CharactersScreen } from '../screens/characters.js';
+import { DifficultyScreen } from '../screens/difficulty.js';
+import { PlayersScreen } from '../screens/players.js';
+import { AlbumScreen } from '../screens/album.js';
+import { ConfirmScreen } from '../screens/confirm.js';
+import { WeaponsScreen } from '../screens/weapons.js';
+import { PauseScreen } from '../screens/pause.js';
+import { Hud } from '../screens/hud.js';
+import { Overlay } from '../screens/overlay.js';
+import { TouchControls } from '../screens/touch.js';
+
+export const GameState = {
+  MENU: 'menu',
+  PLAYING: 'playing',
+  PAUSED: 'paused',
+  CARDS: 'cards',
+  SHOP: 'shop',
+  ROUND_END: 'round-end',
+  PLAYERS: 'players',
+  DIFFICULTY: 'difficulty',
+  CHARACTERS: 'characters',
+  WEAPONS: 'weapons',
+  CONFIRM: 'confirm',
+  ALBUM: 'album',
+};
+
+const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» после сворачивания окна
+const FIREWORK_INTERVAL = 0.35;
+
+export class Game {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.arena = { width: 0, height: 0 };
+
+    this.storage = new Storage();
+    this.album = new Album(this.storage);
+    this.audio = new Audio(this.storage.data.soundOn);
+    this.speech = new Speech(this.storage.data.soundOn);
+    this.input = new Input();
+    this.hud = new Hud();
+
+    this.state = GameState.MENU;
+    this.round = null;
+    this.lastOutcome = null;
+    this.fireworkTimer = 0;
+    this.lastFrameTime = 0;
+
+    this.screens = this.createScreens();
+
+    this.setupTouch();
+    this.setupSoundButton();
+    this.setupPauseButton();
+    this.setupResize();
+    // Первый клик разблокирует звук — требование браузеров.
+    window.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
+  }
+
+  createScreens() {
+    return {
+      menu: new MenuScreen('menu-overlay', {
+        onContinue: () => this.continueGame(),
+        onNewGame: () => this.askNewGame(),
+        onShop: () => this.openShop(GameState.MENU),
+        onAlbum: () => this.openAlbum(),
+      }),
+      players: new PlayersScreen('players-overlay', {
+        onPick: (count) => this.choosePlayers(count),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      difficulty: new DifficultyScreen('difficulty-overlay', {
+        onPick: (id) => this.chooseDifficulty(id),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      characters: new CharactersScreen('characters-overlay', {
+        onPick: (id) => this.chooseCharacter(id),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      weapons: new WeaponsScreen('weapons-overlay', {
+        onPick: (id) => this.chooseWeapon(id),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      album: new AlbumScreen('album-overlay', {
+        onClose: () => this.closeAlbum(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      confirm: new ConfirmScreen('confirm-overlay'),
+      cards: new CardsScreen('cards-overlay', {
+        onPick: (card) => this.applyCard(card),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      shop: new ShopScreen('shop-overlay', {
+        onBuy: (itemId) => this.buyUpgrade(itemId),
+        onClose: () => this.closeShop(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      end: new EndScreen('end-overlay', {
+        onNext: () => this.openShop(GameState.ROUND_END),
+        onRetry: () => this.startRound(this.storage.data.round),
+        onMenu: () => this.goToMenu(),
+      }),
+      pause: new PauseScreen('pause-overlay', {
+        onResume: () => this.togglePause(),
+        onMenu: () => this.goToMenu(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+    };
+  }
+
+  // --- Запуск и цикл ---
+
+  start() {
+    this.resize();
+    this.goToMenu();
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  loop(timestamp) {
+    const dt = Math.min(MAX_FRAME_DELTA, (timestamp - this.lastFrameTime) / 1000 || 0);
+    this.lastFrameTime = timestamp;
+
+    // Порядок принципиален: endFrame() фиксирует кадр ПОСЛЕ разбора нажатий,
+    // иначе фронт нажатия стирается до того, как его успеют прочитать.
+    this.input.poll();
+    this.routeInput();
+    this.input.endFrame();
+
+    this.update(dt);
+    this.draw();
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  // Экраны, которые проходят по очереди игроками.
+  isQueuedScreen() {
+    return this.playersCount > 1 && (this.state === GameState.CHARACTERS
+      || this.state === GameState.WEAPONS || this.state === GameState.CARDS);
+  }
+
+  // Единственное место, где нажатия превращаются в действия. Куда пойдёт
+  // кнопка, решает состояние игры, а не то, чем её нажали: клавиатура,
+  // геймпад и тач приходят сюда одинаковыми.
+  routeInput() {
+    // Пауза глобальна: ставит и снимает любой источник. Иначе «мой геймпад
+    // не снимает паузу» — а объяснить это ребёнку невозможно.
+    if (this.input.anyPressed('pause')
+      && (this.state === GameState.PLAYING || this.state === GameState.PAUSED)) {
+      this.togglePause();
+      return;
+    }
+
+    if (this.state === GameState.PLAYING) {
+      this.round?.players.forEach((_, i) => {
+        if (this.input.abilityPressed(i)) this.round.useAbility(i);
+      });
+      return;
+    }
+
+    const screen = Overlay.activeNav();
+    if (!screen) return;
+    // Когда идёт очередь (выбор героя, оружия, карточки при игре вдвоём),
+    // экран слушает только того, чья очередь.
+    const owner = this.isQueuedScreen() ? this.pickIndex : null;
+    for (const source of this.input.menuSources(owner)) {
+      if (source.wasPressed('left')) screen.nav.onMove?.(-1);
+      if (source.wasPressed('right')) screen.nav.onMove?.(1);
+      // Кнопка способности и подтверждение — одна и та же клавиша у ребёнка
+      // (пробел, A на геймпаде). В меню она означает «выбрал это».
+      if (source.wasPressed('confirm') || source.wasPressed('ability')) screen.nav.onConfirm?.();
+      if (source.wasPressed('back')) screen.nav.onCancel?.();
+    }
+  }
+
+  update(dt) {
+    if (this.state === GameState.PLAYING) {
+      this.round.update(dt, this.round.players.map((_, i) => this.input.getDirection(i)));
+    } else if (this.state === GameState.ROUND_END) {
+      this.updateVictoryFireworks(dt);
+    }
+  }
+
+  updateVictoryFireworks(dt) {
+    if (!this.round || this.lastOutcome !== 'victory') return;
+    this.round.particles.update(dt);
+    this.fireworkTimer -= dt;
+    if (this.fireworkTimer <= 0) {
+      this.fireworkTimer = FIREWORK_INTERVAL;
+      this.round.particles.addFirework(
+        Math.random() * this.arena.width,
+        Math.random() * this.arena.height * 0.6,
+      );
+    }
+  }
+
+  draw() {
+    const { ctx, arena } = this;
+    this.syncTouch();
+    if (this.round) {
+      this.round.draw(ctx);
+      if (this.state === GameState.PLAYING || this.state === GameState.PAUSED) {
+        this.hud.draw(ctx, {
+          players: this.round.players,
+          level: this.round.level,
+          xp: this.round.xp,
+          xpToNext: this.round.xpToNext,
+          arena,
+          timeLeft: this.round.timeLeft,
+          zombiesDefeated: this.round.zombiesDefeated,
+          round: this.round.round,
+          bossActive: this.round.bossActive,
+          modifier: this.round.modifier,
+        });
+      }
+    } else {
+      this.drawMenuBackdrop(ctx, arena);
+    }
+  }
+
+  // Кнопка способности на планшете показывает эмодзи героя и загорается,
+  // когда шкала полна.
+  syncTouch() {
+    if (!this.touch.source.connected) return;   // не сенсорное устройство
+    const ability = this.round?.player.ability;
+    this.touch.setVisible(this.state === GameState.PLAYING);
+    if (ability) {
+      this.touch.setAbility({ emoji: ability.emoji, color: ability.color, ready: ability.isReady });
+    }
+  }
+
+  drawMenuBackdrop(ctx, arena) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, arena.height);
+    gradient.addColorStop(0, '#7ec850');
+    gradient.addColorStop(1, '#4f9a3a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, arena.width, arena.height);
+  }
+
+  // --- Переходы состояний ---
+
+  goToMenu() {
+    this.state = GameState.MENU;
+    this.round = null;
+    this.audio.stopMusic();
+    this.hideAllScreens();
+    this.screens.menu.render(this.storage.data);
+  }
+
+  // «Продолжить» — сразу в бой с сохранённым героем, оружием и раундом.
+  continueGame() {
+    const save = this.storage.data;
+    // Подстраховка на случай неполного сохранения: дособерём недостающее.
+    if (!save.character) return this.openCharacters(0);
+    if (this.playersCount > 1 && !save.character2) return this.openCharacters(1);
+    if (!save.weapon) return this.openWeapons(0);
+    if (this.playersCount > 1 && !save.weapon2) return this.openWeapons(1);
+    this.startRound(save.round);
+  }
+
+  // «Новая игра» стирает прогресс, поэтому спрашиваем — но только если есть
+  // что терять. При первом запуске лишний вопрос ребёнку ни к чему.
+  askNewGame() {
+    if (!this.storage.data.character) return this.startNewGame();
+
+    this.state = GameState.CONFIRM;
+    this.hideAllScreens();
+    this.screens.confirm.render({
+      title: 'НОВАЯ ИГРА?',
+      emoji: '✨',
+      question: 'Доллары, покупки и раунды пропадут. Начинаем сначала?',
+      cancelText: 'НЕТ, ОСТАВИТЬ ◀',
+      confirmText: 'Да, новая игра',
+      onCancel: () => {
+        this.audio.click();
+        this.goToMenu();
+      },
+      onConfirm: () => this.startNewGame(),
+    });
+  }
+
+  // Сброс и сразу выбор: сколько играет человек → сложность → герои → оружие.
+  // Экраны выбора появляются только здесь.
+  startNewGame() {
+    this.storage.reset();
+    this.audio.unlock();
+    this.audio.click();
+    this.openPlayers();
+  }
+
+  // У альбома один обратный путь — в меню, в отличие от магазина с его
+  // двумя. Меньше состояний — меньше мест, где ребёнок может застрять.
+  openAlbum() {
+    this.state = GameState.ALBUM;
+    this.audio.click();
+    this.hideAllScreens();
+    this.screens.album.render(this.storage.data);
+  }
+
+  closeAlbum() {
+    this.audio.click();
+    this.speech.stop();
+    this.goToMenu();
+  }
+
+  openPlayers() {
+    this.state = GameState.PLAYERS;
+    this.hideAllScreens();
+    this.screens.players.render(this.storage.data.playersCount);
+  }
+
+  choosePlayers(count) {
+    this.storage.data.playersCount = count;
+    this.input.playerCount = count;   // экраны выбора уже идут по очереди
+    this.storage.save();
+    this.audio.unlock();
+    this.audio.click();
+    this.speech.stop();
+    this.screens.players.hide();
+    this.openDifficulty();
+  }
+
+  openDifficulty() {
+    this.state = GameState.DIFFICULTY;
+    this.hideAllScreens();
+    this.screens.difficulty.render(this.storage.data.difficulty);
+  }
+
+  chooseDifficulty(id) {
+    this.storage.data.difficulty = id;
+    this.storage.save();
+    this.audio.unlock();
+    this.audio.click();
+    this.speech.stop();
+    this.screens.difficulty.hide();
+    this.openCharacters(); // выбор героя — второй шаг новой игры
+  }
+
+  // Ключи сохранения для игрока N. Второй хранится отдельными полями —
+  // см. комментарий в storage.js.
+  static characterKey(i) { return i === 0 ? 'character' : `character${i + 1}`; }
+  static weaponKey(i) { return i === 0 ? 'weapon' : `weapon${i + 1}`; }
+
+  get playersCount() {
+    return this.storage.data.playersCount || 1;
+  }
+
+  openCharacters(playerIndex = 0) {
+    this.pickIndex = playerIndex;
+    this.state = GameState.CHARACTERS;
+    this.hideAllScreens();
+    this.screens.characters.render(
+      this.storage.data[Game.characterKey(playerIndex)],
+      { playerIndex, total: this.playersCount },
+    );
+  }
+
+  chooseCharacter(id) {
+    const i = this.pickIndex ?? 0;
+    this.storage.data[Game.characterKey(i)] = id;
+    this.storage.save();
+    this.audio.unlock();
+    this.audio.click();
+    this.speech.stop();
+    this.screens.characters.hide();
+    // Сначала героев выбирают оба, и только потом оружие: так каждый видит,
+    // кем будет играть напарник, прежде чем подбирать себе ствол.
+    if (i + 1 < this.playersCount) this.openCharacters(i + 1);
+    else this.openWeapons(0);
+  }
+
+  openWeapons(playerIndex = 0) {
+    this.pickIndex = playerIndex;
+    this.state = GameState.WEAPONS;
+    this.hideAllScreens();
+    this.screens.weapons.render(
+      this.storage.data[Game.weaponKey(playerIndex)] || CONFIG.startingWeapon,
+      { playerIndex, total: this.playersCount },
+    );
+  }
+
+  chooseWeapon(id) {
+    const i = this.pickIndex ?? 0;
+    this.storage.data[Game.weaponKey(i)] = id;
+    this.storage.save();
+    this.audio.unlock();
+    this.audio.click();
+    this.speech.stop();
+    this.screens.weapons.hide();
+    if (i + 1 < this.playersCount) this.openWeapons(i + 1);
+    else this.startRound(this.storage.data.round);
+  }
+
+  startRound(roundNumber) {
+    this.hideAllScreens();
+    this.speech.stop(); // голос не должен договаривать поверх боя
+    this.audio.unlock();
+    this.state = GameState.PLAYING;
+    this.lastOutcome = null;
+    this.input.playerCount = this.playersCount;
+
+    this.round = new Round({
+      round: roundNumber,
+      arena: this.arena,
+      audio: this.audio,
+      players: Array.from({ length: this.playersCount }, (_, i) => this.getUpgrades(i)),
+      difficulty: this.getDifficulty(),
+      callbacks: {
+        onLevelUp: () => this.openCards(),
+        onBossAppear: (name) => this.speech.speak(`Осторожно! ${name}!`),
+        onVictory: (summary) => this.endRound('victory', summary),
+        onDefeat: (summary) => this.endRound('defeat', summary),
+      },
+    });
+    this.audio.startMusic();
+
+    // Особый раунд объявляем голосом — попадает ровно в 2.5 секунды тишины
+    // в начале раунда, которые и без того предназначены «осмотреться».
+    const modifier = this.round.modifier;
+    if (modifier) {
+      this.audio.special();
+      this.speech.speak(modifier.announce);
+    }
+  }
+
+  // Уровень сложности из сохранения. Незнакомый id (правленый localStorage
+  // или сохранение из будущей версии) — «Легко»: ошибаться надо в сторону
+  // проходимости, а не в сторону непроходимой игры.
+  getDifficulty() {
+    const id = this.storage.data.difficulty || CONFIG.defaultDifficulty;
+    return CONFIG.difficulties.find((d) => d.id === id) || CONFIG.difficulties[0];
+  }
+
+  // Выбранный герой; если сохранения ещё нет — герой по умолчанию.
+  getCharacter(playerIndex = 0) {
+    const id = this.storage.data[Game.characterKey(playerIndex)] || CONFIG.defaultCharacter;
+    return CONFIG.characters.find((c) => c.id === id) || CONFIG.characters[0];
+  }
+
+  // Бонусы, применяемые к герою на старте раунда: покупки из магазина
+  // плюс небольшой перк выбранного персонажа.
+  getUpgrades(playerIndex = 0) {
+    const bought = this.storage.data.shop;
+    const perk = this.getCharacter(playerIndex).perk;
+    const diff = this.getDifficulty();
+    return {
+      speed: CONFIG.player.baseSpeed
+        + bought.speed * CONFIG.shop.speed.bonus
+        + (perk.speedBonus || 0),
+      // На «Сложно» сердечек на одно меньше, но никогда не ноль.
+      maxHp: Math.max(1, CONFIG.player.baseMaxHp
+        + bought.heart * CONFIG.shop.heart.bonus
+        + (perk.extraHp || 0)
+        + diff.extraHearts),
+      regenInterval: CONFIG.player.regenInterval * diff.regenFactor,
+      startStars: bought.star * CONFIG.shop.star.bonus + (perk.startStars || 0),
+      magnetRadius: CONFIG.pickups.baseMagnetRadius
+        + bought.magnet * CONFIG.pickups.magnetPerLevel
+        + (perk.magnetBonus || 0),
+      // Питомцы: товар с полем pet отдаёт id живого спутника.
+      pets: Object.entries(CONFIG.shop)
+        .filter(([id, spec]) => spec.pet && bought[id])
+        .map(([, spec]) => spec.pet),
+      look: this.getCharacter(playerIndex).look,
+      ability: this.getCharacter(playerIndex).ability,
+      startWeapon: this.storage.data[Game.weaponKey(playerIndex)] || CONFIG.startingWeapon,
+    };
+  }
+
+  endRound(outcome, summary) {
+    this.state = GameState.ROUND_END;
+    this.lastOutcome = outcome;
+    this.audio.stopMusic();
+
+    const save = this.storage.data;
+    save.coins += summary.coinsEarned;
+    save.totalZombies += summary.zombiesDefeated;
+    // Единственная запись альбома за раунд — здесь же, где и так сохраняемся.
+    const fresh = this.album.discoverAll(summary.discovered);
+
+    if (outcome === 'victory') {
+      save.round = summary.round + 1;
+      save.bestRound = Math.max(save.bestRound, save.round);
+      this.audio.victory();
+      this.fireworkTimer = 0;
+      this.screens.end.renderVictory(summary, this.getCharacter().look, fresh);
+    } else {
+      this.audio.fail();
+      this.screens.end.renderDefeat(summary, fresh);
+    }
+    this.storage.save();
+  }
+
+  togglePause() {
+    if (this.state === GameState.PLAYING) {
+      this.state = GameState.PAUSED;
+      this.audio.stopMusic();
+      this.screens.pause.render(this.round?.player.weapons);
+    } else if (this.state === GameState.PAUSED) {
+      this.state = GameState.PLAYING;
+      this.screens.pause.hide();
+      this.audio.startMusic();
+    }
+  }
+
+  // --- Прокачка ---
+
+  // Карточку выбирают по очереди: сначала игрок 1, потом игрок 2. У каждого
+  // свой арсенал, и общая карточка слила бы их в один. Нажатия при этом
+  // принимаются только от источника того, чья очередь, — второй физически не
+  // может выбрать за первого.
+  openCards() {
+    this.cardQueue = this.round.players.map((_, i) => i);
+    this.state = GameState.CARDS;
+    this.nextCardPick();
+  }
+
+  nextCardPick() {
+    // Очереди может не быть: автотест из balance.md подменяет openCards и
+    // зовёт applyCard напрямую. Падать из-за этого игра не должна.
+    const index = this.cardQueue?.shift();
+    if (index === undefined) {
+      this.screens.cards.hide();
+      this.state = GameState.PLAYING;
+      return;
+    }
+    this.pickIndex = index;
+    const player = this.round.players[index];
+    this.screens.cards.render(generateCards(player), {
+      playerIndex: index,
+      total: this.round.players.length,
+      look: player.look,
+    });
+  }
+
+  // Событие редкое и должно ощущаться крупнее обычного уровня — поэтому три
+  // сигнала разом: салют, кольцо и голос.
+  celebrateEvolution(weapon, player) {
+    this.round.particles.addFirework(player.x, player.y - 40);
+    this.round.particles.addRing(player.x, player.y, 90, '#ffd93d');
+    this.audio.evolve();
+    this.speech.speak(`${weapon.name}!`);
+  }
+
+  applyCard(card) {
+    const player = this.round.players[this.pickIndex ?? 0];
+    if (card.kind === CardKind.NEW_WEAPON) {
+      player.weapons.push(createWeapon(card.weaponId));
+    } else if (card.kind === CardKind.EVOLVE) {
+      // Замена на месте, по индексу: слот в HUD не должен переезжать.
+      const index = player.weapons.findIndex((w) => w.id === card.weaponId);
+      player.weapons[index] = evolveWeapon(player.weapons[index]);
+      this.celebrateEvolution(player.weapons[index], player);
+    } else if (card.kind === CardKind.UPGRADE) {
+      player.findWeapon(card.weaponId)?.upgrade();
+    } else {
+      player.hp = Math.min(player.maxHp, player.hp + 1);
+    }
+
+    this.audio.click();
+    this.speech.stop();
+    this.nextCardPick();   // очередь: второй игрок выбирает следом
+  }
+
+  // --- Магазин ---
+
+  openShop(returnState) {
+    this.shopReturnState = returnState;
+    this.state = GameState.SHOP;
+    this.hideAllScreens();
+    this.screens.shop.render(this.storage.data);
+  }
+
+  buyUpgrade(itemId) {
+    const save = this.storage.data;
+    const spec = CONFIG.shop[itemId];
+    const level = save.shop[itemId] || 0;
+    if (level >= spec.prices.length) return;
+
+    const price = spec.prices[level];
+    if (save.coins < price) return;
+
+    save.coins -= price;
+    save.shop[itemId] = level + 1;
+    this.storage.save();
+    this.audio.money();
+    this.screens.shop.render(save); // перерисовываем цены и доступность
+  }
+
+  closeShop() {
+    this.audio.click();
+    this.screens.shop.hide();
+    // Из меню возвращаемся в меню, после победы — сразу в следующий раунд.
+    if (this.shopReturnState === GameState.ROUND_END) {
+      this.startRound(this.storage.data.round);
+    } else {
+      this.goToMenu();
+    }
+  }
+
+  hideAllScreens() {
+    Object.values(this.screens).forEach((screen) => screen.hide());
+  }
+
+  // --- Звук и размеры ---
+
+  // Управление пальцем появляется только на сенсорных устройствах — и
+  // исчезает, как только взяли клавиатуру или геймпад.
+  setupTouch() {
+    this.touch = new TouchControls({ onPause: () => this.togglePause() });
+    this.input.add(this.touch.source);
+    TouchControls.watchTouchMode((on) => {
+      this.touch.setEnabled(on);
+      document.getElementById('pause-button')?.classList.toggle('hidden', !on);
+    });
+  }
+
+  // Кнопка паузы нужна именно на планшете: клавиши Esc там нет.
+  setupPauseButton() {
+    document.getElementById('pause-button')?.addEventListener('click', () => {
+      if (this.state === GameState.PLAYING || this.state === GameState.PAUSED) this.togglePause();
+    });
+  }
+
+  setupSoundButton() {
+    const button = document.getElementById('sound-button');
+    const sync = () => {
+      button.textContent = this.storage.data.soundOn ? '🔊' : '🔇';
+    };
+    button.addEventListener('click', () => {
+      const on = !this.storage.data.soundOn;
+      this.storage.data.soundOn = on;
+      this.storage.save();
+      this.audio.unlock();
+      this.audio.setEnabled(on);
+      this.speech.setEnabled(on); // одна кнопка выключает и звуки, и голос
+      sync();
+    });
+    sync();
+  }
+
+  setupResize() {
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  resize() {
+    // Рисуем в честных пикселях устройства, чтобы на ретине не мылило.
+    const ratio = window.devicePixelRatio || 1;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    this.canvas.width = width * ratio;
+    this.canvas.height = height * ratio;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    this.arena.width = width;
+    this.arena.height = height;
+    this.round?.onArenaResize(this.arena);
+  }
+}

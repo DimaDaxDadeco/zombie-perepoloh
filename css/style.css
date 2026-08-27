@@ -1,0 +1,627 @@
+/* Стили интерфейса. Игровой мир рисуется на canvas — здесь только оверлеи.
+   Всё крупное и контрастное: экран рассчитан на ребёнка 5 лет. */
+
+:root {
+  --color-panel: rgba(28, 26, 56, 0.94);
+  --color-text: #ffffff;
+  --color-accent: #ffd93d;
+  --color-primary: #ff6b35;
+  --color-primary-dark: #e0511c;
+  --color-secondary: rgba(255, 255, 255, 0.18);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --font: 'Trebuchet MS', 'Comic Sans MS', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  background: #4f9a3a;
+  color: var(--color-text);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game-canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Оверлеи --- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 10;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.panel {
+  background: var(--color-panel);
+  border-radius: var(--radius-lg);
+  padding: 32px 40px;
+  text-align: center;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  max-width: min(92vw, 900px);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Магазину и выбору героя нужна ширина, иначе карточки выстраиваются в одну
+   колонку и кнопка внизу уезжает за край экрана. */
+.panel--shop {
+  width: min(92vw, 780px);
+}
+
+.panel--characters {
+  width: min(94vw, 860px);
+}
+
+.title {
+  font-size: clamp(28px, 5vw, 46px);
+  letter-spacing: 2px;
+  color: var(--color-accent);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.title--small {
+  font-size: clamp(22px, 3.5vw, 32px);
+}
+
+.title--soft {
+  color: #9ad6ff;
+}
+
+.menu-hero {
+  font-size: clamp(56px, 10vw, 96px);
+  line-height: 1;
+  animation: bounce 1.4s ease-in-out infinite;
+}
+
+.menu-hero-canvas {
+  animation: bounce 1.4s ease-in-out infinite;
+}
+
+.menu-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* --- Выбор героя --- */
+
+.heroes {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hero-card {
+  position: relative; /* якорь для кнопки «послушать» */
+  width: 180px;
+  padding: 12px 10px 16px;
+  border: 4px solid transparent;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, #3d3a7a, #2a2856);
+  color: #fff;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.hero-card:hover {
+  transform: translateY(-6px);
+}
+
+.hero-card--selected {
+  border-color: var(--color-accent);
+  transform: translateY(-6px) scale(1.04);
+  box-shadow: 0 0 24px rgba(255, 217, 61, 0.5);
+}
+
+.hero-card__name {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.hero-card__perk {
+  font-size: 13px;
+  opacity: 0.8;
+  line-height: 1.3;
+}
+
+/* Способность — вторая строка под перком, ярче его: это главное отличие
+   героев друг от друга. */
+.hero-card__ability {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffd93d;
+  line-height: 1.3;
+}
+
+/* Подсветка выбранного с клавиатуры/геймпада — в магазине и на кнопках.
+   Карточки героев используют .hero-card--selected, она уже есть. */
+/* Карточка эволюции — золотая рамка: событие редкое и должно бросаться
+   в глаза сильнее обычного апгрейда. */
+.card--evolve {
+  border: 3px solid #ffd93d;
+  box-shadow: 0 0 18px rgba(255, 217, 61, 0.55);
+}
+
+.shop-item--selected,
+.btn--selected {
+  outline: 3px solid #ffd93d;
+  outline-offset: 3px;
+}
+
+.hero-card__canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Иконка оружия на экране выбора — вместо canvas с героем */
+.weapon-choice__emoji {
+  font-size: 64px;
+  line-height: 1.4;
+}
+
+/* Узкое окно: ужимаем карточки, чтобы в ряд помещалось хотя бы двое героев
+   и кнопка «Играть» не уезжала за нижний край. */
+@media (max-width: 760px) {
+  .panel {
+    padding: 20px 16px;
+    gap: 12px;
+  }
+
+  .hero-card {
+    width: 140px;
+    padding: 8px 6px 12px;
+  }
+
+  .hero-card__name {
+    font-size: 15px;
+  }
+
+  .hero-card__perk,
+  .hero-card__ability {
+    font-size: 11px;
+  }
+
+  .heroes {
+    gap: 10px;
+  }
+
+  .menu-hero-canvas {
+    width: 90px;
+    height: 90px;
+  }
+
+  /* Заголовок не должен подлезать под кнопку звука в правом верхнем углу */
+  .panel--menu {
+    padding-top: 28px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+.stats-row {
+  display: flex;
+  gap: 24px;
+  font-size: 22px;
+}
+
+.stat {
+  background: var(--color-secondary);
+  padding: 6px 18px;
+  border-radius: var(--radius-md);
+}
+
+.big-line {
+  font-size: clamp(17px, 2.4vw, 22px);
+}
+
+.hint {
+  font-size: 15px;
+  opacity: 0.75;
+  max-width: 460px;
+}
+
+/* --- Кнопки --- */
+
+.btn {
+  font-family: inherit;
+  font-weight: bold;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.1s ease, filter 0.1s ease;
+}
+
+.btn:hover {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn--big {
+  font-size: clamp(24px, 4vw, 34px);
+  padding: 18px 48px;
+  background: var(--color-primary);
+  box-shadow: 0 6px 0 var(--color-primary-dark);
+  letter-spacing: 1px;
+}
+
+.btn--secondary {
+  font-size: 18px;
+  padding: 10px 26px;
+  background: var(--color-secondary);
+}
+
+/* Кнопка необратимого действия: заметная, но подчёркнуто второстепенная
+   рядом с большой безопасной кнопкой отмены */
+.btn--danger {
+  font-size: 16px;
+  padding: 8px 22px;
+  background: transparent;
+  border: 2px solid rgba(255, 107, 107, 0.6);
+  color: #ff8f8f;
+}
+
+.btn--danger:hover {
+  background: rgba(255, 77, 109, 0.2);
+}
+
+/* --- Управление пальцем --- */
+
+/* Никаких системных жестов поверх игры: ни зума по двойному тапу, ни
+   прокрутки резинкой. */
+html, body, #game-canvas, #touch-controls { touch-action: none; }
+
+#touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 5;              /* ниже оверлеев: меню обязано перекрывать джойстик */
+  pointer-events: none;    /* иначе прозрачный слой съест клик по кнопке звука */
+}
+
+/* Зона захвата джойстика — вся левая половина, кроме верха с HUD. */
+#touch-stick {
+  position: absolute;
+  left: 0;
+  top: 120px;
+  width: 50%;
+  bottom: 0;
+  pointer-events: auto;
+}
+
+#touch-knob {
+  position: fixed;
+  width: 96px;
+  height: 96px;
+  margin: -48px 0 0 -48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+#touch-knob.visible { opacity: 1; }
+
+#touch-ability {
+  position: absolute;
+  right: calc(28px + env(safe-area-inset-right));
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  width: 88px;             /* вдвое больше рекомендаций Apple: промахнуться нельзя */
+  height: 88px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 38px;
+  color: #fff;
+  pointer-events: auto;
+}
+
+/* Способность заряжена — кнопка наливается её цветом и пульсирует. */
+#touch-ability.ready {
+  background: var(--ability-color, #ffd93d);
+  border-color: #fff;
+  animation: ability-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes ability-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.sound-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  font-size: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Кнопка паузы — рядом со звуком. Правило идёт ПОСЛЕ .sound-button:
+   специфичность у них одинаковая, и решает порядок в файле. */
+.pause-button { right: 80px; }
+
+.sound-button:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* --- Карточки прокачки --- */
+
+.cards {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  position: relative;
+  width: 190px;
+  padding: 22px 14px 18px;
+  border: 4px solid transparent;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, #3d3a7a, #2a2856);
+  color: #fff;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.card:hover {
+  transform: translateY(-6px);
+}
+
+.card--selected {
+  border-color: var(--color-accent);
+  transform: translateY(-6px) scale(1.04);
+  box-shadow: 0 0 24px rgba(255, 217, 61, 0.5);
+}
+
+.card__emoji {
+  font-size: 60px;
+  line-height: 1;
+}
+
+.card__title {
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.card__stars {
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.card__badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-primary);
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+/* --- Кнопка «послушать» на карточках --- */
+
+.speak {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.speak:hover {
+  background: var(--color-accent);
+  transform: scale(1.12);
+}
+
+/* --- Список оружия на паузе --- */
+
+.weapon-chips {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.weapon-chip {
+  position: relative;
+  padding: 14px 12px 10px;
+  min-width: 84px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.weapon-chip__emoji {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.weapon-chip__stars {
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+/* --- Магазин --- */
+
+.shop-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.shop-item {
+  position: relative; /* якорь для кнопки «послушать» */
+  background: linear-gradient(180deg, #3d3a7a, #2a2856);
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 16px 12px;
+  color: #fff;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.shop-item:hover:not(:disabled) {
+  transform: translateY(-4px);
+  border-color: var(--color-accent);
+}
+
+.shop-item--locked {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shop-item__emoji {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.shop-item__about {
+  font-size: 13px;
+  opacity: 0.75;
+  line-height: 1.25;
+}
+
+.shop-item__name {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.shop-item__dots {
+  color: var(--color-accent);
+  letter-spacing: 3px;
+}
+
+.shop-item__price {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* --- Альбом наклеек --- */
+
+.panel--album { width: min(94vw, 900px); }
+
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.album-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+
+.album-card--selected { outline: 3px solid #ffd93d; outline-offset: 2px; }
+.album-card--locked { background: rgba(0, 0, 0, 0.25); }
+
+.album-card__canvas { max-width: 100%; height: auto; }
+
+.album-card__name {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.album-card__lock {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  font-size: 34px;
+  opacity: 0.9;
+}
+
+/* Свежие наклейки на экране конца раунда */
+.fresh-stickers {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .album-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .album-card__name { font-size: 10px; }
+}

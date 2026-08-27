@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Зомби-переполох</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧟</text></svg>">
+</head>
+<body>
+  <!-- Игровой мир -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Кнопки доступны всегда, поверх любого экрана -->
+  <button id="sound-button" class="sound-button" title="Звук">🔊</button>
+  <button id="pause-button" class="sound-button pause-button hidden" title="Пауза">⏸</button>
+
+  <!-- Управление пальцем: показывается только на сенсорных устройствах -->
+  <div id="touch-controls" class="hidden">
+    <div id="touch-stick"><div id="touch-knob"></div></div>
+    <button id="touch-ability" type="button">✨</button>
+  </div>
+
+  <!-- Экраны-оверлеи. Содержимое рендерят модули из js/screens/ -->
+  <div id="menu-overlay" class="overlay hidden"></div>
+  <div id="players-overlay" class="overlay hidden"></div>
+  <div id="difficulty-overlay" class="overlay hidden"></div>
+  <div id="characters-overlay" class="overlay hidden"></div>
+  <div id="weapons-overlay" class="overlay hidden"></div>
+  <div id="cards-overlay" class="overlay hidden"></div>
+  <div id="shop-overlay" class="overlay hidden"></div>
+  <div id="end-overlay" class="overlay hidden"></div>
+  <div id="album-overlay" class="overlay hidden"></div>
+  <div id="pause-overlay" class="overlay hidden"></div>
+  <div id="confirm-overlay" class="overlay hidden"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

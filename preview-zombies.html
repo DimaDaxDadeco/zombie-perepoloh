@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Зомби: виды и состояния</title>
+<style>
+  body { margin: 0; background: #7ec850; font-family: system-ui, sans-serif; }
+  .bar {
+    padding: 12px 18px; background: #1c1a38; color: #fff;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .bar b { color: #ffd93d; font-size: 18px; }
+  .bar span { opacity: 0.85; font-size: 14px; }
+  .bar a { color: #9ad6ff; font-size: 14px; }
+  button {
+    font: inherit; padding: 7px 16px; border: 0; border-radius: 8px;
+    background: #ff6b3d; color: #fff; cursor: pointer;
+  }
+  button:hover { background: #ff8a5f; }
+  canvas { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Зомби: виды и состояния</b>
+    <span>В каждой полосе трое: обычный, горящий 🔥 и замороженный ❄️ —
+      замороженный отстаёт, потому что и в игре ползёт медленнее</span>
+    <button id="toggle">Пауза</button>
+    <button id="slow">Замедлить</button>
+    <a href="./preview-bosses.html">→ стенд боссов</a>
+    <a href="./preview-locations.html">→ стенд локаций</a>
+    <a href="./preview-heroes.html">→ стенд героев</a>
+  </div>
+  <canvas id="stage" width="1400" height="1000"></canvas>
+
+<script type="module">
+// Стенд для просмотра обычных зомби. Импортирует настоящие модули игры,
+// поэтому походка, цвета и статусы здесь ровно те же, что в бою.
+import { CONFIG } from './js/config.js';
+import { drawZombie, drawShadow } from './js/render/sprites.js';
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const types = CONFIG.zombieTypes;
+const LANE_HEIGHT = H / types.length;
+const BASE_RADIUS = 42;
+const BASE_SPEED = 60;          // масштаб скорости для стенда, пропорции как в игре
+const FREEZE_FACTOR = CONFIG.weapons.ice.freezeFactor[0];
+
+let running = true;
+let timeScale = 1;
+
+document.getElementById('toggle').onclick = (e) => {
+  running = !running;
+  e.target.textContent = running ? 'Пауза' : 'Продолжить';
+};
+document.getElementById('slow').onclick = (e) => {
+  timeScale = timeScale === 1 ? 0.25 : 1;
+  e.target.textContent = timeScale === 1 ? 'Замедлить' : 'Обычная скорость';
+};
+
+// Три состояния на каждый вид: обычный, горящий, замороженный.
+// Замороженный идёт медленнее ровно во столько же раз, что и в игре.
+const STATES = [
+  { key: 'normal', label: 'обычный', burning: false, frozen: false, slow: 1 },
+  { key: 'burning', label: 'горит 🔥', burning: true, frozen: false, slow: 1 },
+  { key: 'frozen', label: 'заморожен ❄️', burning: false, frozen: true, slow: FREEZE_FACTOR },
+];
+
+// Все трое идут по одной линии, но с большим интервалом: если разносить их
+// по вертикали, персонажи налезают друг на друга — полоса слишком узкая.
+const walkers = [];
+types.forEach((type, i) => {
+  const laneY = LANE_HEIGHT * (i + 0.72);
+  STATES.forEach((state, k) => {
+    walkers.push({
+      type,
+      state,
+      y: laneY,
+      x: W * (0.18 + k * 0.28),
+      phase: Math.random() * Math.PI * 2,
+    });
+  });
+});
+
+function drawWalker(w) {
+  const radius = BASE_RADIUS * w.type.radius;
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  drawShadow(ctx, radius);
+  drawZombie(ctx, {
+    radius,
+    walkPhase: w.phase,
+    facing: 1,
+    hurtFlash: false,
+    look: w.type.look,
+    burning: w.state.burning,
+    frozen: w.state.frozen,
+  });
+  ctx.restore();
+}
+
+function drawLanes() {
+  types.forEach((type, i) => {
+    const top = LANE_HEIGHT * i;
+    ctx.fillStyle = i % 2 ? '#78c04b' : '#7ec850';
+    ctx.fillRect(0, top, W, LANE_HEIGHT);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#1c1a38';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillText(type.name, 18, top + 30);
+
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(28,26,56,0.65)';
+    ctx.fillText(
+      `с ${type.fromRound} раунда · здоровье ×${type.hp} · скорость ×${type.speed}`,
+      18, top + 52,
+    );
+
+
+  });
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000) * timeScale;
+  last = now;
+
+  if (running) {
+    for (const w of walkers) {
+      // Скорость вида × замедление от заморозки — те же множители, что в игре
+      const speed = BASE_SPEED * w.type.speed * w.state.slow;
+      w.x += speed * dt;
+      w.phase += dt * 6 * w.state.slow;
+      if (w.x > W + 100) w.x = -100;
+    }
+  }
+
+  drawLanes();
+  [...walkers].sort((a, b) => a.y - b.y).forEach(drawWalker);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

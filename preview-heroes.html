@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Герои: походка и способности</title>
+<style>
+  body { margin: 0; background: #7ec850; font-family: system-ui, sans-serif; }
+  .bar {
+    padding: 12px 18px; background: #1c1a38; color: #fff;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .bar b { color: #ffd93d; font-size: 18px; }
+  .bar span { opacity: 0.85; font-size: 14px; }
+  .bar a { color: #9ad6ff; font-size: 14px; }
+  button {
+    font: inherit; padding: 7px 16px; border: 0; border-radius: 8px;
+    background: #ff6b3d; color: #fff; cursor: pointer;
+  }
+  button:hover { background: #ff8a5f; }
+  canvas { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Герои: походка и способности</b>
+    <span>В каждой полосе четверо: обычный, мигает после удара,
+      способность заряжена и способность работает</span>
+    <button id="toggle">Пауза</button>
+    <button id="slow">Замедлить</button>
+    <button id="flip">Развернуть</button>
+    <button id="pets">Питомцы: нет</button>
+    <a href="./preview-zombies.html">→ стенд зомби</a>
+    <a href="./preview-bosses.html">→ стенд боссов</a>
+    <a href="./preview-locations.html">→ стенд локаций</a>
+  </div>
+  <canvas id="stage" width="1400" height="880"></canvas>
+
+<script type="module">
+// Стенд для просмотра героев. Импортирует настоящие модули игры, поэтому
+// походка, эффекты способности и мигание неуязвимости здесь ровно те же,
+// что в бою: правишь sprites.js — правится и стенд.
+import { CONFIG } from './js/config.js';
+import {
+  drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect, drawBeast, drawDrone,
+} from './js/render/sprites.js';
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const heroes = CONFIG.characters;
+const LANE_HEIGHT = H / heroes.length;
+const RADIUS = 44;             // в игре 20, здесь крупнее — чтобы разглядеть детали
+const BASE_SPEED = 90;
+
+let running = true;
+let timeScale = 1;
+let facing = 1;
+
+document.getElementById('toggle').onclick = (e) => {
+  running = !running;
+  e.target.textContent = running ? 'Пауза' : 'Продолжить';
+};
+document.getElementById('slow').onclick = (e) => {
+  timeScale = timeScale === 1 ? 0.25 : 1;
+  e.target.textContent = timeScale === 1 ? 'Замедлить' : 'Обычная скорость';
+};
+// Влево герой рисуется зеркально — тут это удобно проверить одной кнопкой.
+document.getElementById('flip').onclick = () => { facing = -facing; };
+
+// Питомцев показываем рядом с героем: важна именно пара, а не собачка сама
+// по себе — и то, отличается ли она от зомби-собаки на игровом размере.
+const PETS = ['none', 'dog', 'drone'];
+const PET_NAMES = { none: 'нет', dog: 'собачка', drone: 'дрон' };
+let pet = 'none';
+document.getElementById('pets').onclick = (e) => {
+  pet = PETS[(PETS.indexOf(pet) + 1) % PETS.length];
+  e.target.textContent = `Питомцы: ${PET_NAMES[pet]}`;
+};
+
+// Четыре состояния, в которых героя вообще можно увидеть в игре.
+const STATES = [
+  { label: 'обычный', glow: 'none' },
+  { label: 'после удара', glow: 'none', blink: true },
+  { label: 'способность заряжена', glow: 'ready' },
+  { label: 'способность работает', glow: 'active' },
+];
+
+const walkers = [];
+heroes.forEach((hero, i) => {
+  const laneY = LANE_HEIGHT * (i + 0.66);
+  STATES.forEach((state, k) => {
+    walkers.push({ hero, state, y: laneY, x: W * (0.14 + k * 0.23), phase: k * 1.1 });
+  });
+});
+
+// Эффект способности рисуется двумя слоями вокруг героя — ровно так же,
+// как в player.js: back до персонажа, front после.
+function drawFx(w, ability, layer) {
+  if (w.state.glow === 'none' || !ability) return;
+  const fx = { radius: RADIUS, color: ability.color, phase: w.phase, facing, layer };
+  if (w.state.glow === 'active') drawAbilityEffect(ctx, { ...fx, style: w.hero.ability });
+  else drawAbilitySparks(ctx, fx);
+}
+
+function drawWalker(w) {
+  const ability = CONFIG.abilities[w.hero.ability];
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  drawShadow(ctx, RADIUS);
+  drawFx(w, ability, 'back');
+
+  drawHero(ctx, {
+    radius: RADIUS,
+    walkPhase: w.phase,
+    facing,
+    // Мигание в игре идёт по таймеру неуязвимости — здесь по фазе шага.
+    blinking: w.state.blink && Math.floor(w.phase * 1.6) % 2 === 0,
+    look: w.hero.look,
+  });
+  drawFx(w, ability, 'front');
+  if (pet !== 'none') drawPetBeside(w);
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(28,26,56,0.7)';
+  ctx.font = '13px system-ui, sans-serif';
+  // У волны нет длительности — в игре она мгновенная, и показывать в этой
+  // колонке нечего. Честнее написать об этом, чем оставить пустого героя.
+  const instant = w.state.glow === 'active' && w.hero.ability === 'shockwave';
+  ctx.fillText(instant ? 'мгновенная — эффект в бою' : w.state.label,
+    w.x, w.y + RADIUS * 1.9);
+  ctx.restore();
+}
+
+function drawPetBeside(w) {
+  const spec = CONFIG.pets[pet];
+  const r = RADIUS * 0.7;
+  ctx.save();
+  ctx.translate(-facing * RADIUS * 2.1, RADIUS * 0.5);
+  drawShadow(ctx, r);
+  if (pet === 'dog') {
+    drawBeast(ctx, { radius: r, walkPhase: w.phase, facing, look: spec.look, mood: 'friendly' });
+  } else {
+    drawDrone(ctx, { radius: r, phase: w.phase, facing, look: spec.look });
+  }
+  ctx.restore();
+}
+
+// Полосы чередуются оттенком — так соседние герои не сливаются.
+function drawLanes() {
+  heroes.forEach((hero, i) => {
+    const top = LANE_HEIGHT * i;
+    ctx.fillStyle = i % 2 ? '#78c04b' : '#7ec850';
+    ctx.fillRect(0, top, W, LANE_HEIGHT);
+
+    const ability = CONFIG.abilities[hero.ability];
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#1c1a38';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillText(hero.name, 18, top + 30);
+
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(28,26,56,0.65)';
+    ctx.fillText(`перк: ${hero.about}`, 18, top + 52);
+    if (ability) {
+      ctx.fillText(`${ability.emoji} ${ability.name} — ${ability.about}`, 18, top + 72);
+    }
+  });
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000) * timeScale;
+  last = now;
+
+  if (running) {
+    for (const w of walkers) {
+      // Герои шагают на месте: важна походка и эффекты, а не перемещение.
+      w.phase += dt * 9;
+    }
+  }
+
+  drawLanes();
+  walkers.forEach(drawWalker);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
