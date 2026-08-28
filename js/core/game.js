@@ -189,7 +189,9 @@ export class Game {
 
   update(dt) {
     if (this.state === GameState.PLAYING) {
-      this.round.update(dt, this.round.players.map((_, i) => this.input.getDirection(i)));
+      // Героя передаём как точку отсчёта: на планшете направление считается
+      // от него к пальцу, и без этого он бы просто стоял.
+      this.round.update(dt, this.round.players.map((p, i) => this.input.getDirection(i, p)));
     } else if (this.state === GameState.ROUND_END) {
       this.updateVictoryFireworks(dt);
     }

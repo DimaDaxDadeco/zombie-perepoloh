@@ -1,4 +1,10 @@
-// Управление на планшете: виртуальный джойстик и кнопка способности.
+// Управление на планшете: палец ведёт героя, плюс кнопка способности.
+//
+// Модель простая до предела: где палец — туда герой и идёт. Не джойстик со
+// смещением от точки касания: ребёнок прижимает палец и держит, не ведя им,
+// и смещение остаётся нулевым — герой стоит. Именно так и было, и именно на
+// это жаловались. Здесь же неподвижный палец продолжает вести героя, потому
+// что направление считается каждый кадр заново от его текущей позиции.
 //
 // Сделано обычным DOM, а не рисованием на canvas. Причины:
 //   - зона захвата пальца обязана совпадать с картинкой пиксель-в-пиксель, а
@@ -19,10 +25,31 @@ class TouchSource extends InputSource {
   constructor() {
     super('touch', 'touch');
     this.active = false;
+    this.target = null;      // куда указывает палец, в координатах арены
   }
 
   get connected() {
     return this.active;
+  }
+
+  // Единственный источник, которому важно, кто спрашивает: направление тут
+  // не абсолютное, а «от героя к пальцу».
+  getDirection(from) {
+    if (!this.target || !from) return { x: 0, y: 0 };
+    const dx = this.target.x - from.x;
+    const dy = this.target.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    // Дошёл — стоит. Без этого герой дрожал бы вокруг пальца, перешагивая
+    // цель туда-сюда каждый кадр.
+    if (dist < CONFIG.input.touch.arrivalRadius) return { x: 0, y: 0 };
+    return { x: dx / dist, y: dy / dist };
+  }
+
+  // Цель обязана уходить вместе с нажатиями: иначе после потери фокуса или
+  // паузы герой продолжит бежать к последней точке сам.
+  release() {
+    super.release();
+    this.target = null;
   }
 }
 
@@ -30,15 +57,15 @@ export class TouchControls {
   constructor({ onPause }) {
     this.source = new TouchSource();
     this.onPause = onPause;
-    this.stickId = null;     // pointerId пальца на джойстике
-    this.abilityId = null;   // и на кнопке способности
+    this.moveId = null;      // pointerId ведущего пальца
+    this.abilityId = null;   // и пальца на кнопке способности
 
     this.root = document.getElementById('touch-controls') || this.createRoot();
-    this.stick = this.root.querySelector('#touch-stick');
-    this.knob = this.root.querySelector('#touch-knob');
+    this.field = this.root.querySelector('#touch-field');
+    this.marker = this.root.querySelector('#touch-marker');
     this.button = this.root.querySelector('#touch-ability');
 
-    this.bindStick();
+    this.bindField();
     this.bindButton();
   }
 
@@ -47,7 +74,7 @@ export class TouchControls {
     el.id = 'touch-controls';
     el.className = 'hidden';
     el.innerHTML = `
-      <div id="touch-stick"><div id="touch-knob"></div></div>
+      <div id="touch-field"><div id="touch-marker"></div></div>
       <button id="touch-ability" type="button">✨</button>
     `;
     document.body.appendChild(el);
@@ -56,7 +83,7 @@ export class TouchControls {
 
   // Тач-режим определяется в два шага: сначала догадка по типу указателя,
   // дальше — по факту. Одного `pointer: coarse` мало: ноутбук с сенсорным
-  // экраном тоже «coarse», и джойстик вылез бы на десктопе.
+  // экраном тоже «coarse», и контролы вылезли бы на десктопе.
   static watchTouchMode(onChange) {
     const guess = window.matchMedia('(pointer: coarse)').matches;
     onChange(guess);
@@ -67,58 +94,58 @@ export class TouchControls {
     window.addEventListener('gamepadconnected', () => onChange(false));
   }
 
-  // Джойстик плавающий: палец ставится куда придётся в левой половине экрана,
-  // и стик появляется там. Целиться пальцем в нарисованный кружок ребёнок не
-  // должен — он смотрит на героя, а не на свою руку.
-  bindStick() {
-    const zone = this.stick;
+  // Ведущая зона — весь экран: ребёнок тычет туда, куда смотрит, а не в
+  // отведённый ему угол. Кнопки звука и паузы остаются нажимаемыми: у них
+  // z-index выше, чем у контролов.
+  bindField() {
+    const zone = this.field;
+    const track = (e) => {
+      this.source.target = this.toArena(e.clientX, e.clientY);
+      this.moveMarker(e.clientX, e.clientY);
+    };
+
     zone.addEventListener('pointerdown', (e) => {
-      if (this.stickId !== null) return;
-      this.stickId = e.pointerId;
-      capture(zone, e.pointerId);            // палец наш до конца жеста
-      this.origin = { x: e.clientX, y: e.clientY };
-      this.moveKnob(0, 0);
-      this.knob.classList.add('visible');
+      if (this.moveId !== null) return;   // ведёт первый палец, остальные ждут
+      this.moveId = e.pointerId;
+      capture(zone, e.pointerId);         // палец наш до конца жеста
+      track(e);
+      this.marker.classList.add('visible');
     });
 
     zone.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this.stickId) return;
-      const { stickRadius, deadzone } = CONFIG.input.touch;
-      let dx = e.clientX - this.origin.x;
-      let dy = e.clientY - this.origin.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > stickRadius) {
-        dx = (dx / dist) * stickRadius;
-        dy = (dy / dist) * stickRadius;
-      }
-      this.moveKnob(dx, dy);
-      // Нормируем по УЖЕ обрезанному вектору: если делить на исходную длину,
-      // за пределами радиуса стик отдаёт меньше единицы, и герой замедляется
-      // ровно там, где палец отведён до упора.
-      const len = Math.hypot(dx, dy) || 1;
-      this.source.stick = dist / stickRadius < deadzone
-        ? { x: 0, y: 0 }
-        : { x: dx / len, y: dy / len };
+      if (e.pointerId !== this.moveId) return;
+      track(e);
     });
 
     const end = (e) => {
-      if (e.pointerId !== this.stickId) return;
-      this.stickId = null;
-      this.source.stick = { x: 0, y: 0 };
-      this.knob.classList.remove('visible');
+      if (e.pointerId !== this.moveId) return;
+      this.moveId = null;
+      this.source.target = null;
+      this.marker.classList.remove('visible');
     };
     zone.addEventListener('pointerup', end);
     zone.addEventListener('pointercancel', end);
   }
 
-  moveKnob(dx, dy) {
-    const { x, y } = this.origin;
-    this.knob.style.left = `${x + dx}px`;
-    this.knob.style.top = `${y + dy}px`;
+  // Палец → координаты арены. Арена живёт в CSS-пикселях (Game.resize кладёт
+  // туда innerWidth/innerHeight), а devicePixelRatio учтён только в
+  // ctx.setTransform — поэтому домножать на него здесь НЕЛЬЗЯ, это ровно та
+  // ошибка, ради которой контролы и сделаны на DOM.
+  toArena(clientX, clientY) {
+    const rect = this.field.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  // Метка под пальцем: ребёнок видит, куда тянет. Заодно она объясняет, почему
+  // герой останавливается рядом, а не под пальцем, — иначе палец просто
+  // закрывал бы героя, и было бы непонятно, дошёл он или застрял.
+  moveMarker(clientX, clientY) {
+    this.marker.style.left = `${clientX}px`;
+    this.marker.style.top = `${clientY}px`;
   }
 
   // Кнопка держит свой pointerId: без захвата второй палец, ткнувший в неё,
-  // перехватил бы джойстик, и герой замер бы посреди боя.
+  // перехватил бы ведущий, и герой замер бы посреди боя.
   bindButton() {
     this.button.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -140,14 +167,14 @@ export class TouchControls {
     if (!on) this.setVisible(false);
   }
 
-  // Показываем только в бою: во время паузы палец не должен ловить стик.
+  // Показываем только в бою: во время паузы палец не должен вести героя.
   setVisible(on) {
     this.root.classList.toggle('hidden', !on);
     if (!on) {
       this.source.release();
-      this.stickId = null;
+      this.moveId = null;
       this.abilityId = null;
-      this.knob.classList.remove('visible');
+      this.marker.classList.remove('visible');
     }
   }
 
