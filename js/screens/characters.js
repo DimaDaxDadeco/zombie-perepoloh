@@ -2,7 +2,7 @@
 // canvas — ребёнок выбирает картинкой, а не по названию.
 
 import { CONFIG } from '../config.js';
-import { Overlay } from './overlay.js';
+import { Overlay, playerTitle } from './overlay.js';
 const PREVIEW_SIZE = 150;
 
 export class CharactersScreen extends Overlay {
@@ -10,44 +10,50 @@ export class CharactersScreen extends Overlay {
     super(rootId);
     this.onPick = onPick;
     this.onSpeak = onSpeak;
-    this.selected = 0;
-
-    // Управление такое же, как на экране прокачки: стрелки + Enter.
+    // Вдвоём оба выбирают одновременно, каждый в своей колонке — отсюда
+    // perPlayer и индекс игрока в обработчиках.
     this.bindNavigation({
-      onMove: (d) => this.move(d),
-      onConfirm: () => this.confirm(),
+      perPlayer: true,
+      onMove: (d, i) => this.move(d, i),
+      onConfirm: (i) => this.confirm(i),
     });
   }
 
-  render(currentId, { playerIndex = 0, total = 1 } = {}) {
-    this.playerIndex = playerIndex;
-    this.total = total;
-    const index = CONFIG.characters.findIndex((c) => c.id === currentId);
-    this.selected = index >= 0 ? index : 0;
+  // currentIds — по сохранённому герою на игрока. Одному игроку это массив
+  // из одного элемента, и экран выглядит ровно как раньше.
+  render(currentIds, { total = 1 } = {}) {
+    const ids = Array.isArray(currentIds) ? currentIds : [currentIds];
+    this.startPicking(total, (i) => {
+      const index = CONFIG.characters.findIndex((c) => c.id === ids[i]);
+      return index >= 0 ? index : 0;
+    });
 
     this.setContent(`
-      <div class="panel panel--characters">
-        <h2 class="title title--small">${playerTitle(playerIndex, total)}ВЫБЕРИ ГЕРОЯ</h2>
-        <div class="heroes">
-          ${CONFIG.characters.map((c, i) => this.renderCard(c, i)).join('')}
-        </div>
-        <button class="btn btn--big" data-action="play">${total > 1 ? 'ДАЛЬШЕ ▶' : 'ИГРАТЬ ▶'}</button>
+      <div class="panel panel--characters${total > 1 ? ' panel--duo' : ''}">
+        <h2 class="title title--small">ВЫБЕРИ ГЕРОЯ</h2>
+        ${this.pickerColumns((i) => `
+          <div class="heroes">
+            ${CONFIG.characters.map((c, k) => this.renderCard(c, k)).join('')}
+          </div>
+          <button class="btn btn--big" data-confirm="${i}">
+            ${total > 1 ? 'ГОТОВ ▶' : 'ИГРАТЬ ▶'}
+          </button>`)}
         <p class="hint">Кликни героя или выбери стрелками и нажми Enter.
            Нажми 🔈, чтобы послушать имя</p>
       </div>
     `);
 
-    this.onAll('.hero-card', (_el, i) => {
-      this.selected = i;
-      this.highlight();
-      this.confirm();
+    this.onCards('.hero-card', (owner, i) => {
+      this.picks[owner].selected = i;
+      this.highlight(owner);
+      this.confirm(owner);
     });
-    this.on('[data-action="play"]', () => this.confirm());
+    this.onAll('[data-confirm]', (el) => this.confirm(Number(el.dataset.confirm)));
     this.bindSpeakButtons(this.onSpeak);
 
     this.show();
     this.drawPreviews();
-    this.highlight();
+    this.picks.forEach((_, i) => this.highlight(i));
   }
 
   renderCard(character, index) {
@@ -72,21 +78,22 @@ export class CharactersScreen extends Overlay {
     }
   }
 
-  move(delta) {
-    const count = CONFIG.characters.length;
-    this.selected = (this.selected + delta + count) % count;
-    this.highlight();
-    this.onSpeak(describeCharacter(CONFIG.characters[this.selected]));
+  move(delta, playerIndex = 0) {
+    const at = this.movePick(playerIndex, delta, CONFIG.characters.length);
+    if (at === null) return;
+    this.highlight(playerIndex);
+    this.onSpeak(describeCharacter(CONFIG.characters[at]));
   }
 
-  highlight() {
-    this.root.querySelectorAll('.hero-card').forEach((el, i) => {
-      el.classList.toggle('hero-card--selected', i === this.selected);
-    });
+  highlight(playerIndex = 0) {
+    this.highlightIn(playerIndex, '.hero-card', 'hero-card--selected');
   }
 
-  confirm() {
-    this.onPick(CONFIG.characters[this.selected].id);
+  // Отдаём выбор наверх только когда готовы все: ждать напарника — забота
+  // экрана, а не Game.
+  confirm(playerIndex = 0) {
+    const chosen = this.confirmPick(playerIndex);
+    if (chosen) this.onPick(chosen.map((i) => CONFIG.characters[i].id));
   }
 }
 
@@ -100,11 +107,4 @@ function describeCharacter(character) {
 function describeAbility(character) {
   const ability = CONFIG.abilities[character.ability];
   return ability ? `${ability.emoji} ${ability.name}` : '';
-}
-
-// Чья очередь выбирать. Цвет — тот же, что кольцо у ног героя в бою.
-export function playerTitle(index, total) {
-  if (total < 2) return '';
-  const color = CONFIG.coop.colors[index % CONFIG.coop.colors.length];
-  return `<span style="color:${color}">ИГРОК ${index + 1}</span> — `;
 }

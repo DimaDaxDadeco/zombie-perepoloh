@@ -5,47 +5,50 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { ALL_WEAPON_IDS } from '../weapons/weapons.js';
-import { playerTitle } from './characters.js';
 
 export class WeaponsScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
     super(rootId);
     this.onPick = onPick;
     this.onSpeak = onSpeak;
-    this.selected = 0;
-
     this.bindNavigation({
-      onMove: (d) => this.move(d),
-      onConfirm: () => this.confirm(),
+      perPlayer: true,
+      onMove: (d, i) => this.move(d, i),
+      onConfirm: (i) => this.confirm(i),
     });
   }
 
-  render(currentId, { playerIndex = 0, total = 1 } = {}) {
-    const index = ALL_WEAPON_IDS.indexOf(currentId);
-    this.selected = index >= 0 ? index : 0;
+  render(currentIds, { total = 1 } = {}) {
+    const ids = Array.isArray(currentIds) ? currentIds : [currentIds];
+    this.startPicking(total, (i) => Math.max(0, ALL_WEAPON_IDS.indexOf(ids[i])));
 
+    // Одиннадцать карточек в две колонки не помещаются в обычном размере —
+    // отсюда panel--weapons-duo: карточки уже и по три в ряд.
     this.setContent(`
-      <div class="panel panel--characters panel--weapons">
-        <h2 class="title title--small">${playerTitle(playerIndex, total)}С ЧЕГО НАЧНЁМ?</h2>
-        <div class="heroes">
-          ${ALL_WEAPON_IDS.map((id, i) => this.renderCard(id, i)).join('')}
-        </div>
-        <button class="btn btn--big" data-action="play">ИГРАТЬ ▶</button>
+      <div class="panel panel--characters panel--weapons${total > 1 ? ' panel--duo panel--weapons-duo' : ''}">
+        <h2 class="title title--small">С ЧЕГО НАЧНЁМ?</h2>
+        ${this.pickerColumns((i) => `
+          <div class="heroes">
+            ${ALL_WEAPON_IDS.map((id, k) => this.renderCard(id, k)).join('')}
+          </div>
+          <button class="btn btn--big" data-confirm="${i}">
+            ${total > 1 ? 'ГОТОВ ▶' : 'ИГРАТЬ ▶'}
+          </button>`)}
         <p class="hint">Это оружие будет у тебя с самого начала.
            Остальное можно набрать в бою. Нажми 🔈, чтобы послушать</p>
       </div>
     `);
 
-    this.onAll('.hero-card', (_el, i) => {
-      this.selected = i;
-      this.highlight();
-      this.confirm();
+    this.onCards('.hero-card', (owner, i) => {
+      this.picks[owner].selected = i;
+      this.highlight(owner);
+      this.confirm(owner);
     });
-    this.on('[data-action="play"]', () => this.confirm());
+    this.onAll('[data-confirm]', (el) => this.confirm(Number(el.dataset.confirm)));
     this.bindSpeakButtons(this.onSpeak);
 
     this.show();
-    this.highlight();
+    this.picks.forEach((_, i) => this.highlight(i));
   }
 
   renderCard(id, index) {
@@ -60,21 +63,20 @@ export class WeaponsScreen extends Overlay {
     `;
   }
 
-  move(delta) {
-    const count = ALL_WEAPON_IDS.length;
-    this.selected = (this.selected + delta + count) % count;
-    this.highlight();
-    this.onSpeak(describeWeapon(ALL_WEAPON_IDS[this.selected]));
+  move(delta, playerIndex = 0) {
+    const at = this.movePick(playerIndex, delta, ALL_WEAPON_IDS.length);
+    if (at === null) return;
+    this.highlight(playerIndex);
+    this.onSpeak(describeWeapon(ALL_WEAPON_IDS[at]));
   }
 
-  highlight() {
-    this.root.querySelectorAll('.hero-card').forEach((el, i) => {
-      el.classList.toggle('hero-card--selected', i === this.selected);
-    });
+  highlight(playerIndex = 0) {
+    this.highlightIn(playerIndex, '.hero-card', 'hero-card--selected');
   }
 
-  confirm() {
-    this.onPick(ALL_WEAPON_IDS[this.selected]);
+  confirm(playerIndex = 0) {
+    const chosen = this.confirmPick(playerIndex);
+    if (chosen) this.onPick(chosen.map((i) => ALL_WEAPON_IDS[i]));
   }
 }
 

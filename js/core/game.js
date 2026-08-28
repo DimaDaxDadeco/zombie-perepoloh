@@ -90,11 +90,11 @@ export class Game {
         onSpeak: (text) => this.speech.speak(text),
       }),
       characters: new CharactersScreen('characters-overlay', {
-        onPick: (id) => this.chooseCharacter(id),
+        onPick: (ids) => this.chooseCharacters(ids),
         onSpeak: (text) => this.speech.speak(text),
       }),
       weapons: new WeaponsScreen('weapons-overlay', {
-        onPick: (id) => this.chooseWeapon(id),
+        onPick: (ids) => this.chooseWeapons(ids),
         onSpeak: (text) => this.speech.speak(text),
       }),
       album: new AlbumScreen('album-overlay', {
@@ -103,7 +103,7 @@ export class Game {
       }),
       confirm: new ConfirmScreen('confirm-overlay'),
       cards: new CardsScreen('cards-overlay', {
-        onPick: (card) => this.applyCard(card),
+        onPick: (cards) => this.applyCards(cards),
         onSpeak: (text) => this.speech.speak(text),
       }),
       shop: new ShopScreen('shop-overlay', {
@@ -147,12 +147,6 @@ export class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
 
-  // Экраны, которые проходят по очереди игроками.
-  isQueuedScreen() {
-    return this.playersCount > 1 && (this.state === GameState.CHARACTERS
-      || this.state === GameState.WEAPONS || this.state === GameState.CARDS);
-  }
-
   // Единственное место, где нажатия превращаются в действия. Куда пойдёт
   // кнопка, решает состояние игры, а не то, чем её нажали: клавиатура,
   // геймпад и тач приходят сюда одинаковыми.
@@ -174,16 +168,29 @@ export class Game {
 
     const screen = Overlay.activeNav();
     if (!screen) return;
-    // Когда идёт очередь (выбор героя, оружия, карточки при игре вдвоём),
-    // экран слушает только того, чья очередь.
-    const owner = this.isQueuedScreen() ? this.pickIndex : null;
-    for (const source of this.input.menuSources(owner)) {
-      if (source.wasPressed('left')) screen.nav.onMove?.(-1);
-      if (source.wasPressed('right')) screen.nav.onMove?.(1);
+
+    // Экраны выбора (герой, оружие, карточки) показывают по окну на игрока и
+    // слушают обоих одновременно — им нужен индекс того, кто нажал. Остальные
+    // экраны (пауза, магазин, альбом, итоги) слушают всех как один.
+    if (screen.nav.perPlayer) {
+      for (let i = 0; i < this.playersCount; i++) {
+        this.feedScreen(screen, this.input.sourcesFor(i), i);
+      }
+      return;
+    }
+    this.feedScreen(screen, this.input.menuSources(), undefined);
+  }
+
+  feedScreen(screen, sources, playerIndex) {
+    for (const source of sources) {
+      if (source.wasPressed('left')) screen.nav.onMove?.(-1, playerIndex);
+      if (source.wasPressed('right')) screen.nav.onMove?.(1, playerIndex);
       // Кнопка способности и подтверждение — одна и та же клавиша у ребёнка
       // (пробел, A на геймпаде). В меню она означает «выбрал это».
-      if (source.wasPressed('confirm') || source.wasPressed('ability')) screen.nav.onConfirm?.();
-      if (source.wasPressed('back')) screen.nav.onCancel?.();
+      if (source.wasPressed('confirm') || source.wasPressed('ability')) {
+        screen.nav.onConfirm?.(playerIndex);
+      }
+      if (source.wasPressed('back')) screen.nav.onCancel?.(playerIndex);
     }
   }
 
@@ -364,19 +371,23 @@ export class Game {
     return this.storage.data.playersCount || 1;
   }
 
-  openCharacters(playerIndex = 0) {
-    this.pickIndex = playerIndex;
+  // Все игроки выбирают одновременно, каждый в своей колонке. Ожидание
+  // напарника держит сам экран — сюда выбор приходит уже полным.
+  eachPlayer() {
+    return Array.from({ length: this.playersCount }, (_, i) => i);
+  }
+
+  openCharacters() {
     this.state = GameState.CHARACTERS;
     this.hideAllScreens();
     this.screens.characters.render(
-      this.storage.data[Game.characterKey(playerIndex)],
-      { playerIndex, total: this.playersCount },
+      this.eachPlayer().map((i) => this.storage.data[Game.characterKey(i)]),
+      { total: this.playersCount },
     );
   }
 
-  chooseCharacter(id) {
-    const i = this.pickIndex ?? 0;
-    this.storage.data[Game.characterKey(i)] = id;
+  chooseCharacters(ids) {
+    ids.forEach((id, i) => { this.storage.data[Game.characterKey(i)] = id; });
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
@@ -384,30 +395,26 @@ export class Game {
     this.screens.characters.hide();
     // Сначала героев выбирают оба, и только потом оружие: так каждый видит,
     // кем будет играть напарник, прежде чем подбирать себе ствол.
-    if (i + 1 < this.playersCount) this.openCharacters(i + 1);
-    else this.openWeapons(0);
+    this.openWeapons();
   }
 
-  openWeapons(playerIndex = 0) {
-    this.pickIndex = playerIndex;
+  openWeapons() {
     this.state = GameState.WEAPONS;
     this.hideAllScreens();
     this.screens.weapons.render(
-      this.storage.data[Game.weaponKey(playerIndex)] || CONFIG.startingWeapon,
-      { playerIndex, total: this.playersCount },
+      this.eachPlayer().map((i) => this.storage.data[Game.weaponKey(i)] || CONFIG.startingWeapon),
+      { total: this.playersCount },
     );
   }
 
-  chooseWeapon(id) {
-    const i = this.pickIndex ?? 0;
-    this.storage.data[Game.weaponKey(i)] = id;
+  chooseWeapons(ids) {
+    ids.forEach((id, i) => { this.storage.data[Game.weaponKey(i)] = id; });
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
     this.speech.stop();
     this.screens.weapons.hide();
-    if (i + 1 < this.playersCount) this.openWeapons(i + 1);
-    else this.startRound(this.storage.data.round);
+    this.startRound(this.storage.data.round);
   }
 
   startRound(roundNumber) {
@@ -525,32 +532,14 @@ export class Game {
 
   // --- Прокачка ---
 
-  // Карточку выбирают по очереди: сначала игрок 1, потом игрок 2. У каждого
-  // свой арсенал, и общая карточка слила бы их в один. Нажатия при этом
-  // принимаются только от источника того, чья очередь, — второй физически не
-  // может выбрать за первого.
+  // Карточки выбирают одновременно, у каждого своя колода: арсеналы у игроков
+  // разные, и общая карточка слила бы их в один.
   openCards() {
-    this.cardQueue = this.round.players.map((_, i) => i);
     this.state = GameState.CARDS;
-    this.nextCardPick();
-  }
-
-  nextCardPick() {
-    // Очереди может не быть: автотест из balance.md подменяет openCards и
-    // зовёт applyCard напрямую. Падать из-за этого игра не должна.
-    const index = this.cardQueue?.shift();
-    if (index === undefined) {
-      this.screens.cards.hide();
-      this.state = GameState.PLAYING;
-      return;
-    }
-    this.pickIndex = index;
-    const player = this.round.players[index];
-    this.screens.cards.render(generateCards(player), {
-      playerIndex: index,
-      total: this.round.players.length,
-      look: player.look,
-    });
+    this.screens.cards.render(
+      this.round.players.map((player) => generateCards(player)),
+      { looks: this.round.players.map((player) => player.look) },
+    );
   }
 
   // Событие редкое и должно ощущаться крупнее обычного уровня — поэтому три
@@ -562,8 +551,21 @@ export class Game {
     this.speech.speak(`${weapon.name}!`);
   }
 
-  applyCard(card) {
-    const player = this.round.players[this.pickIndex ?? 0];
+  // Карточки всех игроков разом — так их отдаёт экран. Автотест из balance.md
+  // подменяет openCards и зовёт applyCards с одной карточкой; поэтому
+  // одиночная карточка тоже принимается.
+  applyCards(cards) {
+    const list = Array.isArray(cards) ? cards : [cards];
+    list.forEach((card, i) => this.applyCard(card, i));
+    this.audio.click();
+    this.speech.stop();
+    this.screens.cards.hide();
+    this.state = GameState.PLAYING;
+  }
+
+  applyCard(card, playerIndex = 0) {
+    const player = this.round.players[playerIndex];
+    if (!player || !card) return;
     if (card.kind === CardKind.NEW_WEAPON) {
       player.weapons.push(createWeapon(card.weaponId));
     } else if (card.kind === CardKind.EVOLVE) {
@@ -576,10 +578,6 @@ export class Game {
     } else {
       player.hp = Math.min(player.maxHp, player.hp + 1);
     }
-
-    this.audio.click();
-    this.speech.stop();
-    this.nextCardPick();   // очередь: второй игрок выбирает следом
   }
 
   // --- Магазин ---

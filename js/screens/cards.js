@@ -5,47 +5,53 @@
 import { CONFIG } from '../config.js';
 import { CardKind } from '../systems/levelup.js';
 import { Overlay } from './overlay.js';
-import { playerTitle } from './characters.js';
 
 export class CardsScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
     super(rootId);
     this.onPick = onPick;
     this.onSpeak = onSpeak;
-    this.cards = [];
-    this.selected = 0;
+    this.decks = [];
 
-    // Стрелки двигают выбор, Enter/Пробел подтверждает.
+    // Стрелки двигают выбор, Enter/Пробел подтверждает. Вдвоём каждый листает
+    // СВОЮ колоду: арсеналы у игроков разные, и общая карточка слила бы их.
     this.bindNavigation({
-      onMove: (d) => this.move(d),
-      onConfirm: () => this.confirm(),
+      perPlayer: true,
+      onMove: (d, i) => this.move(d, i),
+      onConfirm: (i) => this.confirm(i),
     });
   }
 
-  render(cards, { playerIndex = 0, total = 1, look = null } = {}) {
-    this.cards = cards;
-    this.selected = 0;
+  // decks — по колоде карточек на игрока, looks — по внешности героя.
+  render(decks, { looks = [] } = {}) {
+    this.decks = Array.isArray(decks[0]) ? decks : [decks];
+    this.startPicking(this.decks.length);
     this.setContent(`
-      <div class="panel panel--cards">
-        <h2 class="title title--small">${playerTitle(playerIndex, total)}НОВЫЙ УРОВЕНЬ!</h2>
-        ${total > 1 ? '<canvas class="menu-hero-canvas" width="90" height="90"></canvas>' : ''}
-        <div class="cards">
-          ${cards.map((card, i) => this.renderCard(card, i)).join('')}
-        </div>
+      <div class="panel panel--cards${this.total > 1 ? ' panel--duo' : ''}">
+        <h2 class="title title--small">НОВЫЙ УРОВЕНЬ!</h2>
+        ${this.pickerColumns((i) => `
+          ${this.total > 1 ? `<canvas class="menu-hero-canvas" width="90" height="90"
+              data-player="${i}"></canvas>` : ''}
+          <div class="cards">
+            ${this.decks[i].map((card, k) => this.renderCard(card, k)).join('')}
+          </div>`)}
         <p class="hint">Кликни картинку или выбери стрелками и нажми Enter.
            Нажми 🔈, чтобы послушать название</p>
       </div>
     `);
-    this.onAll('.card', (_el, index) => {
-      this.selected = index;
-      this.confirm();
+    this.onCards('.card', (owner, index) => {
+      this.picks[owner].selected = index;
+      this.highlight(owner);
+      this.confirm(owner);
     });
     this.bindSpeakButtons(this.onSpeak);
-    // Вдвоём показываем героя того, чья очередь: ребёнок не читает, и цвета
-    // заголовка мало — картинка своего персонажа понятнее любой подписи.
-    if (look) Overlay.paintHero(this.root.querySelector('.menu-hero-canvas'), look);
+    // Вдвоём над колонкой — герой её хозяина: ребёнок не читает, и одного
+    // цвета заголовка мало, а свой персонаж узнаётся сразу.
+    this.root.querySelectorAll('.menu-hero-canvas').forEach((canvas) => {
+      Overlay.paintHero(canvas, looks[Number(canvas.dataset.player)]);
+    });
     this.show();
-    this.highlight();
+    this.picks.forEach((_, i) => this.highlight(i));
   }
 
   renderCard(card, index) {
@@ -64,23 +70,22 @@ export class CardsScreen extends Overlay {
     `;
   }
 
-  move(delta) {
-    this.selected = (this.selected + delta + this.cards.length) % this.cards.length;
-    this.highlight();
+  move(delta, playerIndex = 0) {
+    const at = this.movePick(playerIndex, delta, this.decks[playerIndex].length);
+    if (at === null) return;
+    this.highlight(playerIndex);
     // При выборе с клавиатуры сразу читаем вслух — так ребёнок понимает,
     // что именно он сейчас выбирает, не умея прочитать подпись.
-    this.onSpeak(describeCard(this.cards[this.selected]));
+    this.onSpeak(describeCard(this.decks[playerIndex][at]));
   }
 
-  highlight() {
-    this.root.querySelectorAll('.card').forEach((el, i) => {
-      el.classList.toggle('card--selected', i === this.selected);
-    });
+  highlight(playerIndex = 0) {
+    this.highlightIn(playerIndex, '.card', 'card--selected');
   }
 
-  confirm() {
-    const card = this.cards[this.selected];
-    if (card) this.onPick(card);
+  confirm(playerIndex = 0) {
+    const chosen = this.confirmPick(playerIndex);
+    if (chosen) this.onPick(chosen.map((at, i) => this.decks[i][at]));
   }
 }
 

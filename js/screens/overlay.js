@@ -2,7 +2,17 @@
 // Игровой мир рисуется на canvas, а меню/карточки/магазин — обычный DOM:
 // с ним проще делать крупные кликабельные кнопки и не изобретать вёрстку на canvas.
 
+import { CONFIG } from '../config.js';
 import { drawHero, drawZombie, drawBoss } from '../render/sprites.js';
+
+// Чей это выбор. Цвет — тот же, что кольцо у ног героя в бою. Живёт здесь, а
+// не в characters.js: подпись нужна всем трём экранам выбора, а импорт из
+// characters.js в базовый класс замкнул бы цикл.
+export function playerTitle(index, total) {
+  if (total < 2) return '';
+  const color = CONFIG.coop.colors[index % CONFIG.coop.colors.length];
+  return `<span style="color:${color}">ИГРОК ${index + 1}</span>`;
+}
 
 export class Overlay {
   constructor(rootId) {
@@ -28,9 +38,84 @@ export class Overlay {
   // крестовина геймпада или палец — экран не знает и знать не должен:
   // раньше каждый экран сам слушал keydown, и добавление геймпада означало
   // бы пятую копию одного и того же блока.
-  bindNavigation({ onMove, onConfirm, onCancel } = {}) {
-    this.nav = { onMove, onConfirm, onCancel };
+  //
+  // perPlayer означает «экран показывает по окну на игрока и слушает всех
+  // одновременно»: onMove и onConfirm тогда получают ещё и индекс игрока.
+  // Экраны без него (пауза, магазин, альбом, итоги) работают как раньше.
+  bindNavigation({ onMove, onConfirm, onCancel, perPlayer = false } = {}) {
+    this.nav = { onMove, onConfirm, onCancel, perPlayer };
     Overlay.registry.add(this);
+  }
+
+  // --- Одновременный выбор вдвоём ---
+  //
+  // Три экрана выбора — герой, оружие и карточки прокачки — устроены
+  // одинаково: список карточек, у каждого игрока свой курсор и своя галочка
+  // «готов». Раньше они ходили по очереди, и очередь жила в Game. Теперь
+  // ожидание держит сам экран, а Game получает готовый результат разом —
+  // так три экрана физически не могут разойтись в мелочах.
+  startPicking(total, startIndex = () => 0) {
+    this.total = total;
+    this.picks = Array.from({ length: total }, (_, i) => ({
+      selected: startIndex(i),
+      confirmed: false,
+    }));
+  }
+
+  // Возвращает новый индекс или null, если листать нельзя (уже выбрал).
+  movePick(playerIndex, delta, count) {
+    const pick = this.picks?.[playerIndex];
+    if (!pick || pick.confirmed) return null;
+    pick.selected = (pick.selected + delta + count) % count;
+    return pick.selected;
+  }
+
+  // Отмечает игрока готовым. Возвращает массив выбранных индексов, когда
+  // готовы ВСЕ, и null, пока кто-то ещё думает.
+  confirmPick(playerIndex) {
+    const pick = this.picks?.[playerIndex];
+    if (!pick || pick.confirmed) return null;
+    pick.confirmed = true;
+    this.column(playerIndex)?.classList.add('picker__column--ready');
+    return this.picks.every((p) => p.confirmed) ? this.picks.map((p) => p.selected) : null;
+  }
+
+  column(playerIndex) {
+    return this.root.querySelector(`.picker__column[data-player="${playerIndex}"]`);
+  }
+
+  // Колонки: одна на игрока. При одном игроке колонка одна и без заголовка —
+  // экран выглядит и работает ровно как раньше.
+  pickerColumns(renderInner) {
+    const duo = this.total > 1;
+    return `<div class="picker${duo ? ' picker--duo' : ''}">
+      ${this.picks.map((_, i) => `
+        <div class="picker__column" data-player="${i}">
+          ${duo ? `<div class="picker__who">${playerTitle(i, this.total)}</div>` : ''}
+          ${renderInner(i)}
+          ${duo ? '<div class="picker__ready">ГОТОВ ✓</div>' : ''}
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // Подсветка курсора в колонке игрока.
+  highlightIn(playerIndex, selector, selectedClass) {
+    const column = this.column(playerIndex);
+    if (!column) return;
+    const chosen = this.picks[playerIndex].selected;
+    column.querySelectorAll(selector).forEach((el, i) => {
+      el.classList.toggle(selectedClass, i === chosen);
+    });
+  }
+
+  // Клик по карточке: работает за того игрока, в чьей колонке кликнули.
+  onCards(selector, handler) {
+    this.root.querySelectorAll('.picker__column').forEach((column) => {
+      const owner = Number(column.dataset.player);
+      column.querySelectorAll(selector).forEach((el, index) => {
+        el.addEventListener('click', () => handler(owner, index));
+      });
+    });
   }
 
   // Видимый экран, умеющий навигацию. Их всегда не больше одного.

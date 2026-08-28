@@ -53,6 +53,33 @@ this.input.endFrame();   // зафиксировали кадр
 - в `PLAYING` кнопка `ability` идёт в `round.useAbility()`;
 - в остальных состояниях нажатия уходят видимому экрану через `Overlay`.
 
+### `perPlayer`: экраны, которые слушают обоих сразу
+
+Три экрана выбора — герой, оружие и карточки прокачки — показывают по окну на
+игрока и слушают всех **одновременно**. Они объявляют себя через
+`bindNavigation({ perPlayer: true, onMove(delta, i), onConfirm(i) })`, и
+`routeInput` в этом случае обходит игроков, передавая индекс:
+
+```js
+if (screen.nav.perPlayer) {
+  for (let i = 0; i < this.playersCount; i++) {
+    this.feedScreen(screen, this.input.sourcesFor(i), i);
+  }
+  return;
+}
+this.feedScreen(screen, this.input.menuSources(), undefined);
+```
+
+Экраны без `perPlayer` (пауза, магазин, альбом, итоги) работают ровно как
+раньше — именно это защищает их от регрессии.
+
+Раньше здесь была очередь: `Game.pickIndex` плюс фильтр
+`input.menuSources(owner)`, то есть экран физически слушал только устройства
+текущего игрока. Очередь снята целиком — вместе с `isQueuedScreen()`,
+`cardQueue` и `nextCardPick()`. Обязательное следствие, о котором легко забыть:
+`applyCard` брал игрока из `pickIndex`, а теперь получает его **аргументом**.
+Ошибка здесь не падает, а выглядит как «прокачался не тот».
+
 ## Экраны
 
 Раньше четыре экрана выбора содержали буквально одинаковый блок `keydown`.
