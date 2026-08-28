@@ -326,33 +326,36 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
 #touch-controls {
   position: absolute;
   inset: 0;
-  z-index: 5;              /* ниже оверлеев: меню обязано перекрывать джойстик */
+  z-index: 5;              /* ниже оверлеев: меню обязано перекрывать контролы */
   pointer-events: none;    /* иначе прозрачный слой съест клик по кнопке звука */
 }
 
-/* Зона захвата джойстика — вся левая половина, кроме верха с HUD. */
-#touch-stick {
+/* Ведущая зона — весь экран: ребёнок тычет туда, куда смотрит. Кнопки звука
+   и паузы остаются нажимаемыми — у них z-index 20 против 5 у контролов, а
+   кнопка способности лежит ниже по DOM и потому выигрывает попадание. */
+#touch-field {
   position: absolute;
-  left: 0;
-  top: 120px;
-  width: 50%;
-  bottom: 0;
+  inset: 0;
   pointer-events: auto;
 }
 
-#touch-knob {
+/* Метка под пальцем: видно, куда ребёнок ведёт героя. */
+#touch-marker {
   position: fixed;
-  width: 96px;
-  height: 96px;
-  margin: -48px 0 0 -48px;
+  width: 72px;
+  height: 72px;
+  margin: -36px 0 0 -36px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  /* Заливка почти прозрачная: герой останавливается ВНУТРИ метки, и плотный
+     кружок притушил бы его. */
+  background: rgba(255, 255, 255, 0.12);
   border: 3px solid rgba(255, 255, 255, 0.6);
+  pointer-events: none;   /* метка не должна перехватывать палец у зоны */
   opacity: 0;
   transition: opacity 0.25s;
 }
 
-#touch-knob.visible { opacity: 1; }
+#touch-marker.visible { opacity: 1; }
 
 #touch-ability {
   position: absolute;

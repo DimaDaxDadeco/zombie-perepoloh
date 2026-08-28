@@ -4,6 +4,29 @@
 const EYE_WHITE = '#ffffff';
 const DARK = '#243b12';
 
+// Зрачки героя в долях радиуса. Вынесены в константу, потому что по ним бьёт
+// лазер из weapons.js: два набора одних и тех же чисел разъехались бы при
+// первой же правке лица, и луч пошёл бы мимо глаз.
+// Пара несимметрична намеренно — так лицо выглядит живее.
+const HERO_EYES = [{ x: -0.18, y: -0.85 }, { x: 0.2, y: -0.85 }];
+
+// Покачивание героя при беге. Нужно и drawHero, и тем, кто рисует поверх него
+// в МИРОВЫХ координатах: без него луч отрывается от лица на каждом шаге.
+function heroBob(radius, walkPhase) {
+  return Math.sin(walkPhase * 2) * radius * 0.08;
+}
+
+// Где сейчас глаза героя — в его локальных координатах, с уже применённым
+// зеркалом и покачиванием. drawHero делает то же самое трансформациями
+// холста, но weapons.js рисует вне их, поэтому считает точки честно.
+export function heroEyePoints({ radius, walkPhase = 0, facing = 1 }) {
+  const bob = heroBob(radius, walkPhase);
+  return HERO_EYES.map((eye) => ({
+    x: eye.x * radius * facing,
+    y: eye.y * radius + bob,
+  }));
+}
+
 // Запасная внешность героя, если look почему-то не передали.
 const DEFAULT_LOOK = {
   skin: '#ffcc99', hair: '#5c3a21', hairStyle: 'bowl',
@@ -14,7 +37,7 @@ const DEFAULT_LOOK = {
 export function drawHero(ctx, { radius, walkPhase, facing, blinking, look = DEFAULT_LOOK }) {
   if (blinking) ctx.globalAlpha = 0.45;
   const r = radius;
-  const bob = Math.sin(walkPhase * 2) * r * 0.08; // лёгкое покачивание при беге
+  const bob = heroBob(r, walkPhase);   // лёгкое покачивание при беге
   const step = Math.sin(walkPhase) * r * 0.4;
 
   ctx.save();
@@ -147,8 +170,7 @@ function drawHairStyle(ctx, r, look) {
 function drawFace(ctx, r, look) {
   if (look.hairStyle === 'ears') drawWhiskers(ctx, r);
   ctx.fillStyle = DARK;
-  circle(ctx, -r * 0.18, -r * 0.85, r * 0.07);
-  circle(ctx, r * 0.2, -r * 0.85, r * 0.07);
+  for (const eye of HERO_EYES) circle(ctx, eye.x * r, eye.y * r, r * 0.07);
   ctx.strokeStyle = look.hairStyle === 'antenna' ? '#5a6a7a' : '#a8663f';
   ctx.lineWidth = Math.max(1.5, r * 0.07);
   ctx.beginPath();

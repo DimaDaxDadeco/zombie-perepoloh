@@ -53,7 +53,11 @@ export class InputSource {
   }
 
   // Нормализованный вектор движения.
-  getDirection() {
+  //
+  // from — позиция того, кто спрашивает. Клавиатуре и геймпаду она не нужна:
+  // их направление абсолютное. Аргумент существует ради тача, где ребёнок
+  // указывает пальцем ТОЧКУ, и направление берётся от героя к ней.
+  getDirection(from) {
     if (this.stick.x !== 0 || this.stick.y !== 0) return this.stick;
     return dpadVector(this.down);
   }
@@ -216,9 +220,12 @@ export class Input {
 
   // Источник управления героем. Пока игрок один — это клавиши-стрелки плюс
   // всё, что даёт направление (геймпад, тач): ребёнок может взять любой.
-  getDirection(playerIndex = 0) {
+  //
+  // from — позиция героя; нужна только тачу (см. InputSource.getDirection).
+  // Без неё тач молча вернёт ноль, поэтому передавать её обязан вызывающий.
+  getDirection(playerIndex = 0, from = null) {
     for (const source of this.sourcesFor(playerIndex)) {
-      const dir = source.getDirection();
+      const dir = source.getDirection(from);
       if (dir.x !== 0 || dir.y !== 0) return dir;
     }
     return { x: 0, y: 0 };

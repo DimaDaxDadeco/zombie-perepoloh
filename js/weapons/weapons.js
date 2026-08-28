@@ -5,7 +5,7 @@ import { Weapon } from './weapon.js';
 import {
   Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee,
 } from '../entities/projectile.js';
-import { circle } from '../render/sprites.js';
+import { circle, heroEyePoints } from '../render/sprites.js';
 
 // 💧 Водяной пистолет — базовое оружие, стреляет каплями в ближайшего зомби.
 class WaterGun extends Weapon {
@@ -302,14 +302,23 @@ class LaserEyes extends Weapon {
   burn(world, owner) {
     const damage = this.stat('damage');
     const half = this.spec.beamWidth / 2;
-    const ex = owner.x + Math.cos(this.aimAngle) * this.beamLen;
-    const ey = owner.y + Math.sin(this.aimAngle) * this.beamLen;
+    // Урон считаем по одной линии из середины между глазами, хотя рисуем два
+    // луча: они сходятся в одной точке, и на дистанции различить их нельзя.
+    // Две линии удвоили бы код и тюнинг ради невидимой разницы.
+    //
+    // Раньше линия начиналась на 0.55r — то есть на подбородке. Подъём до
+    // уровня глаз двигает начало на 6 px вверх: это меньше полуширины луча
+    // (4.5 px) и много меньше радиуса зомби, баланс не трогает. Записано,
+    // чтобы никто не искал в этом причину при следующем прогоне сетки.
+    const eye = this.eyeCenter(owner);
+    const ex = eye.x + Math.cos(this.aimAngle) * this.beamLen;
+    const ey = eye.y + Math.sin(this.aimAngle) * this.beamLen;
 
     // Сортируем по удалению от героя: иначе maxTargets отрежет случайных,
     // а не первых на линии.
     const onBeam = world.enemies
       .filter((e) => e.alive && !e.isHidden
-        && distanceToSegment(e.x, e.y, owner.x, owner.y, ex, ey) < half + e.radius)
+        && distanceToSegment(e.x, e.y, eye.x, eye.y, ex, ey) < half + e.radius)
       .sort((a, b) => Math.hypot(a.x - owner.x, a.y - owner.y)
         - Math.hypot(b.x - owner.x, b.y - owner.y))
       .slice(0, this.stat('maxTargets'));
@@ -320,30 +329,55 @@ class LaserEyes extends Weapon {
     }
   }
 
+  // Целимся от глаз, а не от центра героя: глаза на 17 px выше, и по зомби
+  // вплотную луч уходил бы заметно мимо.
+  aimAt(owner, target) {
+    const eye = this.eyeCenter(owner);
+    this.aimAngle = Math.atan2(target.y - eye.y, target.x - eye.x);
+  }
+
+  // Глаза героя в мировых координатах. Player.draw рисует оружие ПОСЛЕ
+  // restore(), то есть вне translate/scale героя, поэтому зеркало и
+  // покачивание считает за нас heroEyePoints.
+  eyes(player) {
+    return heroEyePoints(player).map((p) => ({ x: player.x + p.x, y: player.y + p.y }));
+  }
+
+  eyeCenter(player) {
+    const [left, right] = this.eyes(player);
+    return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+  }
+
   draw(ctx, player) {
-    if (!this.beamOn) return;
-    const x = player.x;
-    const y = player.y - player.radius * 0.55;    // из глаз, а не из живота
-    const ex = x + Math.cos(this.aimAngle) * this.beamLen;
-    const ey = y + Math.sin(this.aimAngle) * this.beamLen;
+    // Упавший герой не обновляет оружие вовсе (Player.update выходит раньше),
+    // поэтому beamOn застывает в последнем значении — без этой проверки над
+    // призраком висел бы примёрзший луч.
+    if (!this.beamOn || player.downed) return;
+    const eye = this.eyeCenter(player);
+    const ex = eye.x + Math.cos(this.aimAngle) * this.beamLen;
+    const ey = eye.y + Math.sin(this.aimAngle) * this.beamLen;
 
     ctx.save();
     ctx.lineCap = 'round';
-    [[this.spec.beamWidth, 'rgba(255,80,80,0.35)'], [4, '#ff4d6d'], [1.6, '#ffffff']]
-      .forEach(([width, color]) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = width;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-      });
+    // По лучу из каждого глаза — иначе это «лазер», а не «лазерные глаза».
+    // Оба сходятся в одной точке, так что вдали пара читается как один луч.
+    // Слои тоньше прежних: две линии рядом и так дают нужную толщину.
+    for (const from of this.eyes(player)) {
+      [[this.spec.beamWidth * 0.6, 'rgba(255,80,80,0.35)'], [2.6, '#ff4d6d'], [1.2, '#ffffff']]
+        .forEach(([width, color]) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        });
+      // Светящийся зрачок — это и есть «оружие в руке» для лазера.
+      ctx.fillStyle = '#ff4d6d';
+      circle(ctx, from.x, from.y, 3);
+    }
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     circle(ctx, ex, ey, 4);
-    // Светящиеся глаза — это и есть «оружие в руке» для лазера.
-    ctx.fillStyle = '#ff4d6d';
-    circle(ctx, x - player.radius * 0.18, y, 3);
-    circle(ctx, x + player.radius * 0.18, y, 3);
     ctx.restore();
   }
 }
