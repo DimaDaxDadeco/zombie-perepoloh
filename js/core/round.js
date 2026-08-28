@@ -70,6 +70,10 @@ export class Round {
     this.bossIntroTimer = 0;
     this.bossSpawnPoint = null; // где именно появится босс (внутри экрана)
     this.freezeTimer = 0;       // пока идёт — обычные зомби стоят
+    // Приказ охранника: множитель времени для зомби. Живёт здесь, а не в
+    // Zombie.speedFactor — иначе там было бы три источника правды сразу.
+    this.rallyTimer = 0;
+    this.rallyFactor = 1;
     this.shakeTimer = 0;
     this.shakeMaxTime = 1;
     this.shakeStrength = 0;
@@ -164,8 +168,13 @@ export class Round {
     // на выход, а не получить удар в спину, пока любуется. Герой при этом
     // продолжает бегать — отнимать управление нельзя, решит, что игра зависла.
     const frozen = this.freezeTimer > 0;
+    this.rallyTimer = Math.max(0, this.rallyTimer - dt);
+    // Приказ ускоряет зомби ровно так же, как турбо Робота ускоряет оружие:
+    // мы просто отдаём им больше времени за кадр. Босса это не касается —
+    // командир себя не разгоняет.
+    const rally = this.rallyTimer > 0 ? this.rallyFactor : 1;
     if (!frozen) {
-      for (const enemy of this.enemies) enemy.update(dt, this);
+      for (const enemy of this.enemies) enemy.update(enemy.isBoss ? dt : dt * rally, this);
     }
     for (const projectile of this.projectiles) projectile.update(dt, this);
     for (const pickup of this.pickups) pickup.update(dt, this);
@@ -242,6 +251,56 @@ export class Round {
     if (this.finished || this.freezeTimer > 0) return false;
     const player = this.players[playerIndex];
     return player?.ability?.tryActivate(this, player) ?? false;
+  }
+
+  // Охранник скомандовал — толпа побежала быстрее.
+  rallyZombies(factor, time) {
+    this.rallyFactor = factor;
+    this.rallyTimer = Math.max(this.rallyTimer, time);
+    this.audio.whistle();
+    for (const enemy of this.enemies) {
+      if (!enemy.isBoss) this.particles.addBurst(enemy.x, enemy.y, 4, 0.5);
+    }
+  }
+
+  // Торт клоуна: пятно крема и минус сердечко тому, кто не убежал. Зеркало
+  // explode(), но получатель урона обратный — герои, а не зомби.
+  splat(x, y, radius) {
+    this.particles.addRing(x, y, radius, '#ffd7e6');
+    this.particles.addBurst(x, y, 14, 1);
+    this.audio.splat();
+    for (const player of this.players) {
+      if (Math.hypot(player.x - x, player.y - y) <= radius + player.radius) {
+        player.takeHit(this);   // одно сердечко, неуязвимость работает
+      }
+    }
+  }
+
+  // Удар молнии в заранее показанный круг.
+  strike(x, y, radius, from) {
+    this.particles.addLightning([from, { x, y }]);
+    this.particles.addRing(x, y, radius, '#ffe66d');
+    this.audio.zap();
+    for (const player of this.players) {
+      if (Math.hypot(player.x - x, player.y - y) <= radius + player.radius) {
+        player.takeHit(this);
+      }
+    }
+  }
+
+  // Костяной рассыпался и собирается обратно. Сущность зовёт мир, мир зовёт
+  // колбэк — тот же приём, что у onPlayerHurt.
+  onBossDown(boss) {
+    this.particles.addShards(boss.x, boss.y, boss.radius * 2.2, '#e8e4d4');
+    this.shake(CONFIG.boss.shake.strength, CONFIG.boss.shake.time);
+    this.audio.bonesCollapse();
+  }
+
+  onBossRevived(boss) {
+    this.particles.addRing(boss.x, boss.y, boss.radius * 2, '#e8e4d4');
+    this.particles.addBurst(boss.x, boss.y, 24, 1.2);
+    this.audio.bonesRise();
+    this.callbacks.onBossRevive?.(boss.name);
   }
 
   // Тряска мира при появлении босса. HUD рисуется отдельно в game.js и
@@ -367,6 +426,12 @@ export class Round {
     this.particles.addBurst(enemy.x, enemy.y, enemy.isBoss ? 60 : 16, enemy.isBoss ? 2 : 1);
     this.dropLoot(enemy);
     this.modifier?.onLoot(enemy, this);
+
+    // Особая смерть вида — в самом конце. Тыква рекурсивно заходит сюда же
+    // для соседей, и пока текущий зомби не досчитал свой заряд и лут, входить
+    // в рекурсию нельзя: порядок начислений стал бы зависеть от плотности
+    // толпы. Боссы этого метода не имеют — отсюда `?.`.
+    enemy.onDeath?.(this);
   }
 
   dropLoot(enemy) {

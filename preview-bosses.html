@@ -42,10 +42,12 @@ import { drawBoss, drawBossRage, drawShadow } from './js/render/sprites.js';
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
-const H = canvas.height;
 
 const types = CONFIG.bossTypes;
-const LANE_HEIGHT = H / types.length;   // на каждого босса — своя полоса
+// Высоту ставим из JS по числу боссов: при делении фиксированной высоты
+// добавление босса молча сплющивает полосы, и разъярённый лезет на спокойного.
+const LANE_HEIGHT = 216;
+canvas.height = types.length * LANE_HEIGHT;
 const RADIUS = 50;
 const WALK_SPEED = 70;        // пикселей в секунду, как у босса в игре примерно
 
@@ -124,7 +126,8 @@ function drawLanes() {
     ctx.fillText(type.name, 18, top + 30);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(28,26,56,0.65)';
-    ctx.fillText(`ярость: ${type.rage}`, 18, top + 52);
+    ctx.fillText(`ярость: ${type.rage} · способность: ${type.ability} · вход: ${type.entrance}`,
+      18, top + 52);
 
     ctx.font = '13px system-ui, sans-serif';
     ctx.fillText('обычный', 18, top + LANE_HEIGHT * 0.42);

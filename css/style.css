@@ -179,6 +179,13 @@ html, body {
   outline-offset: 3px;
 }
 
+/* Оружий одиннадцать, а не четыре, как героев: панель шире и карточки уже,
+   чтобы влезло два ряда и кнопка «ИГРАТЬ» осталась видна без прокрутки.
+   max-width переопределять обязательно — базовые 900px иначе срежут ширину. */
+.panel--weapons { width: min(96vw, 1100px); max-width: min(96vw, 1100px); }
+.panel--weapons .hero-card { width: 150px; }
+.panel--weapons .weapon-choice__emoji { font-size: 52px; line-height: 1.2; }
+
 .hero-card__canvas {
   max-width: 100%;
   height: auto;
@@ -211,6 +218,9 @@ html, body {
   .hero-card__ability {
     font-size: 11px;
   }
+
+  .panel--weapons .hero-card { width: 116px; }
+  .panel--weapons .weapon-choice__emoji { font-size: 40px; }
 
   .heroes {
     gap: 10px;

@@ -422,6 +422,7 @@ export class Game {
       callbacks: {
         onLevelUp: () => this.openCards(),
         onBossAppear: (name) => this.speech.speak(`Осторожно! ${name}!`),
+        onBossRevive: () => this.speech.speak('Он встаёт!'),
         onVictory: (summary) => this.endRound('victory', summary),
         onDefeat: (summary) => this.endRound('defeat', summary),
       },

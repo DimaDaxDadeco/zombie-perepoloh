@@ -78,6 +78,10 @@ export function separateEnemies(enemies) {
     for (let j = i + 1; j < enemies.length; j++) {
       const b = enemies[j];
       if (!b.alive) continue;
+      // Шарик летит над толпой: толкать его снизу нечем, и сам он никого не
+      // давит. Пропускаем пару целиком — это не «я тяжёлый», как у босса
+      // ниже, а «мы физически не встречаемся».
+      if (a.isFloating || b.isFloating) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const minDist = a.radius + b.radius;

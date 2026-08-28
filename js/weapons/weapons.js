@@ -1,10 +1,11 @@
-// Восемь видов оружия. Как добавить своё — см. docs/weapons.md.
+// Одиннадцать видов оружия. Как добавить своё — см. docs/weapons.md.
 
 import { CONFIG } from '../config.js';
 import { Weapon } from './weapon.js';
 import {
-  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet,
+  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee,
 } from '../entities/projectile.js';
+import { circle } from '../render/sprites.js';
 
 // 💧 Водяной пистолет — базовое оружие, стреляет каплями в ближайшего зомби.
 class WaterGun extends Weapon {
@@ -258,6 +259,137 @@ function angleDifference(a, b) {
   return diff;
 }
 
+// 👁 Лазерные глаза — луч в ближайшего зомби, прожигает всех на линии.
+//
+// Снарядов не создаёт: это тот же приём, что у меча, только сектор заменён
+// отрезком, а разовый взмах — таймером прожига. Своя сущность-луч
+// потребовала бы второй ветки в collisions.js (там только круг с кругом)
+// ради одного оружия, а частые снаряды отдали бы урон на откуп частоте
+// кадров: одна и та же капля била бы одного зомби каждый кадр полёта.
+class LaserEyes extends Weapon {
+  constructor() {
+    super('laser');
+    this.burnTimer = 0;
+    this.beamOn = false;
+    this.beamLen = 0;
+  }
+
+  update(dt, world, owner) {
+    const target = world.findNearestEnemy(owner.x, owner.y);
+    const wasOn = this.beamOn;
+    this.beamOn = Boolean(target);
+    if (!target) return;
+
+    this.aimAt(owner, target);
+    // Луч всегда во всю дальность, а не до первой цели: он затем и нужен,
+    // чтобы прожигать очередь насквозь. Обрезание по ближайшему зомби
+    // превращало его в обычный выстрел.
+    this.beamLen = this.stat('range');
+    // Звук — только на включении луча: тик раз в 0.22 сек превратил бы его
+    // в пулемёт.
+    if (!wasOn) world.audio.beam();
+
+    this.burnTimer -= dt;      // dt уже умножен на fireRateFactor (турбо)
+    if (this.burnTimer > 0) return;
+    this.burnTimer = this.stat('cooldown');
+    this.burn(world, owner);
+
+    // setActiveWeapon намеренно не зовём: ствола в руке у лазера нет, и
+    // перехват руки на 0.35 сек показал бы ребёнку пустые ладони вместо
+    // его пистолета. Вертушка молчит по той же причине.
+  }
+
+  burn(world, owner) {
+    const damage = this.stat('damage');
+    const half = this.spec.beamWidth / 2;
+    const ex = owner.x + Math.cos(this.aimAngle) * this.beamLen;
+    const ey = owner.y + Math.sin(this.aimAngle) * this.beamLen;
+
+    // Сортируем по удалению от героя: иначе maxTargets отрежет случайных,
+    // а не первых на линии.
+    const onBeam = world.enemies
+      .filter((e) => e.alive && !e.isHidden
+        && distanceToSegment(e.x, e.y, owner.x, owner.y, ex, ey) < half + e.radius)
+      .sort((a, b) => Math.hypot(a.x - owner.x, a.y - owner.y)
+        - Math.hypot(b.x - owner.x, b.y - owner.y))
+      .slice(0, this.stat('maxTargets'));
+
+    for (const enemy of onBeam) {
+      world.damageEnemy(enemy, damage);
+      world.particles.addBurst(enemy.x, enemy.y, 4, 0.5);
+    }
+  }
+
+  draw(ctx, player) {
+    if (!this.beamOn) return;
+    const x = player.x;
+    const y = player.y - player.radius * 0.55;    // из глаз, а не из живота
+    const ex = x + Math.cos(this.aimAngle) * this.beamLen;
+    const ey = y + Math.sin(this.aimAngle) * this.beamLen;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    [[this.spec.beamWidth, 'rgba(255,80,80,0.35)'], [4, '#ff4d6d'], [1.6, '#ffffff']]
+      .forEach(([width, color]) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      });
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    circle(ctx, ex, ey, 4);
+    // Светящиеся глаза — это и есть «оружие в руке» для лазера.
+    ctx.fillStyle = '#ff4d6d';
+    circle(ctx, x - player.radius * 0.18, y, 3);
+    circle(ctx, x + player.radius * 0.18, y, 3);
+    ctx.restore();
+  }
+}
+
+// 🪃 Бумеранг — улетает и возвращается, задевая всех дважды.
+class BoomerangThrower extends Weapon {
+  constructor() { super('boomerang'); }
+
+  fire(world, target, owner) {
+    const base = Math.atan2(target.y - owner.y, target.x - owner.x);
+    const count = this.stat('count');
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * this.spec.spread;
+      world.addProjectile(new Boomerang(owner, base + offset, {
+        speed: this.spec.speed,
+        returnSpeed: this.spec.returnSpeed,
+        range: this.stat('range'),
+        damage: this.stat('damage'),
+        life: this.spec.life,
+      }));
+    }
+    world.audio.slash();
+  }
+}
+
+// 🐝 Рой пчёл — вылетают широко и сами разбирают цели.
+class BeeSwarm extends Weapon {
+  constructor(id = 'bees') { super(id); }
+
+  fire(world, target, owner) {
+    const base = Math.atan2(target.y - owner.y, target.x - owner.x);
+    const count = this.stat('count');
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * this.spec.spread / Math.max(1, count - 1);
+      world.addProjectile(new Bee(owner.x, owner.y, base + offset, {
+        speed: this.spec.speed,
+        turnSpeed: this.spec.turnSpeed,
+        damage: this.stat('damage'),
+        life: this.spec.life,
+        retarget: this.spec.retarget,
+      }));
+    }
+    world.audio.buzz();
+  }
+}
+
 const WEAPON_CLASSES = {
   water: WaterGun,
   tomato: TomatoLauncher,
@@ -272,6 +404,9 @@ const WEAPON_CLASSES = {
   fire: Flamethrower,
   ice: IceCannon,
   saber: LightSaber,
+  laser: LaserEyes,
+  boomerang: BoomerangThrower,
+  bees: BeeSwarm,
 };
 
 export function createWeapon(id) {
@@ -294,4 +429,15 @@ export function evolveWeapon(weapon) {
   const evolved = createWeapon(nextId);
   evolved.stars = CONFIG.maxStars;     // звёзды ей уже ничего не значат
   return evolved;
+}
+
+// Расстояние от точки до отрезка — «попал ли зомби на луч».
+function distanceToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }

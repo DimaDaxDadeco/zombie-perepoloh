@@ -238,7 +238,9 @@ export const CONFIG = {
   zombieTypes: [
     {
       id: 'normal', name: 'Обычный', about: 'Обычный зомби, ковыляет не спеша',
-      hp: 1, speed: 1, radius: 1, weight: 10, fromRound: 1,
+      // Вес подняли с 10 до 13, когда добавили четыре новых вида: иначе доля
+      // обычного падала с 26% до 20%, а он обязан оставаться большинством.
+      hp: 1, speed: 1, radius: 1, weight: 13, fromRound: 1,
       look: { skin: '#8fd67a', clothes: '#7a6bb5', body: 'normal' },
     },
     {
@@ -292,6 +294,58 @@ export const CONFIG = {
       id: 'grandma', name: 'Бабуля', about: 'Бабуля, а бегает шустро',
       hp: 1.5, speed: 1.15, radius: 0.95, weight: 3, fromRound: 6,
       look: { skin: '#a9d9a0', clothes: '#c96b9c', body: 'normal', hair: 'bun' },
+    },
+
+    // --- Четвёрка со своими правилами. Трое умеют что-то особенное в момент
+    // смерти — поле death, см. Zombie.onDeath(). ---
+    {
+      id: 'balloon', name: 'Зомби-шарик', about: 'Летит по воздуху и лопается конфетти',
+      behavior: 'float', death: 'confetti',
+      hp: 1, speed: 0.45, radius: 0.95, weight: 3, fromRound: 5,
+      knockbackFactor: 2.2,   // лёгкий: супер-удар сдувает его дальше всех
+      look: {
+        shape: 'balloon', balloon: '#ff5d8f', skin: '#8fd67a', clothes: '#7a6bb5',
+        shadowScale: 0.45,    // летит — и тень меньше
+      },
+    },
+    {
+      id: 'pumpkin', name: 'Зомби-тыква', about: 'Лопается и задевает соседних зомби',
+      death: 'blast',
+      hp: 1.2, speed: 0.8, radius: 1.05, weight: 2, fromRound: 6,
+      // Радиус и урон намеренно скромные: тыква косит только мелочь, которая
+      // и так падала бы, и не превращается в бесплатную бомбу на пол-экрана.
+      blastRadius: 90, blastDamage: 2,
+      look: {
+        skin: '#8fd67a', clothes: '#6b8f3a', body: 'normal',
+        head: 'pumpkin', headColor: '#ff8a2b',
+      },
+    },
+    {
+      id: 'skater', name: 'Зомби на роликах', about: 'Разгоняется и проезжает мимо',
+      behavior: 'skate',
+      hp: 0.5, speed: 2, radius: 0.85, weight: 3, fromRound: 7,
+      turnRate: 1.6,   // радиан в секунду: отсюда вся инерция
+      accel: 1.2,      // доля скорости в секунду — разгон примерно за 0.8 сек
+      look: {
+        skin: '#c3e88d', clothes: '#4fb3ff', body: 'thin', hair: 'spiky',
+        skates: '#4fb3ff', lean: -0.22, stride: 0,   // не шагает, а катится
+      },
+    },
+    {
+      id: 'snowman', name: 'Зомби-снеговик', about: 'Разваливается на двух маленьких',
+      death: 'split',
+      hp: 1.6, speed: 0.7, radius: 1.15, weight: 2, fromRound: 8,
+      // Суммарно 1.6 + 2×0.5 = 2.6 «здоровья» — меньше толстяка (3.0):
+      // деление обязано быть по карману, иначе снеговик становится стеной.
+      spawn: {
+        count: 2, hp: 0.5, radius: 0.62, speed: 0.9,
+        // У малышей нет ведра — так родитель и дети различимы на глаз.
+        look: { shape: 'snow', skin: '#eef6ff', nose: '#ff8a2b', twigs: '#7a5a3a' },
+      },
+      look: {
+        shape: 'snow', skin: '#eef6ff', nose: '#ff8a2b',
+        bucket: '#8aa3b8', twigs: '#7a5a3a',
+      },
     },
   ],
 
@@ -357,6 +411,64 @@ export const CONFIG = {
       flameInterval: 0.9, // как часто роняет огонёк
       flameLife: 3.5,     // сколько секунд огонёк горит
       flameRadius: 26,
+    },
+
+    // --- Раунды 6–10. Порядок записей = порядок раундов, на 11-м круг
+    // начинается заново. Дубль id молча ломает альбом — наклейка одна на
+    // двоих, поэтому id проверяйте глазами. ---
+    {
+      id: 'bones', name: 'Костяной босс', about: 'Рассыпается и собирается снова',
+      ability: 'none', entrance: 'bones', rage: 'rattle',
+      // 0.75 × 1.5 (воскрешение) ≈ 1.125, как у ледяного. Ставить 1.0 нельзя:
+      // вышло бы 1.5, то есть бой вдвое длиннее любого другого.
+      hp: 0.75, speed: 0.95, radius: 1,
+      look: { skin: '#e8e4d4', clothes: '#5a5a72', hat: 'skullhat', accent: '#ffd93d', chest: 'ribs' },
+      revive: { hpFactor: 0.5, downTime: 2.2 },
+    },
+    {
+      id: 'clown', name: 'Клоун-жонглёр', about: 'Кидает торты навесом',
+      ability: 'cake', entrance: 'balloons', rage: 'juggle',
+      hp: 1, speed: 0.9, radius: 1.05,
+      look: { skin: '#f0c8a0', clothes: '#e34b3a', hat: 'wig', accent: '#4fb3ff', chest: 'pompoms' },
+      // Замер: с интервалом 3.4 клоун стоил семь побед из 24 на раунде 7 —
+      // бой превращался в непрерывное уклонение. Реже, мельче и с более
+      // долгим полётом.
+      cakeInterval: 5, cakeFlight: 1.35, cakeRadius: 58,
+      cakeMinDist: 140,   // вплотную не кидает: убежать было бы невозможно
+    },
+    {
+      id: 'guard', name: 'Зомби-охранник', about: 'Командует, и зомби бегут быстрее',
+      ability: 'rally', entrance: 'whistle', rage: 'command',
+      hp: 1.1, speed: 0.95, radius: 1,
+      look: {
+        skin: '#a8c9a0', clothes: '#3f5f9f', hat: 'peakedcap', accent: '#ffd93d',
+        chest: 'badge', face: 'mask',
+      },
+      rallyInterval: 7, rallyWindup: 0.8, rallyTime: 2, rallyFactor: 1.5,
+    },
+    {
+      id: 'spider', name: 'Босс-паук', about: 'Плетёт липкую паутину',
+      ability: 'web', entrance: 'thread', rage: 'webs',
+      hp: 0.9, speed: 1.15, radius: 0.9,
+      look: {
+        skin: '#7a6bb5', clothes: '#4a3f6b', hat: 'beanie', accent: '#ffd93d',
+        chest: 'spider', back: 'spiderlegs',
+      },
+      // Паутина урона не наносит вовсе: это препятствие, а не ловушка.
+      webInterval: 2.6, webLife: 6, webRadius: 62, webSlow: 0.6, maxWebs: 5,
+    },
+    {
+      id: 'volt', name: 'Электрический босс', about: 'Бьёт молнией в круг под ногами',
+      ability: 'bolt', entrance: 'spark', rage: 'sparks',
+      hp: 0.95, speed: 0.85, radius: 1,
+      look: { skin: '#c9e8f5', clothes: '#5f4f9f', hat: 'bulb', accent: '#ffd93d', chest: 'bolt' },
+      // boltWarn от ярости НЕ зависит: сокращать телеграф нельзя — правило
+      // «у ребёнка всегда есть время увидеть и убежать».
+      // Замер: с интервалом 3.6 электрический стоил 17 побед из 24 на
+      // раунде 10 (22/24 без молний). Бьёт он туда, где герой стоит, и в
+      // толпе уйти из круга бывает физически некуда — поэтому реже, мельче
+      // и с более долгим предупреждением.
+      boltInterval: 6, boltWarn: 1.2, boltRadius: 60,
     },
   ],
 
@@ -455,6 +567,34 @@ export const CONFIG = {
       damage:   [3, 4, 5, 6, 8],
       reach:    [95, 105, 115, 125, 140],  // длина клинка
       arc:      [1.5, 1.7, 1.9, 2.2, 2.6], // ширина взмаха в радианах
+    },
+
+    laser: {
+      name: 'Лазерные глаза', emoji: '👁',
+      // Луч бьёт мгновенно, не промахивается и работает без пауз, поэтому
+      // урон за секунду держим ниже водяного пистолета: платит он охватом.
+      cooldown:   [0.4, 0.35, 0.3, 0.26, 0.22],   // пауза между прожигами
+      damage:     [1, 1, 1, 2, 2],
+      range:      [300, 330, 360, 390, 420],      // короче экрана — это тормоз баланса
+      maxTargets: [3, 3, 4, 4, 5],                // и второй тормоз
+      beamWidth: 9,       // луч тонкий: задевает только тех, кто реально на линии
+    },
+    boomerang: {
+      name: 'Бумеранг', emoji: '🪃',
+      cooldown: [1.4, 1.25, 1.1, 1.0, 0.85],
+      damage:   [2, 2, 3, 3, 4],
+      range:    [220, 240, 260, 290, 320],        // где разворачивается
+      count:    [1, 1, 1, 2, 2],
+      speed: 430, returnSpeed: 520,               // назад быстрее: обязан догнать героя
+      spread: 0.5, life: 4,                       // не догнал за 4 секунды — растаял
+    },
+    bees: {
+      name: 'Рой пчёл', emoji: '🐝',
+      cooldown: [2.2, 2.0, 1.8, 1.6, 1.4],
+      count:    [3, 3, 4, 5, 6],
+      damage:   [2, 2, 2, 3, 3],
+      speed: 210, turnSpeed: 6,                   // медленные, зато вертлявые
+      life: 2.5, spread: 1.2, retarget: 0.35,
     },
 
     // --- Эволюции: доступны только как награда за пятую звезду ---

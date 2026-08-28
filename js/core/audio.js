@@ -123,6 +123,39 @@ export class Audio {
     });
   }
 
+  bonesCollapse() { // костяной рассыпался
+    [520, 440, 380, 300].forEach((f, i) => {
+      this.tone({ freq: f, duration: 0.09, type: 'square', volume: 0.13, delay: i * 0.06 });
+    });
+    this.noise({ duration: 0.2, volume: 0.1, delay: 0.05 });
+  }
+
+  bonesRise() { // и собирается обратно
+    [300, 380, 440, 520].forEach((f, i) => {
+      this.tone({ freq: f, duration: 0.16, type: 'square', volume: 0.14, delay: i * 0.09 });
+    });
+    this.tone({ freq: 70, endFreq: 160, duration: 0.5, type: 'sawtooth', volume: 0.18 });
+  }
+
+  splat() { // торт клоуна шлёпнулся
+    this.noise({ duration: 0.14, volume: 0.16 });
+    this.tone({ freq: 200, endFreq: 90, duration: 0.18, type: 'sine', volume: 0.14 });
+  }
+
+  whistle() { // свисток охранника
+    this.tone({ freq: 2200, duration: 0.12, type: 'sine', volume: 0.1 });
+    this.tone({ freq: 2600, duration: 0.12, type: 'sine', volume: 0.09, delay: 0.13 });
+  }
+
+  beam() { // включился лазерный луч
+    this.tone({ freq: 220, endFreq: 900, duration: 0.18, type: 'sawtooth', volume: 0.08 });
+  }
+
+  buzz() { // вылетел рой пчёл
+    this.tone({ freq: 90, endFreq: 140, duration: 0.25, type: 'sawtooth', volume: 0.07 });
+    this.tone({ freq: 95, endFreq: 145, duration: 0.25, type: 'sawtooth', volume: 0.05 });
+  }
+
   bite() { // собачка тяпнула зомби
     this.tone({ freq: 520, endFreq: 240, duration: 0.09, type: 'square', volume: 0.12 });
     this.noise({ duration: 0.06, volume: 0.08 });

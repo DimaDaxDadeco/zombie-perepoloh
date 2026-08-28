@@ -408,6 +408,214 @@ export function drawDrone(ctx, { radius, phase, facing, look, fireAnim = 0 }) {
   ctx.restore();
 }
 
+// Голова-тыква: вырезанная рожица светится изнутри, а не чернеет дырами —
+// светлая тыква добрее пустой.
+function drawPumpkinHead(ctx, r, color) {
+  const cy = -r * 0.82;
+  const rr = r * 0.56;
+
+  ctx.fillStyle = color;
+  circle(ctx, 0, cy, rr);
+  // Дольки
+  ctx.strokeStyle = shade(color, -0.22);
+  ctx.lineWidth = Math.max(1.5, r * 0.06);
+  [-0.5, 0.5].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(side * rr * 0.62, cy - rr * 0.86);
+    ctx.quadraticCurveTo(side * rr * 0.95, cy, side * rr * 0.62, cy + rr * 0.86);
+    ctx.stroke();
+  });
+  // Хвостик
+  ctx.fillStyle = '#4f7a2a';
+  roundRect(ctx, -r * 0.07, cy - rr * 1.22, r * 0.14, r * 0.28, r * 0.05);
+
+  // Рожица
+  ctx.fillStyle = '#ffe9a8';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(side * rr * 0.18, cy - rr * 0.05);
+    ctx.lineTo(side * rr * 0.56, cy - rr * 0.05);
+    ctx.lineTo(side * rr * 0.37, cy - rr * 0.45);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.beginPath();
+  ctx.moveTo(-rr * 0.55, cy + rr * 0.24);
+  ctx.lineTo(rr * 0.55, cy + rr * 0.24);
+  ctx.lineTo(rr * 0.3, cy + rr * 0.6);
+  ctx.lineTo(rr * 0.12, cy + rr * 0.34);
+  ctx.lineTo(-rr * 0.12, cy + rr * 0.6);
+  ctx.lineTo(-rr * 0.34, cy + rr * 0.34);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Ролики под ногами. Рисуются рядом с каской и тросточкой — деталь поверх
+// обычного силуэта, а не свой силуэт.
+function drawSkates(ctx, r, walkPhase, color) {
+  const step = 0;   // ноги ролика не шагают (stride: 0), платформы стоят рядом
+  const bump = Math.sin(walkPhase * 3) * r * 0.02;
+  [-r * 0.42, r * 0.1].forEach((x) => {
+    ctx.fillStyle = color;
+    roundRect(ctx, x + step - r * 0.04, r * 1.02 + bump, r * 0.42, r * 0.12, r * 0.05);
+    ctx.fillStyle = '#2f3550';
+    [0.06, 0.3].forEach((k) => {
+      circle(ctx, x + step + r * k, r * 1.2 + bump, r * 0.07);
+    });
+  });
+}
+
+// 🎈 Зомби-шарик: надутая голова на ниточке, тельце болтается снизу.
+function drawBalloonZombie(ctx, {
+  radius, walkPhase, facing, hurtFlash, look, burning, frozen,
+  freezeProgress = 0, freezeSeed = 0,
+}) {
+  const r = radius;
+  let balloon = hurtFlash ? '#ffffff' : look.balloon;
+  let skin = hurtFlash ? '#ffffff' : look.skin;
+  let clothes = hurtFlash ? '#dddddd' : look.clothes;
+  if (!hurtFlash && frozen) {
+    balloon = tint(balloon, '#7fd8ff', 0.3);
+    skin = tint(skin, '#7fd8ff', 0.3);
+    clothes = tint(clothes, '#7fd8ff', 0.25);
+  } else if (!hurtFlash && burning) {
+    balloon = tint(balloon, '#ff7a2b', 0.4);
+  }
+
+  ctx.save();
+  // Вся фигура поднята и покачивается — от того же walkPhase, что у всех:
+  // отдельный таймер тут был бы лишней сущностью.
+  ctx.translate(0, -r * 0.5 + Math.sin(walkPhase * 0.9) * r * 0.12);
+  ctx.scale(facing, 1);
+
+  // Тельце-огрызок на ниточке: ножки не шагают, а качаются
+  const swing = Math.sin(walkPhase) * 0.25;
+  ctx.strokeStyle = 'rgba(60,50,40,0.6)';
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(0, r * 0.08);
+  ctx.quadraticCurveTo(Math.sin(walkPhase) * r * 0.12, r * 0.4, 0, r * 0.62);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(0, r * 0.62);
+  ctx.rotate(swing);
+  ctx.fillStyle = clothes;
+  roundRect(ctx, -r * 0.26, 0, r * 0.52, r * 0.44, r * 0.16);
+  ctx.fillStyle = shade(look.skin, -0.18);
+  roundRect(ctx, -r * 0.22, r * 0.42, r * 0.18, r * 0.34, r * 0.08);
+  roundRect(ctx, r * 0.04, r * 0.42, r * 0.18, r * 0.34, r * 0.08);
+  ctx.restore();
+
+  // Сам шар с узелком и бликом
+  ctx.fillStyle = balloon;
+  circle(ctx, 0, -r * 0.42, r * 0.72);
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.12, r * 0.24);
+  ctx.lineTo(r * 0.12, r * 0.24);
+  ctx.lineTo(0, r * 0.44);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.26, -r * 0.66, r * 0.18, r * 0.26, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Рожица прямо на шаре
+  ctx.fillStyle = EYE_WHITE;
+  circle(ctx, -r * 0.2, -r * 0.5, r * 0.16);
+  circle(ctx, r * 0.2, -r * 0.47, r * 0.13);
+  ctx.fillStyle = DARK;
+  circle(ctx, -r * 0.15, -r * 0.5, r * 0.07);
+  circle(ctx, r * 0.24, -r * 0.45, r * 0.06);
+  ctx.strokeStyle = DARK;
+  ctx.lineWidth = Math.max(1.5, r * 0.06);
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.24, r * 0.2, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  ctx.restore();
+
+  if (burning) drawFlames(ctx, r, walkPhase);
+  if (frozen) drawIceBlock(ctx, r, freezeProgress, freezeSeed);
+}
+
+// ☃️ Зомби-снеговик: три шара, ведро вместо шапки, веточки вместо рук.
+function drawSnowZombie(ctx, {
+  radius, walkPhase, facing, hurtFlash, look, burning, frozen,
+  freezeProgress = 0, freezeSeed = 0,
+}) {
+  const r = radius;
+  let snow = hurtFlash ? '#ffffff' : look.skin;
+  if (!hurtFlash && frozen) snow = tint(snow, '#7fd8ff', 0.3);
+  else if (!hurtFlash && burning) snow = tint(snow, '#ff7a2b', 0.35);
+
+  ctx.save();
+  // Снеговик не шагает — он переваливается вокруг нижнего шара.
+  ctx.translate(0, r * 0.62);
+  ctx.rotate(Math.sin(walkPhase) * 0.1);
+  ctx.translate(0, -r * 0.62);
+  ctx.scale(facing, 1);
+
+  // Веточки-руки
+  ctx.strokeStyle = hurtFlash ? '#dddddd' : look.twigs;
+  ctx.lineWidth = Math.max(1.5, r * 0.07);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(side * r * 0.32, -r * 0.1);
+    ctx.lineTo(side * r * 0.95, -r * 0.36);
+    ctx.moveTo(side * r * 0.75, -r * 0.26);
+    ctx.lineTo(side * r * 0.92, -r * 0.06);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = snow;
+  circle(ctx, 0, r * 0.5, r * 0.62);
+  circle(ctx, 0, -r * 0.16, r * 0.46);
+  circle(ctx, 0, -r * 0.78, r * 0.36);
+
+  // Пуговицы-угольки
+  ctx.fillStyle = DARK;
+  circle(ctx, 0, -r * 0.24, r * 0.07);
+  circle(ctx, 0, r * 0.06, r * 0.07);
+  circle(ctx, 0, r * 0.42, r * 0.07);
+
+  // Глаза-угольки и морковка
+  circle(ctx, -r * 0.14, -r * 0.86, r * 0.08);
+  circle(ctx, r * 0.13, -r * 0.84, r * 0.07);
+  ctx.fillStyle = hurtFlash ? '#ffffff' : look.nose;
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.76);
+  ctx.lineTo(r * 0.46, -r * 0.68);
+  ctx.lineTo(0, -r * 0.62);
+  ctx.closePath();
+  ctx.fill();
+
+  // Кривая ухмылка из угольков
+  ctx.fillStyle = DARK;
+  [-0.22, -0.08, 0.08, 0.22].forEach((k, i) => {
+    circle(ctx, r * k, -r * (0.54 - Math.abs(i - 1.5) * 0.03), r * 0.04);
+  });
+
+  if (look.bucket) {
+    ctx.fillStyle = hurtFlash ? '#ffffff' : look.bucket;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.3, -r * 1.02);
+    ctx.lineTo(r * 0.3, -r * 1.02);
+    ctx.lineTo(r * 0.22, -r * 1.5);
+    ctx.lineTo(-r * 0.22, -r * 1.5);
+    ctx.closePath();
+    ctx.fill();
+    roundRect(ctx, -r * 0.36, -r * 1.08, r * 0.72, r * 0.12, r * 0.04);
+  }
+
+  ctx.restore();
+
+  if (burning) drawFlames(ctx, r, walkPhase);
+  if (frozen) drawIceBlock(ctx, r, freezeProgress, freezeSeed);
+}
+
 // Холмик земли: крот под землёй, виден только след
 export function drawMoleMound(ctx, { radius, progress }) {
   const w = radius * (1.2 + progress * 0.5);
@@ -439,9 +647,20 @@ export function drawZombie(ctx, {
     });
     return;
   }
+  // Шарик и снеговик — тоже свои силуэты: натягивать человеческое тело на
+  // три снежных шара дороже, чем завести ветку.
+  if (look.shape === 'balloon' || look.shape === 'snow') {
+    const draw = look.shape === 'balloon' ? drawBalloonZombie : drawSnowZombie;
+    draw(ctx, {
+      radius, walkPhase, facing, hurtFlash, look, burning, frozen,
+      freezeProgress, freezeSeed,
+    });
+    return;
+  }
 
   const r = radius;
-  const tilt = Math.sin(walkPhase) * 0.14; // ковыляющий наклон
+  // lean — постоянный наклон вперёд: так ролик читается как «разогнался».
+  const tilt = Math.sin(walkPhase) * 0.14 + (look.lean ?? 0);
   const width = BODY_WIDTH[look.body] || 1;
 
   ctx.save();
@@ -460,8 +679,8 @@ export function drawZombie(ctx, {
     skin = tint(skin, '#ff7a2b', 0.4);
   }
 
-  // Ноги
-  const step = Math.sin(walkPhase) * r * 0.35;
+  // Ноги. stride: 0 — ноги стоят вместе и не шагают: ролик катится, а не идёт.
+  const step = Math.sin(walkPhase) * r * 0.35 * (look.stride ?? 1);
   ctx.fillStyle = hurtFlash ? '#eeeeee' : shade(look.skin, -0.18);
   roundRect(ctx, -r * 0.42 + step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
   roundRect(ctx, r * 0.1 - step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
@@ -475,30 +694,36 @@ export function drawZombie(ctx, {
   roundRect(ctx, r * 0.2 * width, -r * 0.25, r * 0.85, r * 0.24, r * 0.12);
   roundRect(ctx, r * 0.2 * width, r * 0.05, r * 0.85, r * 0.24, r * 0.12);
 
-  // Голова
-  ctx.fillStyle = skin;
-  circle(ctx, 0, -r * 0.8, r * 0.5);
+  // Голова. У тыквы она своя целиком — тело, ноги и руки при этом обычные,
+  // поэтому отдельной ветки shape ей не нужно.
+  if (look.head === 'pumpkin') {
+    drawPumpkinHead(ctx, r, hurtFlash ? '#ffffff' : look.headColor);
+  } else {
+    ctx.fillStyle = skin;
+    circle(ctx, 0, -r * 0.8, r * 0.5);
 
-  drawZombieHair(ctx, r, look, hurtFlash);
+    drawZombieHair(ctx, r, look, hurtFlash);
 
-  // Глаза «в кучку» — разного размера, смотрят в разные стороны
-  ctx.fillStyle = EYE_WHITE;
-  circle(ctx, -r * 0.18, -r * 0.85, r * 0.17);
-  circle(ctx, r * 0.19, -r * 0.82, r * 0.13);
-  ctx.fillStyle = DARK;
-  circle(ctx, -r * 0.12, -r * 0.85, r * 0.07);
-  circle(ctx, r * 0.14, -r * 0.79, r * 0.06);
+    // Глаза «в кучку» — разного размера, смотрят в разные стороны
+    ctx.fillStyle = EYE_WHITE;
+    circle(ctx, -r * 0.18, -r * 0.85, r * 0.17);
+    circle(ctx, r * 0.19, -r * 0.82, r * 0.13);
+    ctx.fillStyle = DARK;
+    circle(ctx, -r * 0.12, -r * 0.85, r * 0.07);
+    circle(ctx, r * 0.14, -r * 0.79, r * 0.06);
 
-  // Кривая ухмылка с одним зубом
-  ctx.strokeStyle = DARK;
-  ctx.lineWidth = Math.max(1.5, r * 0.07);
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.18, -r * 0.55);
-  ctx.quadraticCurveTo(0, -r * 0.42, r * 0.2, -r * 0.58);
-  ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, -r * 0.06, -r * 0.58, r * 0.11, r * 0.15, r * 0.03);
+    // Кривая ухмылка с одним зубом
+    ctx.strokeStyle = DARK;
+    ctx.lineWidth = Math.max(1.5, r * 0.07);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.18, -r * 0.55);
+    ctx.quadraticCurveTo(0, -r * 0.42, r * 0.2, -r * 0.58);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, -r * 0.06, -r * 0.58, r * 0.11, r * 0.15, r * 0.03);
+  }
 
+  if (look.skates) drawSkates(ctx, r, walkPhase, look.skates);
   if (look.beard) drawBeard(ctx, r, hurtFlash ? '#ffffff' : look.beard);
   if (look.cane) drawCane(ctx, r, walkPhase, hurtFlash ? '#dddddd' : look.cane);
   if (look.helmet) drawHelmet(ctx, r, hurtFlash ? '#ffffff' : look.helmet);
@@ -757,7 +982,7 @@ function shade(hexColor, amount) {
 // --- Босс: огромный зомби в цилиндре и с бабочкой ---
 export function drawBoss(ctx, {
   radius, walkPhase, facing, hurtFlash, look = BOSS_DEFAULT_LOOK,
-  burning, frozen, freezeProgress = 0, freezeSeed = 0,
+  burning, frozen, freezeProgress = 0, freezeSeed = 0, armUp = false,
 }) {
   const r = radius;
   const tilt = Math.sin(walkPhase * 0.7) * 0.1;
@@ -777,6 +1002,9 @@ export function drawBoss(ctx, {
     skin = tint(skin, '#ff7a2b', 0.4);
   }
 
+  // Что уходит за спину (лапки паука) — до ног, иначе окажется поверх.
+  if (look.back) drawBossBack(ctx, r, look);
+
   // Ноги
   const step = Math.sin(walkPhase * 0.7) * r * 0.2;
   ctx.fillStyle = hurtFlash ? '#eeeeee' : shade(look.skin, -0.2);
@@ -789,9 +1017,17 @@ export function drawBoss(ctx, {
 
   drawBossChest(ctx, r, look, facing);
 
-  // Руки
+  // Руки. У командира верхняя уходит вверх — это и телеграф приказа.
   ctx.fillStyle = skin;
-  roundRect(ctx, r * 0.3, -r * 0.2, r * 0.8, r * 0.26, r * 0.13);
+  if (armUp) {
+    ctx.save();
+    ctx.translate(r * 0.3, -r * 0.2);
+    ctx.rotate(-1.15);
+    roundRect(ctx, 0, 0, r * 0.8, r * 0.26, r * 0.13);
+    ctx.restore();
+  } else {
+    roundRect(ctx, r * 0.3, -r * 0.2, r * 0.8, r * 0.26, r * 0.13);
+  }
   roundRect(ctx, r * 0.3, r * 0.15, r * 0.8, r * 0.26, r * 0.13);
 
   // Голова
@@ -805,6 +1041,8 @@ export function drawBoss(ctx, {
   ctx.fillStyle = '#243b12';
   circle(ctx, -r * 0.11, -r * 0.78, r * 0.07);
   circle(ctx, r * 0.13, -r * 0.73, r * 0.06);
+
+  if (look.face) drawBossFace(ctx, r, look);
 
   // Улыбка до ушей
   ctx.strokeStyle = '#243b12';
@@ -827,6 +1065,58 @@ export function drawBoss(ctx, {
 // в бабочке выглядит нелепо — теперь это настраиваемое поле look.chest.
 function drawBossChest(ctx, r, look, facing) {
   switch (look.chest) {
+    case 'ribs': {   // нарисованные рёбра на пузе
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = Math.max(2, r * 0.06);
+      [-0.16, 0.04, 0.24].forEach((k) => {
+        ctx.beginPath();
+        ctx.arc(0, r * k, r * 0.34, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke();
+      });
+      break;
+    }
+    case 'pompoms': {
+      ctx.fillStyle = '#4fb3ff';
+      circle(ctx, -r * 0.2, r * 0.02, r * 0.16);
+      ctx.fillStyle = '#ffd93d';
+      circle(ctx, r * 0.2, r * 0.12, r * 0.16);
+      break;
+    }
+    case 'badge': {  // жетон-звезда и погоны
+      ctx.fillStyle = look.accent;
+      drawStarShape(ctx, -r * 0.24, r * 0.02, r * 0.14, 5);
+      roundRect(ctx, r * 0.06, -r * 0.3, r * 0.34, r * 0.1, r * 0.03);
+      roundRect(ctx, r * 0.06, -r * 0.14, r * 0.34, r * 0.1, r * 0.03);
+      break;
+    }
+    case 'spider': { // паучок на пузе
+      ctx.fillStyle = '#2b2b3d';
+      circle(ctx, 0, r * 0.08, r * 0.14);
+      ctx.strokeStyle = '#2b2b3d';
+      ctx.lineWidth = Math.max(1.5, r * 0.04);
+      [-1, 1].forEach((side) => {
+        [-0.1, 0.06, 0.22].forEach((k) => {
+          ctx.beginPath();
+          ctx.moveTo(side * r * 0.1, r * (0.08 + k * 0.3));
+          ctx.lineTo(side * r * 0.3, r * (0.02 + k));
+          ctx.stroke();
+        });
+      });
+      break;
+    }
+    case 'bolt': {   // зигзаг-молния
+      ctx.fillStyle = look.accent;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.06, -r * 0.28);
+      ctx.lineTo(-r * 0.16, r * 0.06);
+      ctx.lineTo(0, r * 0.06);
+      ctx.lineTo(-r * 0.08, r * 0.4);
+      ctx.lineTo(r * 0.2, -r * 0.02);
+      ctx.lineTo(r * 0.04, -r * 0.02);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
     case 'number': {
       // Номер участника на майке. scale(facing) компенсирует зеркальный
       // поворот персонажа, иначе на бегу влево цифра будет задом наперёд.
@@ -868,6 +1158,65 @@ const BOSS_DEFAULT_LOOK = {
 // первым, даже когда босс ещё на краю экрана.
 function drawBossHat(ctx, r, look) {
   switch (look.hat) {
+    case 'skullhat': { // запасной череп надет как шапка — нелепо, а не страшно
+      ctx.fillStyle = '#f3efe0';
+      circle(ctx, 0, -r * 1.28, r * 0.34);
+      ctx.fillStyle = '#3b3b46';
+      circle(ctx, -r * 0.12, -r * 1.3, r * 0.08);
+      circle(ctx, r * 0.12, -r * 1.3, r * 0.08);
+      ctx.fillStyle = '#f3efe0';
+      roundRect(ctx, -r * 0.18, -r * 1.14, r * 0.36, r * 0.12, r * 0.04);
+      break;
+    }
+    case 'wig': { // рыжие кудри и крошечный котелок с цветком
+      ctx.fillStyle = '#ff8a2b';
+      [-0.42, 0.42].forEach((k) => circle(ctx, r * k, -r * 0.94, r * 0.26));
+      circle(ctx, 0, -r * 1.06, r * 0.22);
+      ctx.fillStyle = '#2b2b3d';
+      roundRect(ctx, -r * 0.3, -r * 1.24, r * 0.6, r * 0.08, r * 0.03);
+      roundRect(ctx, -r * 0.2, -r * 1.48, r * 0.4, r * 0.26, r * 0.06);
+      ctx.fillStyle = '#4fb3ff';
+      circle(ctx, r * 0.28, -r * 1.32, r * 0.1);
+      break;
+    }
+    case 'peakedcap': { // фуражка: тёмный околыш, синяя тулья, жёлтая кокарда
+      ctx.fillStyle = '#2f4c85';
+      ctx.beginPath();
+      ctx.ellipse(0, -r * 1.14, r * 0.52, r * 0.3, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#22355e';
+      roundRect(ctx, -r * 0.54, -r * 1.16, r * 1.08, r * 0.12, r * 0.04);
+      // Козырёк вперёд — по нему фуражка и отличается от каски «Каскетки»
+      ctx.beginPath();
+      ctx.ellipse(r * 0.36, -r * 1.06, r * 0.34, r * 0.11, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = look.accent;
+      drawStarShape(ctx, 0, -r * 1.24, r * 0.11, 5);
+      break;
+    }
+    case 'beanie': { // вязаная шапочка с помпоном
+      ctx.fillStyle = '#c94f8a';
+      ctx.beginPath();
+      ctx.arc(0, -r * 1.02, r * 0.44, Math.PI, Math.PI * 2);
+      ctx.fill();
+      roundRect(ctx, -r * 0.46, -r * 1.06, r * 0.92, r * 0.12, r * 0.05);
+      ctx.fillStyle = '#ffd93d';
+      circle(ctx, 0, -r * 1.56, r * 0.14);
+      break;
+    }
+    case 'bulb': { // лампочка на пружинке
+      ctx.strokeStyle = '#8a8a9c';
+      ctx.lineWidth = Math.max(2, r * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.1);
+      ctx.quadraticCurveTo(r * 0.2, -r * 1.3, 0, -r * 1.46);
+      ctx.stroke();
+      ctx.fillStyle = '#fff36b';
+      circle(ctx, 0, -r * 1.62, r * 0.2);
+      ctx.fillStyle = '#8a8a9c';
+      roundRect(ctx, -r * 0.09, -r * 1.5, r * 0.18, r * 0.12, r * 0.03);
+      break;
+    }
     case 'tophat': { // цилиндр с лентой
       ctx.fillStyle = '#2b2b3d';
       roundRect(ctx, -r * 0.55, -r * 1.14, r * 1.1, r * 0.1, r * 0.04);
@@ -941,7 +1290,7 @@ function drawBossHat(ctx, r, look) {
 // а каждая ветка switch рисует оружие «от руки вперёд» вдоль оси X.
 export function drawWeaponInHand(ctx, { id, stars, angle, recoil, x, y, radius }) {
   const draw = WEAPON_IN_HAND[id];
-  if (!draw) return;                       // у вертушки в руке ничего нет
+  if (!draw) return;                       // у вертушки и лазера в руке ничего нет
 
   // Чем больше звёзд, тем крупнее ствол — заметно, что оружие прокачано
   // В бою герой мелкий (радиус ~20 px), поэтому ствол берём крупнее, чем
@@ -964,6 +1313,35 @@ export function drawWeaponInHand(ctx, { id, stars, angle, recoil, x, y, radius }
 }
 
 const WEAPON_IN_HAND = {
+  // Ветки для laser здесь нет намеренно: у лазера, как у вертушки, в руке
+  // ничего не держат — глаза светятся на лице, а луч рисует сам класс.
+
+  // 🪃 Бумеранг: плоский полумесяц
+  boomerang(ctx, recoil) {
+    ctx.strokeStyle = '#c98b3a';
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-1, 6);
+    ctx.quadraticCurveTo(10 + recoil * 3, -3, 17, 5);
+    ctx.stroke();
+    ctx.strokeStyle = '#f0c079';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+  },
+
+  // 🐝 Рой пчёл: баночка мёда, из которой они вылетают
+  bees(ctx, recoil) {
+    ctx.fillStyle = '#e0a437';
+    roundRect(ctx, -1, -5, 11, 10, 3);
+    ctx.fillStyle = '#8b5a2b';
+    roundRect(ctx, 0, -7, 9, 3, 1.5);
+    ctx.fillStyle = '#3b3b46';
+    [[13, -6], [16, -2], [12, 3]].forEach(([bx, by], i) => {
+      circle(ctx, bx + recoil * 2, by + Math.sin(i) * 1.5, 1.4);
+    });
+  },
+
   // --- Эволюции. Без своей ветки рука была бы пустой ---
 
   // 🌊 Водомёт: широкое сопло и струя
@@ -1140,6 +1518,105 @@ const WEAPON_IN_HAND = {
 //
 // Всё завязано на walkPhase, который в ярости и так растёт быстрее
 // (enrageSpeed в speedFactor) — отдельный таймер не нужен.
+// Полумаска охранника. Это самостоятельный персонаж, а не костюм из
+// сериала: светлая повязка на нос и рот, завязки, глаза открыты и добрые.
+function drawBossFace(ctx, r, look) {
+  if (look.face !== 'mask') return;
+  ctx.fillStyle = '#eef2f7';
+  roundRect(ctx, -r * 0.34, -r * 0.68, r * 0.68, r * 0.34, r * 0.1);
+  ctx.strokeStyle = '#c8d2de';
+  ctx.lineWidth = Math.max(1.5, r * 0.04);
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.34, -r * 0.6);
+  ctx.lineTo(-r * 0.5, -r * 0.68);
+  ctx.moveTo(r * 0.34, -r * 0.6);
+  ctx.lineTo(r * 0.5, -r * 0.68);
+  ctx.stroke();
+  // Складки
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.3, -r * 0.56);
+  ctx.lineTo(r * 0.3, -r * 0.56);
+  ctx.stroke();
+}
+
+// То, что уходит за спину. Пока это только лапки паука.
+function drawBossBack(ctx, r, look) {
+  if (look.back !== 'spiderlegs') return;
+  ctx.strokeStyle = '#3a3050';
+  ctx.lineWidth = Math.max(2, r * 0.07);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    [0, 1, 2, 3].forEach((i) => {
+      const spread = 0.25 + i * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(side * r * 0.3, r * 0.1);
+      ctx.quadraticCurveTo(
+        side * r * (0.9 + i * 0.1), r * (0.1 - spread * 0.8),
+        side * r * (1.1 + i * 0.12), r * (0.5 + i * 0.06),
+      );
+      ctx.stroke();
+    });
+  });
+}
+
+// Куча костей: босс рассыпался и собирается обратно. progress 0 — только что
+// упал, 1 — вот-вот встанет: косточки поднимаются и стягиваются к центру.
+export function drawBossBones(ctx, { radius, progress }) {
+  const r = radius;
+  const pull = progress * progress;   // к концу собирается заметно быстрее
+  ctx.save();
+  ctx.fillStyle = '#e8e4d4';
+  for (let i = 0; i < 11; i++) {
+    const angle = i * 2.4;
+    const spread = r * (1.1 - pull * 0.8);
+    const x = Math.cos(angle) * spread * (0.4 + (i % 3) * 0.3);
+    const y = r * 0.9 - pull * r * (0.6 + (i % 4) * 0.3) + Math.sin(angle) * r * 0.18;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + pull * 3);
+    roundRect(ctx, -r * 0.18, -r * 0.05, r * 0.36, r * 0.1, r * 0.05);
+    circle(ctx, -r * 0.18, 0, r * 0.07);
+    circle(ctx, r * 0.18, 0, r * 0.07);
+    ctx.restore();
+  }
+  // Череп сверху кучи
+  ctx.fillStyle = '#f3efe0';
+  const skullY = r * 0.55 - pull * r * 1.1;
+  circle(ctx, 0, skullY, r * 0.3);
+  ctx.fillStyle = '#3b3b46';
+  circle(ctx, -r * 0.11, skullY - r * 0.03, r * 0.08);
+  circle(ctx, r * 0.11, skullY - r * 0.03, r * 0.08);
+  ctx.restore();
+}
+
+// Липкая зона паука. Рисуется в мировых координатах, под персонажами.
+export function drawWeb(ctx, web, radius, maxLife) {
+  const fade = Math.min(1, web.life / maxLife);
+  ctx.save();
+  ctx.translate(web.x, web.y);
+  ctx.globalAlpha = 0.25 + fade * 0.45;
+  ctx.fillStyle = '#e8e8f5';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius, radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < 6; i++) {
+    const angle = web.seed + (i / 6) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.55);
+    ctx.stroke();
+  }
+  [0.4, 0.72, 1].forEach((k) => {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * k, radius * 0.55 * k, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 export function drawBossRage(ctx, { radius, walkPhase, look, style, layer }) {
   ctx.save();
   switch (style) {
@@ -1148,6 +1625,11 @@ export function drawBossRage(ctx, { radius, walkPhase, look, style, layer }) {
     case 'speed': drawSpeedRage(ctx, radius, walkPhase, layer); break;
     case 'frost': drawFrostRage(ctx, radius, walkPhase, layer, look); break;
     case 'blaze': drawBlazeRage(ctx, radius, walkPhase, layer); break;
+    case 'rattle': drawRattleRage(ctx, radius, walkPhase, layer); break;
+    case 'juggle': drawJuggleRage(ctx, radius, walkPhase, layer); break;
+    case 'command': drawCommandRage(ctx, radius, walkPhase, layer); break;
+    case 'webs': drawWebsRage(ctx, radius, walkPhase, layer); break;
+    case 'sparks': drawSparksRage(ctx, radius, walkPhase, layer); break;
     default: break;
   }
   ctx.restore();
@@ -1630,4 +2112,116 @@ export function drawShadow(ctx, radius) {
   ctx.ellipse(0, radius * 1.05, radius * 0.8, radius * 0.28, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+// 💀 Ярость костяного: косточки дребезжат вокруг и прыгают из-под ног.
+function drawRattleRage(ctx, r, phase, layer) {
+  ctx.fillStyle = '#fff6d8';
+  if (layer === 'back') {
+    for (let i = 0; i < 7; i++) {
+      const a = phase * 1.4 + (i / 7) * Math.PI * 2;
+      const d = r * (1.3 + Math.sin(phase * 3 + i) * 0.12);
+      ctx.save();
+      ctx.translate(Math.cos(a) * d, Math.sin(a) * d * 0.6);
+      ctx.rotate(a * 2);
+      roundRect(ctx, -r * 0.14, -r * 0.04, r * 0.28, r * 0.08, r * 0.04);
+      ctx.restore();
+    }
+    return;
+  }
+  for (let i = 0; i < 3; i++) {
+    const t = (phase * 0.9 + i * 0.33) % 1;
+    ctx.globalAlpha = 1 - t;
+    circle(ctx, (i - 1) * r * 0.4, r * (1 - t * 1.5), r * 0.09);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 🎪 Ярость клоуна: торты по орбите и брызги крема.
+function drawJuggleRage(ctx, r, phase, layer) {
+  if (layer === 'back') {
+    for (let i = 0; i < 3; i++) {
+      const a = phase * 2 + (i / 3) * Math.PI * 2;
+      ctx.fillStyle = '#ffd7e6';
+      circle(ctx, Math.cos(a) * r * 1.5, -r * 0.5 + Math.sin(a) * r * 0.55, r * 0.18);
+    }
+    return;
+  }
+  for (let i = 0; i < 5; i++) {
+    const t = (phase * 0.8 + i * 0.2) % 1;
+    ctx.fillStyle = i % 2 ? '#4fb3ff' : '#ffd93d';
+    ctx.globalAlpha = 1 - t;
+    circle(ctx, (i - 2) * r * 0.3, -r * (1.2 + t * 0.8), r * 0.08);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 🎭 Ярость охранника: кольца приказа и восклицательные знаки.
+function drawCommandRage(ctx, r, phase, layer) {
+  if (layer === 'back') {
+    ctx.strokeStyle = 'rgba(255,90,90,0.65)';
+    ctx.lineWidth = Math.max(2, r * 0.07);
+    for (let i = 0; i < 3; i++) {
+      const t = (phase * 0.7 + i * 0.33) % 1;
+      ctx.globalAlpha = 1 - t;
+      ctx.beginPath();
+      ctx.ellipse(0, r * 0.9, r * (0.5 + t * 1.4), r * (0.2 + t * 0.55), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+  ctx.fillStyle = '#ff5a5a';
+  [-1, 1].forEach((side) => {
+    const bob = Math.sin(phase * 4 + side) * r * 0.08;
+    roundRect(ctx, side * r * 0.55 - r * 0.05, -r * 1.6 + bob, r * 0.1, r * 0.24, r * 0.04);
+    circle(ctx, side * r * 0.55, -r * 1.28 + bob, r * 0.06);
+  });
+}
+
+// 🕷 Ярость паука: нити к земле и паучата по кругу.
+function drawWebsRage(ctx, r, phase, layer) {
+  if (layer === 'back') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.8;
+    [-1, 1].forEach((side) => {
+      [0.3, 0.6, 0.9].forEach((k) => {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.5, -r * 0.2);
+        ctx.quadraticCurveTo(
+          side * r * (1 + k), r * 0.3 + Math.sin(phase * 2 + k * 6) * r * 0.1,
+          side * r * (0.9 + k), r * 1.1,
+        );
+        ctx.stroke();
+      });
+    });
+    return;
+  }
+  ctx.fillStyle = '#2b2b3d';
+  for (let i = 0; i < 2; i++) {
+    const a = phase * 2.2 + i * Math.PI;
+    circle(ctx, Math.cos(a) * r * 1.2, -r * 0.4 + Math.sin(a) * r * 0.4, r * 0.1);
+  }
+}
+
+// ⚡ Ярость электрического: дуги по контуру и искры вверх.
+function drawSparksRage(ctx, r, phase, layer) {
+  if (layer === 'back') {
+    ctx.strokeStyle = 'rgba(255,243,107,0.8)';
+    ctx.lineWidth = Math.max(2, r * 0.06);
+    for (let i = 0; i < 5; i++) {
+      const a = phase * 3 + (i / 5) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.25, a, a + 0.5);
+      ctx.stroke();
+    }
+    return;
+  }
+  ctx.fillStyle = '#fff36b';
+  for (let i = 0; i < 5; i++) {
+    const t = (phase * 1.2 + i * 0.2) % 1;
+    ctx.globalAlpha = 1 - t;
+    drawStarShape(ctx, (i - 2) * r * 0.32, -r * (1.3 + t * 0.7), r * 0.1, 4);
+  }
+  ctx.globalAlpha = 1;
 }

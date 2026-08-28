@@ -4,7 +4,7 @@
 //   Rocket — доворачивает к цели, взрывается при попадании (ракета-морковка)
 // Урон по контакту считает systems/collisions.js (у кого damagesOnContact = true).
 
-import { circle } from '../render/sprites.js';
+import { circle, roundRect } from '../render/sprites.js';
 
 const OFFSCREEN_MARGIN = 60;
 
@@ -233,14 +233,7 @@ export class Rocket extends Projectile {
 
     // Плавный доворот к ближайшему зомби
     const target = world.findNearestEnemy(this.x, this.y);
-    if (target) {
-      const desired = Math.atan2(target.y - this.y, target.x - this.x);
-      let diff = desired - this.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      const maxTurn = this.turnSpeed * dt;
-      this.angle += Math.max(-maxTurn, Math.min(maxTurn, diff));
-    }
+    if (target) this.angle = steerToward(this.angle, this, target, this.turnSpeed, dt);
 
     this.x += Math.cos(this.angle) * this.speed * dt;
     this.y += Math.sin(this.angle) * this.speed * dt;
@@ -271,6 +264,200 @@ export class Rocket extends Projectile {
     // Ботва
     ctx.fillStyle = '#4caf50';
     circle(ctx, -this.radius * 0.7, 0, this.radius * 0.4);
+    ctx.restore();
+  }
+}
+
+// Плавный доворот к цели — общий для ракеты и пчелы.
+export function steerToward(angle, from, to, turnSpeed, dt) {
+  const desired = Math.atan2(to.y - from.y, to.x - from.x);
+  let diff = desired - angle;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const maxTurn = turnSpeed * dt;
+  return angle + Math.max(-maxTurn, Math.min(maxTurn, diff));
+}
+
+// --- Бумеранг: улетает вперёд, разворачивается и возвращается к хозяину ---
+export class Boomerang extends Projectile {
+  // owner — конкретный герой, а не world.player: вдвоём бумеранг второго
+  // обязан вернуться ко второму.
+  constructor(owner, angle, { speed, returnSpeed, range, damage, life }) {
+    super(owner.x, owner.y, damage);
+    this.owner = owner;
+    this.angle = angle;
+    this.speed = speed;
+    this.returnSpeed = returnSpeed;
+    this.range = range;
+    this.life = life;
+    this.radius = 12;
+    this.spin = 0;
+    this.travelled = 0;
+    this.phase = 'out';
+    this.damagesOnContact = true;
+    // Кого уже задели на этом отрезке пути. На развороте множество
+    // очищается — это и есть «задевает дважды».
+    this.hitEnemies = new Set();
+  }
+
+  get piercing() { return true; }
+  alreadyHit(enemy) { return this.hitEnemies.has(enemy); }
+  onHit(enemy) { this.hitEnemies.add(enemy); }
+
+  update(dt, world) {
+    this.life -= dt;
+    this.spin += dt * 14;
+    // Три предохранителя от «улетел и не вернулся»: таймаут, скорость
+    // возврата выше бега героя и мгновенный таймаут, если хозяин упал.
+    if (this.life <= 0 || (this.phase === 'back' && this.owner.downed)) {
+      this.alive = false;
+      world.particles.addBurst(this.x, this.y, 5, 0.6);
+      return;
+    }
+
+    if (this.phase === 'out') {
+      const step = this.speed * dt;
+      this.travelled += step;
+      this.x += Math.cos(this.angle) * step;
+      this.y += Math.sin(this.angle) * step;
+      if (this.travelled >= this.range) {
+        this.phase = 'back';
+        this.hitEnemies.clear();   // обратный путь считается заново
+      }
+      return;
+    }
+
+    this.angle = steerToward(this.angle, this, this.owner, 9, dt);
+    const step = this.returnSpeed * dt;
+    this.x += Math.cos(this.angle) * step;
+    this.y += Math.sin(this.angle) * step;
+    // Долетел до хозяина — поймал.
+    if (Math.hypot(this.owner.x - this.x, this.owner.y - this.y) < this.owner.radius + 6) {
+      this.alive = false;
+    }
+    // isOffscreen намеренно не проверяем: она убила бы бумеранг, который уже
+    // развернулся и летит назад из-за края. От вечного полёта страхует life.
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.spin);
+    ctx.strokeStyle = '#c98b3a';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-9, 5);
+    ctx.quadraticCurveTo(0, -8, 9, 5);
+    ctx.stroke();
+    ctx.strokeStyle = '#f0c079';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// --- Пчела: маленькая и вертлявая, живёт недолго, жалит один раз ---
+//
+// Отдельный класс, а не ракета с другими числами: Rocket на любой смерти
+// зовёт world.explode() — кольцо, урон по площади и грохот. Пчела должна
+// тихо истаять от старости, а это уже другая механика, не другие числа.
+export class Bee extends Projectile {
+  constructor(x, y, angle, { speed, turnSpeed, damage, life, retarget }) {
+    super(x, y, damage);
+    this.angle = angle;
+    this.speed = speed;
+    this.turnSpeed = turnSpeed;
+    this.life = life;
+    this.retarget = retarget;
+    this.retargetTimer = 0;
+    this.target = null;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.radius = 7;
+    this.damagesOnContact = true;
+  }
+
+  update(dt, world) {
+    this.life -= dt;
+    if (this.life <= 0) {
+      this.alive = false;
+      return;
+    }
+
+    // Цель пересматриваем раз в retarget секунд, а не каждый кадр: иначе
+    // шесть пчёл летят идеально синхронно одной точкой и рой не читается.
+    this.retargetTimer -= dt;
+    if (!this.target?.alive || this.retargetTimer <= 0) {
+      this.retargetTimer = this.retarget;
+      this.target = world.findNearestEnemy(this.x, this.y);
+    }
+    if (this.target) this.angle = steerToward(this.angle, this, this.target, this.turnSpeed, dt);
+
+    this.wobble += dt * 12;
+    const angle = this.angle + Math.sin(this.wobble) * 0.5;   // рой обязан вилять
+    this.x += Math.cos(angle) * this.speed * dt;
+    this.y += Math.sin(angle) * this.speed * dt;
+    if (this.isOffscreen(world.arena)) this.alive = false;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.fillStyle = '#ffd93d';
+    circle(ctx, 0, 0, 5);
+    ctx.fillStyle = '#3b3b46';
+    roundRect(ctx, -1.5, -5, 3, 10, 1.2);
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    const flap = Math.sin(this.wobble * 3) * 2;
+    ctx.beginPath();
+    ctx.ellipse(-5, -2 + flap, 4, 2.2, -0.5, 0, Math.PI * 2);
+    ctx.ellipse(5, -2 - flap, 4, 2.2, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// --- Торт клоуна: летит навесом в точку, где стоял герой, и шлёпается ---
+//
+// Отдельный класс, а не Lob: тот на приземлении зовёт world.explode(),
+// который бьёт врагов. Здесь всё наоборот — достаётся героям.
+export class CakeLob extends Projectile {
+  constructor(x, y, targetX, targetY, flightTime, blastRadius) {
+    super(x, y, 0);
+    this.startX = x;
+    this.startY = y;
+    this.targetX = targetX;
+    this.targetY = targetY;
+    this.flightTime = flightTime;
+    this.blastRadius = blastRadius;
+    this.elapsed = 0;
+    this.hop = 0;
+    this.spin = 0;
+    this.radius = 14;
+  }
+
+  update(dt, world) {
+    this.elapsed += dt;
+    this.spin += dt * 6;
+    const t = Math.min(1, this.elapsed / this.flightTime);
+    this.x = this.startX + (this.targetX - this.startX) * t;
+    this.y = this.startY + (this.targetY - this.startY) * t;
+    this.hop = Math.sin(t * Math.PI) * 90;
+    if (t < 1) return;
+    this.alive = false;
+    world.splat(this.targetX, this.targetY, this.blastRadius);
+  }
+
+  draw(ctx) {
+    // Мишень в точке падения рисует не снаряд, а частица-телеграф — см.
+    // Boss.updateCakes. Здесь только сам летящий торт.
+    ctx.save();
+    ctx.translate(this.x, this.y - this.hop);
+    ctx.rotate(this.spin);
+    ctx.fillStyle = '#ffd7e6';
+    circle(ctx, 0, 0, 11);
+    ctx.fillStyle = '#e34b3a';
+    circle(ctx, 0, -5, 4);
     ctx.restore();
   }
 }

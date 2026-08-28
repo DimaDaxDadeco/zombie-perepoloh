@@ -1,6 +1,8 @@
 // Частицы и эффекты: конфетти от лопнувших зомби, взрывы, молнии, взмахи, салют.
 // Всё чисто декоративное — на геймплей не влияет.
 
+import { circle, roundRect } from '../render/sprites.js';
+
 const CONFETTI_COLORS = ['#ffd93d', '#ff6b6b', '#4fb3ff', '#7fe57f', '#c77dff', '#ff9f43'];
 
 export class Particles {
@@ -10,6 +12,7 @@ export class Particles {
     this.bolts = [];
     this.slashes = [];
     this.entrances = [];  // эффекты появления боссов
+    this.telegraphs = []; // круги-предупреждения перед ударом
   }
 
   clear() {
@@ -18,6 +21,7 @@ export class Particles {
     this.bolts.length = 0;
     this.slashes.length = 0;
     this.entrances.length = 0;
+    this.telegraphs.length = 0;
   }
 
   // Зомби лопнул — брызги конфетти.
@@ -89,12 +93,39 @@ export class Particles {
         this.addRing(x, y, radius * 2.0, '#ff8a2b');
         this.addBurst(x, y, 24, 1.2);
         break;
+      case 'bones':
+        this.addShards(x, y, radius * 2.2, '#e8e4d4');
+        this.addRing(x, y, radius * 1.8, '#f3efe0');
+        break;
+      case 'balloons':
+        this.addBurst(x, y, 28, 1.3);
+        this.addRing(x, y, radius * 1.7, '#ffd7e6');
+        break;
+      case 'whistle':
+        this.addRing(x, y, radius * 2.2, '#ffd93d');
+        this.addBurst(x, y, 14, 0.9);
+        break;
+      case 'thread':
+        this.addRing(x, y, radius * 1.9, '#e8e8f5');
+        this.addBurst(x, y, 16, 1);
+        break;
+      case 'spark':
+        this.addLightning([{ x, y: y - radius * 6 }, { x, y }]);
+        this.addRing(x, y, radius * 2, '#fff36b');
+        break;
       default:
         this.addBurst(x, y, 18, 1);
     }
   }
 
   // Разлетающиеся осколки — лёд крошится, а не рассыпается конфетти.
+  // Круг-предупреждение под ногами героя. Рисуется частицей, а не в
+  // Boss.draw: ночной тинт кладётся между персонажами и частицами, и
+  // нарисованный в боссе круг ночью притух бы — а телеграф обязан быть виден.
+  addTelegraph(x, y, radius, duration) {
+    this.telegraphs.push({ x, y, radius, life: duration, maxLife: duration });
+  }
+
   addShards(x, y, radius, color) {
     for (let i = 0; i < 14; i++) {
       const angle = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
@@ -146,6 +177,11 @@ export class Particles {
       e.life -= dt;
       return e.life > 0;
     });
+
+    this.telegraphs = this.telegraphs.filter((t) => {
+      t.life -= dt;
+      return t.life > 0;
+    });
   }
 
   draw(ctx) {
@@ -179,6 +215,24 @@ export class Particles {
       ctx.stroke();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Круги-предупреждения: сжимаются к центру и мигают чаще к концу
+    for (const t of this.telegraphs) {
+      const done = 1 - t.life / t.maxLife;
+      ctx.save();
+      ctx.globalAlpha = 0.5 + Math.abs(Math.sin(done * 18)) * 0.5;
+      ctx.strokeStyle = '#ffe66d';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.radius * (1 - done * 0.85), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -235,6 +289,11 @@ function drawEntrance(ctx, e) {
     case 'rush': drawRushEntrance(ctx, e, t); break;
     case 'ice': drawIceEntrance(ctx, e, t); break;
     case 'fire': drawFireEntrance(ctx, e, t); break;
+    case 'bones': drawBonesEntrance(ctx, e, t); break;
+    case 'balloons': drawBalloonsEntrance(ctx, e, t); break;
+    case 'whistle': drawWhistleEntrance(ctx, e, t); break;
+    case 'thread': drawThreadEntrance(ctx, e, t); break;
+    case 'spark': drawSparkEntrance(ctx, e, t); break;
     default: break;
   }
   ctx.restore();
@@ -374,5 +433,115 @@ function drawFireEntrance(ctx, e, t) {
     );
     ctx.closePath();
     ctx.fill();
+  }
+}
+
+// 💀 Костяной: из земли вылетают косточки и складываются в силуэт.
+function drawBonesEntrance(ctx, e, t) {
+  const r = e.radius;
+  ctx.fillStyle = '#e8e4d4';
+  for (let i = 0; i < 12; i++) {
+    const angle = i * 2.1 + t * 4;
+    const spread = r * (2 - t * 1.5);
+    ctx.save();
+    ctx.translate(Math.cos(angle) * spread, Math.sin(angle) * spread * 0.5 + r * (1 - t) * 1.2);
+    ctx.rotate(angle * 2);
+    ctx.globalAlpha = Math.min(1, t * 2);
+    roundRect(ctx, -r * 0.16, -r * 0.05, r * 0.32, r * 0.1, r * 0.05);
+    ctx.restore();
+  }
+  if (t > 0.7) {
+    ctx.globalAlpha = (t - 0.7) / 0.3;
+    ctx.fillStyle = '#f3efe0';
+    circle(ctx, 0, -r * 0.6 - (1 - t) * r * 3, r * 0.32);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 🎪 Клоун: связка шариков опускает силуэт сверху и лопается.
+function drawBalloonsEntrance(ctx, e, t) {
+  const r = e.radius;
+  const drop = (1 - t) * r * 4;
+  const colors = ['#ff5d8f', '#4fb3ff', '#ffd93d', '#7fe57f'];
+  colors.forEach((color, i) => {
+    if (t > 0.75 + i * 0.05) return;    // лопаются один за другим
+    const bx = (i - 1.5) * r * 0.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bx, -r * 1.2 - drop);
+    ctx.lineTo(0, -r * 0.2 - drop);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    circle(ctx, bx, -r * 1.5 - drop, r * 0.3);
+  });
+}
+
+// 🎭 Охранник: три кольца свистка и растущая тень.
+function drawWhistleEntrance(ctx, e, t) {
+  const r = e.radius;
+  ctx.strokeStyle = '#ffd93d';
+  ctx.lineWidth = 4;
+  for (let i = 0; i < 3; i++) {
+    const k = (t * 1.5 + i * 0.33) % 1;
+    ctx.globalAlpha = 1 - k;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (0.4 + k * 2.2), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = t * 0.6;
+  ctx.fillStyle = '#22355e';
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.9, r * t, r * 0.35 * t, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// 🕷 Паук: спускается на нити, вокруг затягивается паутина.
+function drawThreadEntrance(ctx, e, t) {
+  const r = e.radius;
+  const drop = (1 - t) * r * 4;
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 8);
+  ctx.lineTo(0, -r * 0.4 - drop);
+  ctx.stroke();
+  ctx.fillStyle = '#3a3050';
+  circle(ctx, 0, -r * 0.4 - drop, r * 0.32);
+
+  ctx.strokeStyle = `rgba(255,255,255,${0.5 * t})`;
+  ctx.lineWidth = 1.5;
+  [0.5, 0.85, 1.2].forEach((k) => {
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.6, r * k * t, r * k * 0.45 * t, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
+// ⚡ Электрический: клубок разрядов, в конце удар сверху.
+function drawSparkEntrance(ctx, e, t) {
+  const r = e.radius;
+  ctx.strokeStyle = '#fff36b';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.05 + t * 8;
+    const len = r * (0.4 + t * 1.1);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len * 0.7);
+    ctx.stroke();
+  }
+  if (t > 0.8) {
+    ctx.globalAlpha = (t - 0.8) / 0.2;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 6);
+    ctx.lineTo(r * 0.2, -r * 3);
+    ctx.lineTo(-r * 0.2, -r * 1.5);
+    ctx.lineTo(0, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 }

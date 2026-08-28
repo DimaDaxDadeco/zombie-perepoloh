@@ -42,10 +42,12 @@ import { drawZombie, drawShadow } from './js/render/sprites.js';
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
-const H = canvas.height;
 
 const types = CONFIG.zombieTypes;
-const LANE_HEIGHT = H / types.length;
+// Высоту ставим из JS по числу видов: при делении фиксированной высоты
+// добавление вида молча сплющивает полосы, и фигуры лезут друг на друга.
+const LANE_HEIGHT = 118;
+canvas.height = types.length * LANE_HEIGHT;
 const BASE_RADIUS = 42;
 const BASE_SPEED = 60;          // масштаб скорости для стенда, пропорции как в игре
 const FREEZE_FACTOR = CONFIG.weapons.ice.freezeFactor[0];
@@ -90,7 +92,7 @@ function drawWalker(w) {
   const radius = BASE_RADIUS * w.type.radius;
   ctx.save();
   ctx.translate(w.x, w.y);
-  drawShadow(ctx, radius);
+  drawShadow(ctx, radius * (w.type.look.shadowScale ?? 1));
   drawZombie(ctx, {
     radius,
     walkPhase: w.phase,
@@ -117,7 +119,8 @@ function drawLanes() {
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(28,26,56,0.65)';
     ctx.fillText(
-      `с ${type.fromRound} раунда · здоровье ×${type.hp} · скорость ×${type.speed}`,
+      `с ${type.fromRound} раунда · здоровье ×${type.hp} · скорость ×${type.speed}`
+        + ` · ${type.behavior ?? 'идёт к герою'}${type.death ? ' · смерть: ' + type.death : ''}`,
       18, top + 52,
     );
 

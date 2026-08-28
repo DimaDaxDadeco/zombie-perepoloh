@@ -37,14 +37,21 @@ export class Zombie {
     this.target = null;
     this.targetTimer = 0;
 
-    // Особое поведение зомби-животных (см. updateBehavior).
+    // Особое поведение (см. updateBehavior).
     this.behaviorTimer = 0;
     this.underground = false;
+    this.heading = null;    // курс ролика: он доворачивает, а не идёт по прямой
+    this.rollSpeed = 0;
   }
 
   // Пока крот под землёй, его нельзя ни подстрелить, ни получить от него урон.
   get isHidden() {
     return this.underground;
+  }
+
+  // Шарик летит над толпой: не толкает её и не толкается ею (см. collisions).
+  get isFloating() {
+    return this.type?.behavior === 'float';
   }
 
   update(dt, world) {
@@ -106,6 +113,7 @@ export class Zombie {
   // способом. Стая собак — целиком забота спавнера, здесь её нет.
   updateBehavior(dt, world) {
     this.behaviorTimer += dt;
+    if (this.type?.behavior === 'skate') return this.updateSkate(dt, world);
     if (this.type?.behavior !== 'burrow') return false;
 
     if (this.underground) {
@@ -119,6 +127,30 @@ export class Zombie {
       this.behaviorTimer = 0;
     }
     return false;
+  }
+
+  // Ролики: разгоняется и катится, а повернуть может только плавно. Ребёнок
+  // учится не убегать по прямой, а шагнуть вбок — и зомби проезжает мимо.
+  //
+  // Разгон копится в своей rollSpeed до маршевой this.speed, а speedFactor
+  // умножает уже сам шаг. Из этого само собой выходит правильное: заморозка
+  // замедляет катящегося, «Мяу!» останавливает намертво, а разгон при этом
+  // не теряется — оттаяв, он продолжает ехать.
+  updateSkate(dt, world) {
+    const target = this.retarget(dt, world);
+    const want = Math.atan2(target.y - this.y, target.x - this.x);
+    if (this.heading === null) this.heading = want;
+
+    this.rollSpeed = Math.min(this.speed, this.rollSpeed + this.speed * this.type.accel * dt);
+    const maxTurn = this.type.turnRate * dt;
+    this.heading += clamp(wrapAngle(want - this.heading), -maxTurn, maxTurn);
+
+    const step = this.rollSpeed * this.speedFactor * dt;
+    this.x += Math.cos(this.heading) * step;
+    this.y += Math.sin(this.heading) * step;
+    this.facing = Math.cos(this.heading) >= 0 ? 1 : -1;
+    this.walkPhase += dt * 6 * this.speedFactor;
+    return true;   // обычным способом он в этом кадре не двигается
   }
 
   // Выныривает ближе к герою, но не вплотную: правило «у ребёнка всегда есть
@@ -196,8 +228,44 @@ export class Zombie {
     const dx = this.x - fromX;
     const dy = this.y - fromY;
     const dist = Math.hypot(dx, dy) || 1;
-    this.knockback.x = (dx / dist) * force;
-    this.knockback.y = (dy / dist) * force;
+    // Шарик сдувает дальше всех — именно это и читается как «он лёгкий».
+    // Отключать ему отброс было бы ошибкой: улетающий шарик и есть эффект.
+    const push = force * (this.type?.knockbackFactor ?? 1);
+    this.knockback.x = (dx / dist) * push;
+    this.knockback.y = (dy / dist) * push;
+  }
+
+  // Что вид зомби делает, лопаясь. Поле death из CONFIG.zombieTypes — здесь
+  // единственная развилка: два разных способа «сделать что-то при смерти»
+  // расползутся по коду за один вечер.
+  onDeath(world) {
+    switch (this.type?.death) {
+      case 'split': return this.splitInto(world);
+      case 'blast': return world.explode(
+        this.x, this.y, this.type.blastRadius, this.type.blastDamage, 'pumpkin',
+      );
+      case 'confetti': return world.particles.addBurst(this.x, this.y, 34, 1.6);
+      default: return undefined;
+    }
+  }
+
+  // Осколки делает спавнер, а не сам зомби: только он знает baseHp этого
+  // раунда, и малыши обязаны расти вместе со всеми, а не остаться вечными
+  // однохитовыми.
+  splitInto(world) {
+    const spec = this.type.spawn;
+    // Тип ребёнка производный от родительского: id сохраняется (наклейка в
+    // альбоме та же), а spawn и death снимаются — делиться дальше некому.
+    const kidType = { ...this.type, ...spec, spawn: null, death: null };
+    for (let i = 0; i < spec.count; i++) {
+      const angle = (i / spec.count) * Math.PI * 2 + Math.random();
+      world.addEnemy(world.spawner.makeZombie(
+        this.x + Math.cos(angle) * this.radius,
+        this.y + Math.sin(angle) * this.radius,
+        kidType,
+      ));
+    }
+    world.particles.addBurst(this.x, this.y, 12, 0.9);
   }
 
   draw(ctx) {
@@ -213,7 +281,7 @@ export class Zombie {
       return;
     }
 
-    drawShadow(ctx, this.radius);
+    drawShadow(ctx, this.radius * (this.look.shadowScale ?? 1));
     drawZombie(ctx, {
       radius: this.radius,
       walkPhase: this.walkPhase,
@@ -227,4 +295,16 @@ export class Zombie {
     });
     ctx.restore();
   }
+}
+
+// Разница углов к −π…π. Без неё зомби на границе ±π крутится волчком.
+function wrapAngle(angle) {
+  let a = angle;
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }

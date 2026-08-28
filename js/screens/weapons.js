@@ -25,7 +25,7 @@ export class WeaponsScreen extends Overlay {
     this.selected = index >= 0 ? index : 0;
 
     this.setContent(`
-      <div class="panel panel--characters">
+      <div class="panel panel--characters panel--weapons">
         <h2 class="title title--small">${playerTitle(playerIndex, total)}С ЧЕГО НАЧНЁМ?</h2>
         <div class="heroes">
           ${ALL_WEAPON_IDS.map((id, i) => this.renderCard(id, i)).join('')}
@@ -88,6 +88,9 @@ const WEAPON_HINTS = {
   fire: 'Поджигает зомби',
   ice: 'Замораживает зомби',
   saber: 'Рубит всех рядом',
+  laser: 'Жжёт лучом насквозь',
+  boomerang: 'Улетает и возвращается',
+  bees: 'Летят и жалят сами',
 };
 
 function describeWeapon(id) {
