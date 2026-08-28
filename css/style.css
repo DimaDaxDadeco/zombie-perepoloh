@@ -357,9 +357,12 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
 
 #touch-marker.visible { opacity: 1; }
 
+/* Слева: ребёнок держит устройство двумя руками и ведёт героя правой, а
+   способность жмёт левым большим пальцем. Справа кнопка попадала под ту же
+   руку, что ведёт героя. */
 #touch-ability {
   position: absolute;
-  right: calc(28px + env(safe-area-inset-right));
+  left: calc(28px + env(safe-area-inset-left));
   bottom: calc(28px + env(safe-area-inset-bottom));
   width: 88px;             /* вдвое больше рекомендаций Apple: промахнуться нельзя */
   height: 88px;

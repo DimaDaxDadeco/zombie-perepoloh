@@ -131,7 +131,7 @@ export const CONFIG = {
       name: 'Супер-Егор',
       about: 'Бегает быстрее всех',
       perk: { speedBonus: 30 },
-      ability: 'dash',
+      ability: 'portal',
       look: {
         skin: '#f7c9a0', hair: '#3b2a1c', hairStyle: 'cap',
         shirt: '#ffffff', pants: '#2f3550',
@@ -210,10 +210,14 @@ export const CONFIG = {
       radius: 260, damage: 6, force: 900,
       shake: { strength: 12, time: 0.35 },
     },
-    dash: {
-      name: 'Супер-скорость', emoji: '🏃', about: 'Бежишь как ветер',
-      color: '#7fd8ff',
-      duration: 5, speedFactor: 2, knockback: 700,
+    portal: {
+      name: 'Портал', emoji: '🌀', about: 'Затягивает зомби в иной мир',
+      color: '#b06bff',
+      duration: 3,
+      radius: 200,      // кого достаёт воронка
+      pull: 340,        // пикселей в секунду к жерлу — быстрее, чем зомби бегут
+      damage: 8,        // столько получает дошедший: толстяк на поздних раундах выживет
+      grip: 26,         // ближе этого к герою считается «затянуло»
     },
     turbo: {
       name: 'Турбо', emoji: '⚡', about: 'Оружие палит вдвое чаще',
@@ -242,9 +246,10 @@ export const CONFIG = {
   zombieTypes: [
     {
       id: 'normal', name: 'Обычный', about: 'Обычный зомби, ковыляет не спеша',
-      // Вес подняли с 10 до 13, когда добавили четыре новых вида: иначе доля
-      // обычного падала с 26% до 20%, а он обязан оставаться большинством.
-      hp: 1, speed: 1, radius: 1, weight: 13, fromRound: 1,
+      // Вес растёт вместе со списком видов: 10 → 13 на четырёх новых, 13 → 14
+      // на ниндзя. Иначе доля обычного сползает (сейчас держится около 25%), а
+      // он обязан оставаться большинством — на нём читается фон боя.
+      hp: 1, speed: 1, radius: 1, weight: 14, fromRound: 1,
       look: { skin: '#8fd67a', clothes: '#7a6bb5', body: 'normal' },
     },
     {
@@ -349,6 +354,26 @@ export const CONFIG = {
       look: {
         shape: 'snow', skin: '#eef6ff', nose: '#ff8a2b',
         bucket: '#8aa3b8', twigs: '#7a5a3a',
+      },
+    },
+    {
+      // Ниндзя переиспользует механику крота целиком: те же burrow-поля, тот
+      // же isHidden, тот же прыжок к герою. Отличается только одеждой — вместо
+      // холмика земли дымка. Второй такой же код был бы двумя источниками
+      // правды на одно поведение.
+      id: 'ninja', name: 'Зомби-ниндзя', about: 'Исчезает в дымке и прыгает к тебе',
+      behavior: 'ninja',
+      hp: 0.6, speed: 1.3, radius: 0.8, weight: 3, fromRound: 9,
+      burrowInterval: 3.5,             // секунд на виду до исчезновения
+      burrowTime: 1.2,                 // дымка висит всю эту секунду — телеграф
+      burrowJump: 260,                 // дальше кротовых 240: он же ниндзя
+      // Ближе этого не приземляется. Кротовы 340 ниндзя не годятся: он быстрый
+      // и к моменту рывка уже ближе, так что прыжок выходил нулевым. 220 px —
+      // это почти секунда бега героя, времени увидеть и отойти хватает.
+      landNoCloser: 220,
+      look: {
+        skin: '#9fd6c0', clothes: '#2b2b3d', body: 'thin', hair: 'spiky',
+        mask: '#1c1c28',
       },
     },
   ],
@@ -494,6 +519,14 @@ export const CONFIG = {
     perLevel: 2,            // +столько за каждый следующий
   },
 
+  hud: {
+    // Экран, у которого меньшая сторона короче этого, считается телефоном:
+    // HUD на нём ужимается до сердечек, таймера и тонкой полосы опыта.
+    // Смотрим на РАЗМЕР, а не на тач: планшет тоже сенсорный, но места на нём
+    // достаточно. iPhone 375x812 сюда попадает, iPad 768x1024 — нет.
+    compactBelow: 500,
+  },
+
   pickups: {
     medalXp: 1,             // опыта за одну медальку
     collectRadius: 26,
@@ -522,14 +555,14 @@ export const CONFIG = {
       flightTime: 0.55,
     },
     lightning: {
-      name: 'Молния', emoji: '⚡',
+      name: 'Молния', emoji: '⚡', evolution: 'stormbolt',
       cooldown: [1.5, 1.3, 1.15, 1.0, 0.85],
       chain:    [1, 2, 2, 3, 4],
       damage:   [3, 3, 4, 4, 5],
       chainRadius: 170,
     },
     spinner: {
-      name: 'Вертушка', emoji: '🌀',
+      name: 'Вертушка', emoji: '🌀', evolution: 'cyclone',
       // Вертушка бьёт вблизи, а ребёнок убегает — поэтому со старта ей нужны
       // две лопасти и широкая орбита, иначе преследователи её не задевают.
       blades:   [2, 2, 3, 3, 4],
@@ -539,7 +572,7 @@ export const CONFIG = {
       hitCooldown: 0.4,     // пауза между ударами по одному зомби
     },
     rocket: {
-      name: 'Ракета-морковка', emoji: '🥕',
+      name: 'Ракета-морковка', emoji: '🥕', evolution: 'carrotswarm',
       cooldown: [3.5, 3.1, 2.7, 2.3, 1.9],
       radius:   [80, 90, 100, 115, 130],
       damage:   [5, 6, 7, 8, 10],
@@ -547,7 +580,7 @@ export const CONFIG = {
       turnSpeed: 3.5,       // как резко доворачивает к цели
     },
     fire: {
-      name: 'Огнемёт', emoji: '🔥',
+      name: 'Огнемёт', emoji: '🔥', evolution: 'firestorm',
       cooldown: [0.9, 0.8, 0.7, 0.6, 0.5],
       damage:   [1, 1, 2, 2, 3],   // урон самой струи
       burnDps:  [1, 2, 2, 3, 4],   // и сколько капает каждую секунду горения
@@ -558,7 +591,7 @@ export const CONFIG = {
       range: 330,                  // пламя гаснет на лету: бьёт ближе других, но достаёт
     },
     ice: {
-      name: 'Ледяная пушка', emoji: '❄️',
+      name: 'Ледяная пушка', emoji: '❄️', evolution: 'blizzard',
       cooldown:    [1.1, 0.95, 0.85, 0.75, 0.65],
       damage:      [2, 2, 3, 4, 5],
       freezeTime:  [1.4, 1.7, 2.0, 2.4, 2.8],
@@ -576,7 +609,7 @@ export const CONFIG = {
     },
 
     laser: {
-      name: 'Лазерные глаза', emoji: '👁',
+      name: 'Лазерные глаза', emoji: '👁', evolution: 'wideray',
       // Луч бьёт мгновенно, не промахивается и работает без пауз, поэтому
       // урон за секунду держим ниже водяного пистолета: платит он охватом.
       cooldown:   [0.4, 0.35, 0.3, 0.26, 0.22],   // пауза между прожигами
@@ -586,7 +619,7 @@ export const CONFIG = {
       beamWidth: 9,       // луч тонкий: задевает только тех, кто реально на линии
     },
     boomerang: {
-      name: 'Бумеранг', emoji: '🪃',
+      name: 'Бумеранг', emoji: '🪃', evolution: 'doubleboomerang',
       cooldown: [1.4, 1.25, 1.1, 1.0, 0.85],
       damage:   [2, 2, 3, 3, 4],
       range:    [220, 240, 260, 290, 320],        // где разворачивается
@@ -595,7 +628,7 @@ export const CONFIG = {
       spread: 0.5, life: 4,                       // не догнал за 4 секунды — растаял
     },
     bees: {
-      name: 'Рой пчёл', emoji: '🐝',
+      name: 'Рой пчёл', emoji: '🐝', evolution: 'hive',
       cooldown: [2.2, 2.0, 1.8, 1.6, 1.4],
       count:    [3, 3, 4, 5, 6],
       damage:   [2, 2, 2, 3, 3],
@@ -621,6 +654,60 @@ export const CONFIG = {
       evolved: true,
       name: 'Двойной меч', emoji: '🗡', about: 'Рубит вокруг себя',
       cooldown: [0.38], damage: [9], reach: [155], arc: [6.3],
+    },
+    stormbolt: {
+      evolved: true,
+      name: 'Гроза', emoji: '🌩', about: 'Молния прыгает по всей толпе',
+      cooldown: [0.8], chain: [7], damage: [5], chainRadius: 230,
+    },
+    cyclone: {
+      evolved: true,
+      name: 'Циклон', emoji: '💠', about: 'Два кольца лопастей',
+      blades: [6], orbit: [150], damage: [5],
+      spinSpeed: 4.0, hitCooldown: 0.32,
+      // Второе кольцо, поближе: снаружи оно ловит подбегающих, внутри —
+      // тех, кто уже прорвался. Единственное отличие от вертушки в коде.
+      innerOrbit: 82,
+    },
+    carrotswarm: {
+      evolved: true,
+      name: 'Морковный залп', emoji: '🧡', about: 'Три ракеты разом',
+      cooldown: [2.2], radius: [120], damage: [8], count: [3],
+      speed: 320, turnSpeed: 3.8, spread: 0.5,
+    },
+    firestorm: {
+      evolved: true,
+      name: 'Огненный шторм', emoji: '🌋', about: 'Жжёт дольше и шире',
+      cooldown: [0.42], damage: [3], burnDps: [6], burnTime: [5.0], count: [7],
+      spread: 0.5, speed: 340, range: 360,
+    },
+    blizzard: {
+      evolved: true,
+      name: 'Метель', emoji: '🌨', about: 'Морозит целую пачку',
+      cooldown: [0.55], damage: [5], freezeTime: [3.4], freezeFactor: [0.25], count: [5],
+      spread: 0.34, speed: 440,
+    },
+    wideray: {
+      evolved: true,
+      name: 'Широкий луч', emoji: '🔭', about: 'Толстый луч, но короче',
+      // Единственная эволюция, идущая ВБОК, а не вверх. Лазер и без неё
+      // сильнейшее оружие в сетке, и прямое усиление сделало бы его
+      // безальтернативным. Поэтому: втрое шире и вдвое больше целей — но
+      // дальность ниже, чем у лазера даже на первой звезде.
+      cooldown: [0.22], damage: [2], range: [260], maxTargets: [10],
+      beamWidth: 30,
+    },
+    doubleboomerang: {
+      evolved: true,
+      name: 'Двойной бумеранг', emoji: '🌟', about: 'Летит крест-накрест',
+      cooldown: [0.7], damage: [5], range: [340], count: [4],
+      speed: 470, returnSpeed: 560, spread: 1.6, life: 4,
+    },
+    hive: {
+      evolved: true,
+      name: 'Улей', emoji: '🍯', about: 'Пчёл вдвое больше',
+      cooldown: [1.0], count: [10], damage: [3],
+      speed: 240, turnSpeed: 7, life: 3.2, spread: 2.0, retarget: 0.3,
     },
   },
   startingWeapon: 'water',

@@ -227,6 +227,9 @@ export class Game {
           round: this.round.round,
           bossActive: this.round.bossActive,
           modifier: this.round.modifier,
+          // На телефоне HUD ужимается: считаем признак здесь, чтобы Hud не
+          // лез в размеры окна сам.
+          compact: Math.min(arena.width, arena.height) < CONFIG.hud.compactBelow,
         });
       }
     } else {

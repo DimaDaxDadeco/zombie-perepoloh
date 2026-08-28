@@ -1,7 +1,7 @@
 // Обычный зомби: медленно бредёт к герою и лопается от попаданий.
 
 import { CONFIG } from '../config.js';
-import { drawZombie, drawShadow, drawMoleMound } from '../render/sprites.js';
+import { drawZombie, drawShadow, drawMoleMound, drawSmokePuff } from '../render/sprites.js';
 
 const HURT_FLASH_TIME = 0.09;
 
@@ -114,7 +114,10 @@ export class Zombie {
   updateBehavior(dt, world) {
     this.behaviorTimer += dt;
     if (this.type?.behavior === 'skate') return this.updateSkate(dt, world);
-    if (this.type?.behavior !== 'burrow') return false;
+    // Крот и ниндзя — одно поведение под двумя именами: пропасть и появиться
+    // рядом с героем. Различаются только тем, что видно, пока их нет
+    // (холмик земли против дымки), и это решается в draw(), а не здесь.
+    if (!this.isVanisher) return false;
 
     if (this.underground) {
       if (this.behaviorTimer < this.type.burrowTime) return true;
@@ -123,10 +126,22 @@ export class Zombie {
     }
 
     if (this.behaviorTimer >= this.type.burrowInterval) {
-      this.underground = true;
-      this.behaviorTimer = 0;
+      this.vanish(world);
     }
     return false;
+  }
+
+  get isVanisher() {
+    const behavior = this.type?.behavior;
+    return behavior === 'burrow' || behavior === 'ninja';
+  }
+
+  // Пропал. Ниндзя оставляет облачко на месте исчезновения — иначе он просто
+  // мигает, и ребёнок не понимает, куда он делся. Крот и так оставляет холмик.
+  vanish(world) {
+    this.underground = true;
+    this.behaviorTimer = 0;
+    if (this.type.behavior === 'ninja') world.particles.addBurst(this.x, this.y, 12, 0.8);
   }
 
   // Ролики: разгоняется и катится, а повернуть может только плавно. Ребёнок
@@ -153,20 +168,47 @@ export class Zombie {
     return true;   // обычным способом он в этом кадре не двигается
   }
 
-  // Выныривает ближе к герою, но не вплотную: правило «у ребёнка всегда есть
-  // время увидеть и убежать» действует и здесь.
+  // Появился. Куда именно — зависит от вида, и это единственное, чем крот и
+  // ниндзя отличаются механически.
   surface(world) {
     this.underground = false;
     this.behaviorTimer = 0;
 
     const target = this.target || world.nearestPlayer(this.x, this.y);
+    const spot = this.type.behavior === 'ninja'
+      ? this.ninjaLanding(target)
+      : this.burrowLanding(target);
+    const margin = this.radius;
+    this.x = clamp(spot.x, margin, world.arena.width - margin);
+    this.y = clamp(spot.y, margin, world.arena.height - margin);
+    world.particles.addBurst(this.x, this.y, 10, 0.7);
+  }
+
+  // Крот подбирается ближе к герою, но не вплотную: правило «у ребёнка всегда
+  // есть время увидеть и убежать» действует и здесь.
+  burrowLanding(target) {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const jump = Math.min(this.type.burrowJump, Math.max(0, dist - CONFIG.spawner.minDistanceFromPlayer));
-    this.x += (dx / dist) * jump;
-    this.y += (dy / dist) * jump;
-    world.particles.addBurst(this.x, this.y, 10, 0.7);
+    const jump = Math.min(this.type.burrowJump,
+      Math.max(0, dist - CONFIG.spawner.minDistanceFromPlayer));
+    return { x: this.x + (dx / dist) * jump, y: this.y + (dy / dist) * jump };
+  }
+
+  // Ниндзя появляется на СЛУЧАЙНОЙ стороне от героя, а не просто ближе к нему.
+  //
+  // Прыжок «в лоб», как у крота, ему не годится: ниндзя быстрый и к моменту
+  // рывка уже ближе любого честного порога, так что прыжок каждый раз выходил
+  // нулевым — механика не срабатывала ни разу за раунд. Здесь же рывок меняет
+  // не расстояние, а СТОРОНУ, и потому осмыслен всегда: он может выскочить
+  // ровно там, куда ребёнок убегал.
+  ninjaLanding(target) {
+    const current = Math.hypot(this.x - target.x, this.y - target.y);
+    // Не ближе порога — но и не дальше, чем он уже был: рывок не должен
+    // отбрасывать его назад, в безопасность.
+    const dist = Math.min(Math.max(current, 1), this.type.landNoCloser);
+    const angle = Math.random() * Math.PI * 2;
+    return { x: target.x + Math.cos(angle) * dist, y: target.y + Math.sin(angle) * dist };
   }
 
   // Замороженный зомби ползёт медленнее — это видно по походке.
@@ -272,11 +314,10 @@ export class Zombie {
     ctx.save();
     ctx.translate(this.x, this.y);
 
-    if (this.underground) {            // виден только холмик земли
-      drawMoleMound(ctx, {
-        radius: this.radius,
-        progress: this.behaviorTimer / (this.type?.burrowTime || 1),
-      });
+    if (this.underground) {            // виден только след: холмик или дымка
+      const trace = { radius: this.radius, progress: this.behaviorTimer / (this.type?.burrowTime || 1) };
+      if (this.type?.behavior === 'ninja') drawSmokePuff(ctx, trace);
+      else drawMoleMound(ctx, trace);
       ctx.restore();
       return;
     }

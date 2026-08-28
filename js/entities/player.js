@@ -33,8 +33,6 @@ export class Player {
     // Суперспособность героя. Экземпляр создаёт Round — Player не должен
     // знать про CONFIG.characters.
     this.ability = null;
-    this.boostTimer = 0;    // рывок Супер-Егора: быстрее и неуязвим
-    this.boostFactor = 1;
     this.turboTimer = 0;    // турбо Робота: оружие стреляет чаще
     this.glowPhase = 0;     // фаза пульсации свечения «способность готова»
 
@@ -74,24 +72,17 @@ export class Player {
     this.invulnTimer = CONFIG.coop.reviveInvuln;
   }
 
-  // В рывке герой неуязвим — это и даёт право пробегать сквозь толпу.
   get isInvulnerable() {
-    return this.invulnTimer > 0 || this.boostTimer > 0 || this.downed;
+    return this.invulnTimer > 0 || this.downed;
   }
 
   get isChilled() {
     return this.chillTimer > 0;
   }
 
-  get isDashing() {
-    return this.boostTimer > 0;
-  }
-
   // Множители скорости бега и скорострельности — по образцу Zombie.speedFactor.
   get speedFactor() {
-    const chill = this.chillTimer > 0 ? this.chillFactor : 1;
-    const boost = this.boostTimer > 0 ? this.boostFactor : 1;
-    return chill * boost;
+    return this.chillTimer > 0 ? this.chillFactor : 1;
   }
 
   get fireRateFactor() {
@@ -102,13 +93,6 @@ export class Player {
   chill(factor, duration) {
     this.chillFactor = factor;
     this.chillTimer = Math.max(this.chillTimer, duration);
-  }
-
-  // Разогнать героя: factor 2 — вдвое быстрее. Как и chill(), эффект
-  // продлевается, а не складывается.
-  boost(factor, duration) {
-    this.boostFactor = factor;
-    this.boostTimer = Math.max(this.boostTimer, duration);
   }
 
   turbo(duration) {
@@ -144,11 +128,10 @@ export class Player {
     }
     this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     this.chillTimer = Math.max(0, this.chillTimer - dt);
-    this.boostTimer = Math.max(0, this.boostTimer - dt);
     this.turboTimer = Math.max(0, this.turboTimer - dt);
     this.activeWeaponTimer = Math.max(0, this.activeWeaponTimer - dt);
     this.glowPhase += dt * 4;
-    this.ability?.update(dt);
+    this.ability?.update(dt, world, this);   // порталу нужен мир: он тянет зомби каждый кадр
     this.updateRegen(dt, world);
 
     const speed = this.speed * this.speedFactor;
@@ -258,10 +241,8 @@ export class Player {
     // взаимоисключающи: применил — заряд обнулился.
     this.drawAbilityFx(ctx, 'back');
 
-    // Во время неуязвимости герой мигает. В рывке — не мигает: иначе
-    // Супер-Егор пять секунд подряд стробит по глазам.
-    const blinking = this.invulnTimer > 0 && !this.isDashing
-      && Math.floor(this.invulnTimer * 10) % 2 === 0;
+    // Во время неуязвимости герой мигает.
+    const blinking = this.invulnTimer > 0 && Math.floor(this.invulnTimer * 10) % 2 === 0;
     if (this.downed) ctx.globalAlpha = 0.4;   // призрак — полупрозрачный
     drawHero(ctx, {
       radius: this.radius,

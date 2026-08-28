@@ -67,7 +67,7 @@ class TomatoLauncher extends Weapon {
 
 // ⚡ Молния — мгновенный удар с перескоком на соседних зомби.
 class Lightning extends Weapon {
-  constructor() { super('lightning'); }
+  constructor(id = 'lightning') { super(id); }
 
   fire(world, target, owner) {
     const damage = this.stat('damage');
@@ -93,8 +93,8 @@ class Lightning extends Weapon {
 
 // 🌀 Вертушка — лопасти крутятся вокруг героя и бьют всех, кого задевают.
 class Spinner extends Weapon {
-  constructor() {
-    super('spinner');
+  constructor(id = 'spinner') {
+    super(id);
     this.angle = 0;
     this.hitCooldowns = new Map(); // зомби -> сколько секунд до следующего удара
   }
@@ -124,11 +124,21 @@ class Spinner extends Weapon {
 
   getBladePositions(player) {
     const blades = this.stat('blades');
-    const orbit = this.stat('orbit');
+    // innerOrbit есть только у циклона: внешнее кольцо ловит подбегающих,
+    // внутреннее — тех, кто уже прорвался. Обычная вертушка поля не имеет,
+    // и колец остаётся одно.
+    const orbits = [this.stat('orbit')];
+    if (this.spec.innerOrbit) orbits.push(this.spec.innerOrbit);
+
     const positions = [];
-    for (let i = 0; i < blades; i++) {
-      const a = this.angle + (i * Math.PI * 2) / blades;
-      positions.push({ x: player.x + Math.cos(a) * orbit, y: player.y + Math.sin(a) * orbit });
+    for (const [ring, orbit] of orbits.entries()) {
+      // Внутреннее кольцо смещено на полшага — иначе лопасти выстраиваются
+      // в спицы и между ними остаются широкие дыры.
+      const shift = (ring * Math.PI) / blades;
+      for (let i = 0; i < blades; i++) {
+        const a = this.angle + (i * Math.PI * 2) / blades + shift;
+        positions.push({ x: player.x + Math.cos(a) * orbit, y: player.y + Math.sin(a) * orbit });
+      }
     }
     return positions;
   }
@@ -157,22 +167,28 @@ class Spinner extends Weapon {
 
 // 🥕 Ракета-морковка — редко, но очень громко.
 class CarrotRocket extends Weapon {
-  constructor() { super('rocket'); }
+  constructor(id = 'rocket') { super(id); }
 
   fire(world, target, owner) {
     const player = owner;
-    const angle = Math.atan2(target.y - player.y, target.x - player.x);
-    world.addProjectile(new Rocket(
-      player.x, player.y, angle,
-      this.spec.speed, this.spec.turnSpeed,
-      this.stat('damage'), this.stat('radius'),
-    ));
+    const base = Math.atan2(target.y - player.y, target.x - player.x);
+    // count есть только у эволюции: у обычной ракеты поля нет, stat() вернёт
+    // undefined, и залп схлопывается в один выстрел — как было.
+    const count = this.stat('count') ?? 1;
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * (this.spec.spread ?? 0);
+      world.addProjectile(new Rocket(
+        player.x, player.y, base + offset,
+        this.spec.speed, this.spec.turnSpeed,
+        this.stat('damage'), this.stat('radius'),
+      ));
+    }
   }
 }
 
 // 🔥 Огнемёт — короткая струя пламени, поджигает всех, кого задела.
 class Flamethrower extends Weapon {
-  constructor() { super('fire'); }
+  constructor(id = 'fire') { super(id); }
 
   fire(world, target, owner) {
     const player = owner;
@@ -199,7 +215,7 @@ class Flamethrower extends Weapon {
 
 // ❄️ Ледяная пушка — бьёт снежинками и замораживает зомби на месте.
 class IceCannon extends Weapon {
-  constructor() { super('ice'); }
+  constructor(id = 'ice') { super(id); }
 
   fire(world, target, owner) {
     const player = owner;
@@ -267,8 +283,8 @@ function angleDifference(a, b) {
 // ради одного оружия, а частые снаряды отдали бы урон на откуп частоте
 // кадров: одна и та же капля била бы одного зомби каждый кадр полёта.
 class LaserEyes extends Weapon {
-  constructor() {
-    super('laser');
+  constructor(id = 'laser') {
+    super(id);
     this.burnTimer = 0;
     this.beamOn = false;
     this.beamLen = 0;
@@ -384,7 +400,7 @@ class LaserEyes extends Weapon {
 
 // 🪃 Бумеранг — улетает и возвращается, задевая всех дважды.
 class BoomerangThrower extends Weapon {
-  constructor() { super('boomerang'); }
+  constructor(id = 'boomerang') { super(id); }
 
   fire(world, target, owner) {
     const base = Math.atan2(target.y - owner.y, target.x - owner.x);
@@ -429,9 +445,22 @@ const WEAPON_CLASSES = {
   tomato: TomatoLauncher,
   // Эволюции, у которых меняется только арифметика, переиспользуют класс
   // родителя: id приходит параметром, а не зашит в super().
+  //
+  // ВАЖНО: класс-родитель обязан принимать id аргументом — `constructor(id =
+  // 'water') { super(id) }`. Если он зашивает своё имя в super(), эволюция
+  // молча создаётся с характеристиками РОДИТЕЛЯ: ничего не падает, игрок
+  // просто не получает награду. Проверять надо выдачей, а не глазами.
   watercannon: WaterCannon,
   tomatocannon: TomatoLauncher,
   dualsaber: LightSaber,
+  stormbolt: Lightning,
+  cyclone: Spinner,
+  carrotswarm: CarrotRocket,
+  firestorm: Flamethrower,
+  blizzard: IceCannon,
+  wideray: LaserEyes,
+  doubleboomerang: BoomerangThrower,
+  hive: BeeSwarm,
   lightning: Lightning,
   spinner: Spinner,
   rocket: CarrotRocket,
@@ -453,6 +482,22 @@ export function createWeapon(id) {
 // стартового оружия, ни в карточках «новое оружие» им не место.
 export const ALL_WEAPON_IDS = Object.keys(CONFIG.weapons)
   .filter((id) => !CONFIG.weapons[id].evolved);
+
+// Обратная карта к CONFIG.weapons[*].evolution: «водомёт» → «водяной пистолет».
+// Считаем из уже существующего поля, а не пишем руками: второй список тех же
+// пар неизбежно разъедется с первым.
+const EVOLUTION_PARENT = Object.fromEntries(
+  Object.entries(CONFIG.weapons)
+    .filter(([, spec]) => spec.evolution)
+    .map(([id, spec]) => [spec.evolution, id]),
+);
+
+// Каким оружием эволюция была до превращения. Нужна везде, где спрашивают
+// «а это у героя уже есть?»: после эволюции id меняется, и без приведения к
+// родителю игра снова предлагала бы исходное оружие первого уровня.
+export function baseWeaponId(id) {
+  return EVOLUTION_PARENT[id] ?? id;
+}
 
 // Пятая звезда превращает оружие в улучшенное. Заменяем экземпляр, а не
 // поднимаем флаг: флаг превратил бы восемь классов в шестнадцать веток

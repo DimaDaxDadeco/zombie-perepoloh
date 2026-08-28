@@ -37,8 +37,8 @@ export class Ability {
   }
 
   // Пробел. Не готова — молча ничего, заряд остаётся.
-  // owner — герой, чья это способность: волна бьёт вокруг него, а рывок
-  // разгоняет именно его.
+  // owner — герой, чья это способность: волна бьёт вокруг него, а портал
+  // открывается под ним.
   tryActivate(world, owner) {
     if (!this.isReady) return false;
     // Заряд обнуляем ДО эффекта: волна убивает зомби, те снова заряжают шкалу,
@@ -50,11 +50,16 @@ export class Ability {
     return true;
   }
 
-  update(dt) {
+  // world и owner нужны только длящимся способностям — тем, что работают
+  // каждый кадр, а не разово в момент нажатия (портал). Разовым они не мешают:
+  // те просто игнорируют лишние аргументы.
+  update(dt, world, owner) {
     this.timer = Math.max(0, this.timer - dt);
+    if (this.timer > 0) this.tick(dt, world, owner);
   }
 
-  activate(world, owner) {}   // переопределяют наследники
+  activate(world, owner) {}   // разовый эффект, в момент нажатия
+  tick(dt, world, owner) {}   // каждый кадр, пока способность работает
 }
 
 // 💥 Супер-удар: круговая волна с уроном и отбросом.
@@ -81,12 +86,37 @@ class Shockwave extends Ability {
 }
 
 // 🏃 Супер-скорость: рывок сквозь толпу. Сам эффект живёт таймером на герое,
-// расталкивание зомби — в collisions.js.
-class SuperSpeed extends Ability {
-  constructor() { super('dash'); }
+// 🌀 Портал: под героем открывается воронка и утаскивает зомби в иной мир.
+//
+// Единственная способность, работающая каждый кадр, — отсюда tick(). Портал
+// ездит вместе с героем, а не стоит там, где открылся: так его рисует обычный
+// drawAbilityEffect рядом с турбо и «Мяу!», и не нужны ни отдельная сущность в
+// Round, ни второй путь отрисовки. Размен осознанный.
+class Portal extends Ability {
+  constructor() { super('portal'); }
 
-  activate(world, owner) {
-    owner.boost(this.spec.speedFactor, this.spec.duration);
+  tick(dt, world, owner) {
+    const { radius, pull, damage, grip } = this.spec;
+    // Копия списка: damageEnemy может убить зомби прямо в цикле.
+    for (const enemy of [...world.enemies]) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      const dx = owner.x - enemy.x;
+      const dy = owner.y - enemy.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > radius) continue;
+
+      if (dist <= grip) {
+        // Урон идёт через damageEnemy — тем же путём, что и любой выстрел.
+        // Поэтому заряд, медальки, счётчик убитых и наклейка отрабатывают
+        // сами, и отдельной ветки в onEnemyDefeated не появляется.
+        world.damageEnemy(enemy, damage);
+        world.particles.addBurst(enemy.x, enemy.y, 10, 0.9);
+        continue;
+      }
+      const step = Math.min(dist - grip, pull * dt);
+      enemy.x += (dx / dist) * step;
+      enemy.y += (dy / dist) * step;
+    }
   }
 }
 
@@ -117,7 +147,7 @@ class Meow extends Ability {
 
 export const ABILITY_CLASSES = {
   shockwave: Shockwave,
-  dash: SuperSpeed,
+  portal: Portal,
   turbo: Turbo,
   meow: Meow,
 };
