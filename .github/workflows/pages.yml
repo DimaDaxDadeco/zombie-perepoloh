@@ -26,8 +26,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+        with:
+          # Включаем Pages прямо отсюда. Иначе первый же push падает с
+          # «Get Pages site failed»: workflow ищет площадку, которую ещё не
+          # создали руками в настройках репозитория.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .        # весь репозиторий целиком
