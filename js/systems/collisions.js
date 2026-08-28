@@ -34,6 +34,22 @@ export function resolvePlayerHits(world) {
 function resolveHitsFor(world, player) {
   if (player.downed) return;   // призрака зомби не трогают
 
+  // Два состояния, в которых герой не получает урон, а РАЗДАЁТ его по
+  // контакту: спин-дэш Соника и ярость Халка. Без этой ветки неуязвимость
+  // просто пропускала бы зомби насквозь, и обе способности выглядели бы так,
+  // будто ничего не произошло.
+  const contact = player.isRolling ? CONFIG.abilities.spindash
+    : (player.isRaging ? CONFIG.abilities.rage : null);
+  if (contact) {
+    for (const enemy of world.enemies) {
+      if (!enemy.alive || enemy.isHidden || !circlesOverlap(player, enemy)) continue;
+      enemy.applyKnockback(player.x, player.y, contact.force);
+      world.damageEnemy(enemy, contact.damage);
+      world.particles.addBurst(enemy.x, enemy.y, 8, 0.8);
+    }
+    return;
+  }
+
   if (player.isInvulnerable) return;
 
   for (const enemy of world.enemies) {

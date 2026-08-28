@@ -2361,11 +2361,65 @@ export function drawAbilityEffect(ctx, { style, radius, color, phase, facing, la
   switch (style) {
     case 'turbo': drawTurboEffect(ctx, radius, color, phase, layer); break;
     case 'meow': drawMeowEffect(ctx, radius, color, phase, layer); break;
-    // 'shockwave' мгновенна: у неё нет длительности, и рисовать нечего —
-    // взрыв уже показывают частицы.
+    case 'spindash': drawSpinDashEffect(ctx, radius, color, phase, facing, layer); break;
+    case 'rage': drawRageEffect(ctx, radius, color, phase, layer); break;
+    // 'shockwave' мгновенна, а 'portal' и 'swarm' живут в мире, а не на
+    // герое: у первой нет длительности, вторые рисуют себя сами.
     default: break;
   }
   ctx.restore();
+}
+
+// 💨 Спин-дэш: смазанное кольцо вокруг катящегося и шлейф позади.
+function drawSpinDashEffect(ctx, r, color, phase, facing, layer) {
+  if (layer === 'back') {
+    // Шлейф тянется назад — туда, откуда прикатился.
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      ctx.globalAlpha = 0.45 - i * 0.09;
+      ctx.lineWidth = r * (0.3 - i * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(-facing * r * (0.9 + i * 0.5), -r * 0.3 + i * r * 0.25);
+      ctx.lineTo(-facing * r * (2.2 + i * 0.6), -r * 0.3 + i * r * 0.25);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+  // Смазанное кольцо: три дуги, вращающиеся быстрее глаза.
+  ctx.strokeStyle = color;
+  ctx.lineWidth = r * 0.16;
+  for (let i = 0; i < 3; i++) {
+    const spin = phase * 9 + (i * Math.PI * 2) / 3;
+    ctx.globalAlpha = 0.7 - i * 0.15;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.15, spin, spin + Math.PI * 0.7);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 👊 Ярость: зелёное марево вокруг раздувшегося героя и злые искры.
+function drawRageEffect(ctx, r, color, phase, layer) {
+  if (layer === 'back') {
+    // Марево пульсирует — иначе на статичном кадре его не отличить от тени.
+    const pulse = 1 + Math.sin(phase * 6) * 0.08;
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = color;
+    circle(ctx, 0, 0, r * 1.35 * pulse);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  ctx.fillStyle = color;
+  for (let i = 0; i < 6; i++) {
+    const t = (phase * 0.8 + i / 6) % 1;
+    const angle = i * 1.9 - phase * 1.4;
+    ctx.globalAlpha = (1 - t) * 0.9;
+    circle(ctx, Math.cos(angle) * r * (1.1 + t * 0.8),
+      Math.sin(angle) * r * (1.1 + t * 0.8) - t * r * 0.5, r * 0.16 * (1 - t));
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ⚡ Турбо: вокруг героя потрескивают короткие молнии.

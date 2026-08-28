@@ -9,6 +9,7 @@
 
 import { CONFIG } from '../config.js';
 import { drawPortal } from '../render/sprites.js';
+import { SpiderMinion } from '../entities/projectile.js';
 
 export class Ability {
   constructor(id) {
@@ -175,11 +176,89 @@ class Meow extends Ability {
   }
 }
 
+// 💨 Спин-дэш: Соник сворачивается в шар и катится, сшибая всё на пути.
+//
+// Урон и отброс раздаются по контакту в collisions.js — там же, где это уже
+// делает ярость Халка. Сюда попадает только запуск: длящийся эффект на самом
+// герое обязан жить таймером на герое, а не внутри способности.
+class SpinDash extends Ability {
+  constructor() { super('spindash'); }
+
+  activate(world, owner) {
+    // Катится туда, куда бежал: moveAngle хранит последнее направление
+    // целиком, а не только «влево/вправо». Стоящий на месте покатится туда,
+    // куда бежал в прошлый раз, — рывок «в никуда» невозможен.
+    owner.roll(owner.moveAngle, this.spec.speed, this.spec.duration);
+    world.particles.addRing(owner.x, owner.y, owner.radius * 2, this.spec.color);
+  }
+}
+
+// 🕷 Полчище паучков: разбегаются веером и кусают сами.
+class Swarm extends Ability {
+  constructor() { super('swarm'); }
+
+  activate(world, owner) {
+    const { count, speed, turnSpeed, damage, life, chillFactor, chillTime } = this.spec;
+    for (let i = 0; i < count; i++) {
+      // Веером во все стороны, а не в сторону цели: полчище должно именно
+      // РАЗБЕГАТЬСЯ, иначе на глаз это залп, а не орава.
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      world.addProjectile(new SpiderMinion(owner.x, owner.y, angle, {
+        speed, turnSpeed, damage, life, retarget: 0.4, chillFactor, chillTime,
+      }));
+    }
+    world.audio.buzz();
+  }
+}
+
+// 👊 Ярость: Халк раздувается, становится неуязвим и сносит всё контактом.
+class Rage extends Ability {
+  constructor() { super('rage'); }
+
+  activate(world, owner) {
+    owner.rage(this.spec.size, this.spec.duration);
+    world.shake(10, 0.3);
+    world.audio.boom();
+    world.particles.addRing(owner.x, owner.y, owner.radius * 3, this.spec.color);
+  }
+}
+
+// ⛈ Разряд: молнии бьют по нескольким зомби на экране разом.
+//
+// От оружия «Молния» отличается тем, что не тянет цепочку от соседа к соседу,
+// а лупит по площади: цели выбираются случайно среди видимых.
+class Zap extends Ability {
+  constructor() { super('zap'); }
+
+  activate(world, owner) {
+    const { bolts, damage, radius, stunTime, stunFactor, color } = this.spec;
+    const visible = world.enemies.filter((e) => e.alive && !e.isHidden && world.isOnScreen(e));
+    world.audio.zap();
+
+    // Тасуем и берём с начала: выбирать случайный индекс в цикле значило бы
+    // бить по одному и тому же дважды, а молний и так немного.
+    for (let i = visible.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [visible[i], visible[j]] = [visible[j], visible[i]];
+    }
+    for (const enemy of visible.slice(0, bolts)) {
+      world.particles.addLightning([{ x: owner.x, y: owner.y - owner.radius }, enemy]);
+      world.particles.addRing(enemy.x, enemy.y, radius, color);
+      enemy.freeze(stunFactor, stunTime);
+      world.damageEnemy(enemy, damage);
+    }
+  }
+}
+
 export const ABILITY_CLASSES = {
   shockwave: Shockwave,
   portal: Portal,
   turbo: Turbo,
   meow: Meow,
+  spindash: SpinDash,
+  swarm: Swarm,
+  rage: Rage,
+  zap: Zap,
 };
 
 // Герой без способности возможен: старое сохранение или автотест. Поэтому

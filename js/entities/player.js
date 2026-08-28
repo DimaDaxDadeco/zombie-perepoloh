@@ -16,7 +16,10 @@ export class Player {
   constructor(x, y, { speed, maxHp, magnetRadius, look, regenInterval }) {
     this.x = x;
     this.y = y;
-    this.radius = CONFIG.player.radius;
+    // Радиус — геттер, потому что Ярость Халка временно раздувает героя, а
+    // радиус читают столкновения, притяжение медалек и рисовка. Один геттер
+    // честнее, чем множитель, подставленный в каждом месте вызова.
+    this.baseRadius = CONFIG.player.radius;
     this.speed = speed;
     this.maxHp = maxHp;
     this.hp = maxHp;
@@ -33,13 +36,24 @@ export class Player {
     // Суперспособность героя. Экземпляр создаёт Round — Player не должен
     // знать про CONFIG.characters.
     this.ability = null;
-    this.turboTimer = 0;    // турбо Робота: оружие стреляет чаще
+    this.turboTimer = 0;
+    // Спин-дэш Соника: пока тикает, шаг считается по rollAngle, а не по
+    // тому, куда жмёт ребёнок.
+    this.rollTimer = 0;
+    this.rollAngle = 0;
+    this.rollSpeed = 0;
+    // Ярость Халка: герой временно больше и неуязвим.
+    this.rageTimer = 0;
+    this.sizeFactor = 1;    // турбо Робота: оружие стреляет чаще
     this.glowPhase = 0;     // фаза пульсации свечения «способность готова»
 
     this.invulnTimer = 0;
     this.regenTimer = 0;
     this.walkPhase = 0;
     this.facing = 1;
+    // Куда герой бежал последний раз. facing хранит только «влево/вправо», а
+    // спин-дэшу нужен настоящий угол: иначе рывок вверх уезжает вбок.
+    this.moveAngle = 0;
 
     this.weapons = [];   // экземпляры Weapon, добавляются через карточки прокачки
     // В руке показываем то оружие, что стреляло последним, — так видна связь
@@ -52,6 +66,10 @@ export class Player {
     this.color = null;
     this.downed = false;
     this.reviveTimer = 0;
+  }
+
+  get radius() {
+    return this.baseRadius * this.sizeFactor;
   }
 
   get isAlive() {
@@ -73,7 +91,17 @@ export class Player {
   }
 
   get isInvulnerable() {
-    return this.invulnTimer > 0 || this.downed;
+    return this.invulnTimer > 0 || this.downed || this.isRolling || this.isRaging;
+  }
+
+  // Катится шаром: сшибает всех на пути и сам неуязвим.
+  get isRolling() {
+    return this.rollTimer > 0;
+  }
+
+  // В ярости: больше, неуязвим, и всё, что коснулось, гибнет.
+  get isRaging() {
+    return this.rageTimer > 0;
   }
 
   get isChilled() {
@@ -93,6 +121,19 @@ export class Player {
   chill(factor, duration) {
     this.chillFactor = factor;
     this.chillTimer = Math.max(this.chillTimer, duration);
+  }
+
+  // Пускает героя катиться. Направление берём из последнего движения: катиться
+  // «в никуда» у стоящего нельзя, поэтому фолбэк — туда, куда он смотрит.
+  roll(angle, speed, duration) {
+    this.rollAngle = angle;
+    this.rollSpeed = speed;
+    this.rollTimer = Math.max(this.rollTimer, duration);
+  }
+
+  rage(size, duration) {
+    this.sizeFactor = size;
+    this.rageTimer = Math.max(this.rageTimer, duration);
   }
 
   turbo(duration) {
@@ -129,10 +170,24 @@ export class Player {
     this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     this.chillTimer = Math.max(0, this.chillTimer - dt);
     this.turboTimer = Math.max(0, this.turboTimer - dt);
+    this.rollTimer = Math.max(0, this.rollTimer - dt);
+    this.rageTimer = Math.max(0, this.rageTimer - dt);
+    if (this.rageTimer === 0) this.sizeFactor = 1;
     this.activeWeaponTimer = Math.max(0, this.activeWeaponTimer - dt);
     this.glowPhase += dt * 4;
     this.ability?.update(dt, world, this);   // порталу нужен мир: он тянет зомби каждый кадр
     this.updateRegen(dt, world);
+
+    // Спин-дэш ведёт героя сам: управление на это время отнимается, иначе
+    // рывок превращается в обычный бег с ускорением.
+    if (this.isRolling) {
+      this.x += Math.cos(this.rollAngle) * this.rollSpeed * dt;
+      this.y += Math.sin(this.rollAngle) * this.rollSpeed * dt;
+      this.walkPhase += dt * 20;
+      this.clampToArena(world.arena);
+      this.updateWeapons(dt, world);
+      return;
+    }
 
     const speed = this.speed * this.speedFactor;
     const moving = direction.x !== 0 || direction.y !== 0;
@@ -140,6 +195,7 @@ export class Player {
       this.x += direction.x * speed * dt;
       this.y += direction.y * speed * dt;
       this.walkPhase += dt * 9;
+      this.moveAngle = Math.atan2(direction.y, direction.x);
       if (direction.x !== 0) this.facing = direction.x > 0 ? 1 : -1;
     } else {
       this.walkPhase = 0;
@@ -147,9 +203,13 @@ export class Player {
 
     this.clampToArena(world.arena);
 
-    // Турбо ускоряет всё оружие разом: мы просто ускоряем для него время.
-    // Так способность работает и с вертушкой, у которой свой update() без
-    // перезарядки, и ни один из восьми классов про турбо не знает.
+    this.updateWeapons(dt, world);
+  }
+
+  // Турбо ускоряет всё оружие разом: мы просто ускоряем для него время.
+  // Так способность работает и с вертушкой, у которой свой update() без
+  // перезарядки, и ни один из классов оружия про турбо не знает.
+  updateWeapons(dt, world) {
     const weaponDt = dt * this.fireRateFactor;
     for (const weapon of this.weapons) {
       weapon.update(weaponDt, world, this);
