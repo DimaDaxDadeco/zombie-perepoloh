@@ -2071,6 +2071,51 @@ function drawBlazeRage(ctx, r, phase, layer) {
 // --- Пикапы ---
 
 // Медалька на ленточке — это опыт.
+// 🌀 Портал: дыра в земле в МИРОВЫХ координатах. Рисуется в слое земли, до
+// персонажей, — иначе воронка накрывала бы того, кто в неё падает.
+//
+// Тёмный круг рисуется ровно по grip: это и есть смертельная зона, и ребёнок
+// должен видеть её границу честно. Дуги выходят наружу до reach — докуда
+// портал дотягивается, чтобы тянуть.
+export function drawPortal(ctx, { x, y, grip, reach, color, phase, fade = 1 }) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = fade;
+  ctx.scale(1, 0.5);          // дыра в полу, а не шар
+
+  ctx.fillStyle = '#1b1030';
+  circle(ctx, 0, 0, grip);
+  // Подсвеченный край: без него дыра сливается с ночным тинтом.
+  ctx.strokeStyle = color;
+  ctx.lineWidth = grip * 0.16;
+  ctx.beginPath();
+  ctx.arc(0, 0, grip, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Рукава воронки: три дуги, закрученные наружу до предела досягаемости.
+  ctx.strokeStyle = color;
+  for (let i = 0; i < 3; i++) {
+    const spin = phase * (1.4 + i * 0.5) + (i * Math.PI * 2) / 3;
+    ctx.globalAlpha = fade * (0.5 - i * 0.11);
+    ctx.lineWidth = grip * 0.22;
+    ctx.beginPath();
+    ctx.arc(0, 0, grip + (reach - grip) * (0.25 + i * 0.3), spin, spin + Math.PI * 1.1);
+    ctx.stroke();
+  }
+
+  // Искры летят ВНУТРЬ — направление здесь важнее всего остального: это и
+  // есть «затягивает».
+  ctx.fillStyle = color;
+  for (let i = 0; i < 10; i++) {
+    const t = (phase * 0.5 + i / 10) % 1;
+    const angle = i * 2.4 + phase * 0.5;
+    const dist = grip + (reach - grip) * (1 - t) * 0.8;
+    ctx.globalAlpha = fade * t * 0.9;
+    circle(ctx, Math.cos(angle) * dist, Math.sin(angle) * dist, grip * 0.11 * t);
+  }
+  ctx.restore();
+}
+
 export function drawMedalPickup(ctx, { radius, phase }) {
   const swing = Math.sin(phase) * 0.15; // медалька слегка покачивается
   ctx.save();
@@ -2215,7 +2260,6 @@ export function drawAbilitySparks(ctx, { radius, color, phase, layer }) {
 export function drawAbilityEffect(ctx, { style, radius, color, phase, facing, layer }) {
   ctx.save();
   switch (style) {
-    case 'portal': drawPortalEffect(ctx, radius, color, phase, layer); break;
     case 'turbo': drawTurboEffect(ctx, radius, color, phase, layer); break;
     case 'meow': drawMeowEffect(ctx, radius, color, phase, layer); break;
     // 'shockwave' мгновенна: у неё нет длительности, и рисовать нечего —
@@ -2223,47 +2267,6 @@ export function drawAbilityEffect(ctx, { style, radius, color, phase, facing, la
     default: break;
   }
   ctx.restore();
-}
-
-// 🌀 Портал: воронка под ногами затягивает всё в иной мир.
-function drawPortalEffect(ctx, r, color, phase, layer) {
-  if (layer === 'back') {
-    // Воронка на земле — сплюснутая, чтобы читалась как дыра в полу, а не
-    // как шар вокруг героя.
-    ctx.save();
-    ctx.scale(1, 0.42);
-    // Центр воронки — ПОД ногами (ноги героя кончаются на 1.1r). Выше жерло
-    // пряталось за его же ботинками и не читалось вовсе.
-    const cy = r * 3.1;
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = '#1b1030';   // тёмное жерло
-    circle(ctx, 0, cy, r * 1.5);
-    for (let i = 0; i < 3; i++) {
-      const spin = phase * (1.6 + i * 0.7);
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.65 - i * 0.12;
-      ctx.lineWidth = r * 0.26;
-      ctx.beginPath();
-      // Разомкнутые дуги: сомкнутые кольца не показывают вращения.
-      ctx.arc(0, cy, r * (3.0 - i * 0.8), spin, spin + Math.PI * 1.35);
-      ctx.stroke();
-    }
-    ctx.restore();
-    return;
-  }
-
-  // Искры, летящие внутрь: это и есть «затягивает». Летят к жерлу, а не от
-  // него — направление здесь важнее всего остального.
-  ctx.fillStyle = color;
-  for (let i = 0; i < 7; i++) {
-    const t = (phase * 0.55 + i / 7) % 1;
-    const angle = i * 2.4 + phase * 0.6;
-    const dist = r * (0.6 + (1 - t) * 2.4);
-    ctx.globalAlpha = t * 0.9;
-    circle(ctx, Math.cos(angle) * dist, Math.sin(angle) * dist * 0.5 + r * 0.9,
-      r * 0.13 * t);
-  }
-  ctx.globalAlpha = 1;
 }
 
 // ⚡ Турбо: вокруг героя потрескивают короткие молнии.

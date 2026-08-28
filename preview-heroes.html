@@ -127,9 +127,11 @@ function drawWalker(w) {
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(28,26,56,0.7)';
   ctx.font = '13px system-ui, sans-serif';
-  // У волны нет длительности — в игре она мгновенная, и показывать в этой
-  // колонке нечего. Честнее написать об этом, чем оставить пустого героя.
-  const instant = w.state.glow === 'active' && w.hero.ability === 'shockwave';
+  // У волны нет длительности, а портал живёт не на герое, а на земле — в
+  // обеих колонках показывать нечего. Честнее написать об этом, чем оставить
+  // пустого героя.
+  const inWorld = ['shockwave', 'portal'].includes(w.hero.ability);
+  const instant = w.state.glow === 'active' && inWorld;
   ctx.fillText(instant ? 'мгновенная — эффект в бою' : w.state.label,
     w.x, w.y + RADIUS * 1.9);
   ctx.restore();

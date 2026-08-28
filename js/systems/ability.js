@@ -8,6 +8,7 @@
 // теряется, ошибиться нельзя.
 
 import { CONFIG } from '../config.js';
+import { drawPortal } from '../render/sprites.js';
 
 export class Ability {
   constructor(id) {
@@ -60,6 +61,9 @@ export class Ability {
 
   activate(world, owner) {}   // разовый эффект, в момент нажатия
   tick(dt, world, owner) {}   // каждый кадр, пока способность работает
+  // Способности, живущие в мире, а не на герое, рисуют себя сами — в слое
+  // земли, до персонажей. Зовёт Round.draw.
+  drawWorld(ctx) {}
 }
 
 // 💥 Супер-удар: круговая волна с уроном и отбросом.
@@ -86,22 +90,35 @@ class Shockwave extends Ability {
 }
 
 // 🏃 Супер-скорость: рывок сквозь толпу. Сам эффект живёт таймером на герое,
-// 🌀 Портал: под героем открывается воронка и утаскивает зомби в иной мир.
+// 🌀 Портал: на землю ставится воронка и утаскивает зомби в иной мир.
 //
-// Единственная способность, работающая каждый кадр, — отсюда tick(). Портал
-// ездит вместе с героем, а не стоит там, где открылся: так его рисует обычный
-// drawAbilityEffect рядом с турбо и «Мяу!», и не нужны ни отдельная сущность в
-// Round, ни второй путь отрисовки. Размен осознанный.
+// Портал остаётся ТАМ, ГДЕ ЕГО ОТКРЫЛИ, и не ездит за героем. Это принципиально:
+// он тянет зомби к себе, и привязанный к герою он подтаскивал бы толпу прямо
+// на него — способность работала бы против своего хозяина. Стоящий на месте
+// портал даёт правильную игру: вбежал в толпу, оставил дыру, убежал.
+//
+// Плата — свой путь отрисовки: эффект живёт в мировых координатах, а не вокруг
+// героя, поэтому рисует его drawWorld() в слое земли, а не drawAbilityEffect().
 class Portal extends Ability {
-  constructor() { super('portal'); }
+  constructor() {
+    super('portal');
+    this.x = 0;
+    this.y = 0;
+  }
 
-  tick(dt, world, owner) {
+  activate(world, owner) {
+    this.x = owner.x;
+    this.y = owner.y;
+    world.particles.addRing(this.x, this.y, this.spec.grip, this.spec.color);
+  }
+
+  tick(dt, world) {
     const { radius, pull, damage, grip } = this.spec;
     // Копия списка: damageEnemy может убить зомби прямо в цикле.
     for (const enemy of [...world.enemies]) {
       if (!enemy.alive || enemy.isHidden) continue;
-      const dx = owner.x - enemy.x;
-      const dy = owner.y - enemy.y;
+      const dx = this.x - enemy.x;
+      const dy = this.y - enemy.y;
       const dist = Math.hypot(dx, dy);
       if (dist > radius) continue;
 
@@ -117,6 +134,19 @@ class Portal extends Ability {
       enemy.x += (dx / dist) * step;
       enemy.y += (dy / dist) * step;
     }
+  }
+
+  drawWorld(ctx) {
+    if (!this.isActive) return;
+    // Затухание в конце: воронка закрывается, а не пропадает щелчком.
+    const fade = Math.min(1, this.timer / 0.6);
+    drawPortal(ctx, {
+      x: this.x, y: this.y,
+      grip: this.spec.grip, reach: this.spec.radius,
+      color: this.spec.color,
+      phase: (this.spec.duration - this.timer) * 2.2,
+      fade,
+    });
   }
 }
 
