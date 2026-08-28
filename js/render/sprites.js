@@ -1034,6 +1034,11 @@ export function drawBoss(ctx, {
   ctx.fillStyle = skin;
   circle(ctx, 0, -r * 0.72, r * 0.48);
 
+  // Головной убор — в слое головы, до глаз и лица: капюшон охранника
+  // обрамляет лицо, и маска обязана лечь поверх него. Остальные уборы сидят
+  // выше головы, порядок их не задевает.
+  drawBossHat(ctx, r, look);
+
   // Глаза
   ctx.fillStyle = '#ffffff';
   circle(ctx, -r * 0.17, -r * 0.78, r * 0.16);
@@ -1042,16 +1047,16 @@ export function drawBoss(ctx, {
   circle(ctx, -r * 0.11, -r * 0.78, r * 0.07);
   circle(ctx, r * 0.13, -r * 0.73, r * 0.06);
 
-  if (look.face) drawBossFace(ctx, r, look);
+  const faceCovered = look.face ? drawBossFace(ctx, r, look) : false;
 
-  // Улыбка до ушей
-  ctx.strokeStyle = '#243b12';
-  ctx.lineWidth = Math.max(2, r * 0.05);
-  ctx.beginPath();
-  ctx.arc(0, -r * 0.62, r * 0.24, 0.15 * Math.PI, 0.85 * Math.PI);
-  ctx.stroke();
-
-  drawBossHat(ctx, r, look);
+  // Улыбка до ушей — но не поверх маски, закрывающей лицо целиком.
+  if (!faceCovered) {
+    ctx.strokeStyle = '#243b12';
+    ctx.lineWidth = Math.max(2, r * 0.05);
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.62, r * 0.24, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+  }
 
   // Пламя и лёд считаются от радиуса, так что на крупном боссе выглядят так же
   // уместно, как на обычном зомби.
@@ -1080,6 +1085,13 @@ function drawBossChest(ctx, r, look, facing) {
       circle(ctx, -r * 0.2, r * 0.02, r * 0.16);
       ctx.fillStyle = '#ffd93d';
       circle(ctx, r * 0.2, r * 0.12, r * 0.16);
+      break;
+    }
+    case 'belt': {   // простой пояс с пряжкой — на комбинезоне больше ничего
+      ctx.fillStyle = '#2b2b3d';
+      roundRect(ctx, -r * 0.5, r * 0.26, r * 1, r * 0.16, r * 0.05);
+      ctx.fillStyle = look.accent;
+      roundRect(ctx, -r * 0.1, r * 0.24, r * 0.2, r * 0.2, r * 0.05);
       break;
     }
     case 'badge': {  // жетон-звезда и погоны
@@ -1177,6 +1189,24 @@ function drawBossHat(ctx, r, look) {
       roundRect(ctx, -r * 0.2, -r * 1.48, r * 0.4, r * 0.26, r * 0.06);
       ctx.fillStyle = '#4fb3ff';
       circle(ctx, r * 0.28, -r * 1.32, r * 0.1);
+      break;
+    }
+    case 'hood': { // капюшон комбинезона: обтягивает голову, лицо в маске
+      ctx.fillStyle = look.clothes;
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.72, r * 0.62, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.lineTo(r * 0.5, -r * 0.34);
+      ctx.quadraticCurveTo(0, -r * 0.16, -r * 0.5, -r * 0.34);
+      ctx.closePath();
+      ctx.fill();
+      // Из-под капюшона торчит зелёный вихор — он всё-таки зомби
+      ctx.fillStyle = shade(look.skin, -0.15);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, -r * 0.9);
+      ctx.lineTo(-r * 0.72, -r * 1.06);
+      ctx.lineTo(-r * 0.44, -r * 1.02);
+      ctx.closePath();
+      ctx.fill();
       break;
     }
     case 'peakedcap': { // фуражка: тёмный околыш, синяя тулья, жёлтая кокарда
@@ -1518,9 +1548,46 @@ const WEAPON_IN_HAND = {
 //
 // Всё завязано на walkPhase, который в ярости и так растёт быстрее
 // (enrageSpeed в speedFactor) — отдельный таймер не нужен.
-// Полумаска охранника. Это самостоятельный персонаж, а не костюм из
-// сериала: светлая повязка на нос и рот, завязки, глаза открыты и добрые.
+// Лицо босса. Возвращает true, если оно закрыто целиком — тогда рисовальщик
+// не станет поверх маски рисовать улыбку.
 function drawBossFace(ctx, r, look) {
+  if (look.face === 'guardmask') {
+    drawGuardMask(ctx, r, look);
+    return true;
+  }
+  drawHalfMask(ctx, r, look);
+  return false;
+}
+
+// Маска охранника: тёмный овал на всё лицо со светлой фигурой посередине.
+// Сидит чуть набок — как всё в этой игре, он нелепый, а не страшный.
+function drawGuardMask(ctx, r, look) {
+  ctx.save();
+  ctx.translate(0, -r * 0.72);
+  ctx.rotate(0.08);          // маска съехала набок
+  ctx.fillStyle = '#1c1a2e';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.44, r * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Блик, чтобы чёрное пятно не выглядело дырой
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.16, -r * 0.16, r * 0.14, r * 0.2, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Фигура-знак. Треугольник читается на игровом размере лучше круга и
+  // квадрата — их легко спутать с бликом.
+  ctx.fillStyle = '#f2f2f7';
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.2);
+  ctx.lineTo(r * 0.19, r * 0.14);
+  ctx.lineTo(-r * 0.19, r * 0.14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHalfMask(ctx, r, look) {
   if (look.face !== 'mask') return;
   ctx.fillStyle = '#eef2f7';
   roundRect(ctx, -r * 0.34, -r * 0.68, r * 0.68, r * 0.34, r * 0.1);

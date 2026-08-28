@@ -437,12 +437,14 @@ export const CONFIG = {
       cakeMinDist: 140,   // вплотную не кидает: убежать было бы невозможно
     },
     {
+      // Отсылка к охраннику из «Игры в кальмара» — по прямой просьбе
+      // заказчика, см. docs/game-design.md.
       id: 'guard', name: 'Зомби-охранник', about: 'Командует, и зомби бегут быстрее',
       ability: 'rally', entrance: 'whistle', rage: 'command',
       hp: 1.1, speed: 0.95, radius: 1,
       look: {
-        skin: '#a8c9a0', clothes: '#3f5f9f', hat: 'peakedcap', accent: '#ffd93d',
-        chest: 'badge', face: 'mask',
+        skin: '#a8c9a0', clothes: '#e8437f', hat: 'hood', accent: '#ffd93d',
+        chest: 'belt', face: 'guardmask',
       },
       rallyInterval: 7, rallyWindup: 0.8, rallyTime: 2, rallyFactor: 1.5,
     },
