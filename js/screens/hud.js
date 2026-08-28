@@ -1,5 +1,13 @@
 // HUD поверх игрового поля: сердечки, шкала опыта, шкала суперспособности,
 // таймер до босса, счётчик зомби и панель оружия со звёздами.
+//
+// На телефоне (флаг compact, порог в CONFIG.hud.compactBelow) остаётся только
+// то, без чего играть нельзя: сердечки, таймер, тонкая полоса опыта и слоты
+// оружия. Уходят счётчик убитых, номер раунда, надпись с уровнем и шкала
+// способности — о её готовности на телефоне сообщает сама кнопка, она
+// наливается цветом и пульсирует, так что шкала была бы вторым способом
+// сказать то же самое. Всё это ради места: экран телефона и так тесный, а
+// смотреть ребёнок должен на героя.
 
 import { CONFIG } from '../config.js';
 import { drawHeartIcon } from '../render/sprites.js';
@@ -7,6 +15,7 @@ import { drawHeartIcon } from '../render/sprites.js';
 const PADDING = 20;
 const HEART_SIZE = 16;
 const XP_BAR_HEIGHT = 16;
+const XP_BAR_HEIGHT_COMPACT = 7;   // на телефоне полоса опыта без надписи
 const ABILITY_BAR_HEIGHT = 14;
 const ABILITY_BAR_WIDTH = 150;
 const SOUND_BUTTON_CLEARANCE = 52; // высота кнопки звука в правом верхнем углу
@@ -17,16 +26,18 @@ export class Hud {
   // колонку направо, а счётчики уезжают в центр.
   draw(ctx, {
     players, level, xp, xpToNext, arena, timeLeft, zombiesDefeated, round, bossActive, modifier,
+    compact = false,
   }) {
     const coop = players.length > 1;
     players.forEach((player, i) => {
       const right = coop && i === 1;
       this.drawHearts(ctx, player, arena, right);
-      this.drawAbilityBar(ctx, player, arena, right);
-      this.drawWeapons(ctx, player, arena, coop ? (right ? 'right' : 'left') : 'center');
+      if (!compact) this.drawAbilityBar(ctx, player, arena, right);
+      this.drawWeapons(ctx, player, arena, weaponAlign(coop, right, compact));
     });
-    this.drawXpBar(ctx, { level, xp, xpToNext }, arena);
-    this.drawCounters(ctx, arena, { timeLeft, zombiesDefeated, round, bossActive, coop, modifier });
+    this.drawXpBar(ctx, { level, xp, xpToNext }, arena, compact);
+    this.drawCounters(ctx, arena,
+      { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, compact });
   }
 
   drawHearts(ctx, player, arena, right) {
@@ -41,28 +52,36 @@ export class Hud {
     }
   }
 
-  drawXpBar(ctx, team, arena) {
+  // Полоса опыта. На телефоне остаётся, но тонкой и без надписи: это
+  // единственное объяснение, откуда берутся карточки прокачки, и убрать её
+  // целиком значило бы сделать их появление необъяснимым. А вот номер уровня
+  // ребёнок всё равно не читает.
+  drawXpBar(ctx, team, arena, compact = false) {
     const width = arena.width - PADDING * 2;
+    const height = compact ? XP_BAR_HEIGHT_COMPACT : XP_BAR_HEIGHT;
     const y = PADDING + HEART_SIZE * 2.4;
     const ratio = Math.min(1, team.xp / team.xpToNext);
+    const radius = height / 2;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
-    ctx.roundRect(PADDING, y, width, XP_BAR_HEIGHT, 8);
+    ctx.roundRect(PADDING, y, width, height, radius);
     ctx.fill();
 
     ctx.fillStyle = '#ffd93d';
     ctx.beginPath();
-    ctx.roundRect(PADDING, y, Math.max(0, width * ratio), XP_BAR_HEIGHT, 8);
+    ctx.roundRect(PADDING, y, Math.max(0, width * ratio), height, radius);
     ctx.fill();
 
-    // Медалька вместо слова «уровень» — читать ребёнку пока нечем
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 13px system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`🏅 ${team.level}`, PADDING + 8, y + XP_BAR_HEIGHT / 2 + 1);
+    if (!compact) {
+      // Медалька вместо слова «уровень» — читать ребёнку пока нечем
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🏅 ${team.level}`, PADDING + 8, y + XP_BAR_HEIGHT / 2 + 1);
+    }
     ctx.restore();
   }
 
@@ -103,7 +122,8 @@ export class Hud {
     ctx.restore();
   }
 
-  drawCounters(ctx, arena, { timeLeft, zombiesDefeated, round, bossActive, coop, modifier }) {
+  drawCounters(ctx, arena,
+    { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, compact = false }) {
     ctx.save();
     ctx.font = 'bold 20px system-ui, sans-serif';
     // Вдвоём справа сидят сердечки второго игрока — счётчики уезжают в центр.
@@ -116,7 +136,10 @@ export class Hud {
     const label = bossActive ? '👑 БОСС!' : `⏱ ${formatTime(timeLeft)}`;
     // Особый раунд — только эмодзи: имя ребёнок не прочитает, а место справа
     // и без того дефицитное.
-    const lines = [label, `🧟 ${zombiesDefeated}`, `Раунд ${round}`];
+    // На телефоне — только таймер (и значок особого раунда). Счётчик убитых и
+    // номер раунда там просто занимают место: ни на одно решение ребёнка они
+    // не влияют.
+    const lines = compact ? [label] : [label, `🧟 ${zombiesDefeated}`, `Раунд ${round}`];
     if (modifier) lines.splice(1, 0, modifier.emoji);
     lines.forEach((line, i) => {
       // Отступ сверху — чтобы счётчики не налезали на кнопку звука.
@@ -163,6 +186,15 @@ export class Hud {
     });
     ctx.restore();
   }
+}
+
+// Куда прижать ряд оружия. На телефоне — вправо: слева в нижнем углу лежит
+// кнопка способности (⌀88, а с пульсацией «готово» до ~98), и слоты попадали
+// бы прямо под неё.
+function weaponAlign(coop, right, compact) {
+  if (compact) return 'right';
+  if (!coop) return 'center';
+  return right ? 'right' : 'left';
 }
 
 function formatTime(seconds) {

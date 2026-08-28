@@ -495,6 +495,10 @@ export class Round {
 
     this.background.draw(ctx, this.arena);
 
+    // Способности, живущие в мире, а не на герое (портал), — в слое земли:
+    // они лежат под персонажами, иначе воронка накрывает того, кто в неё падает.
+    for (const player of this.players) player.ability?.drawWorld(ctx);
+
     for (const pickup of this.pickups) pickup.draw(ctx);
     // Сортировка по Y: кто ниже — тот ближе к зрителю.
     const characters = [...this.enemies, ...this.players, ...this.pets]

@@ -34,18 +34,6 @@ export function resolvePlayerHits(world) {
 function resolveHitsFor(world, player) {
   if (player.downed) return;   // призрака зомби не трогают
 
-  // В рывке герой мчится сквозь толпу и расталкивает её. Без этой ветки
-  // неуязвимость просто пропускала бы зомби насквозь, и рывок выглядел бы
-  // так, будто ничего не произошло.
-  if (player.isDashing) {
-    for (const enemy of world.enemies) {
-      if (!enemy.alive || enemy.isHidden || !circlesOverlap(player, enemy)) continue;
-      enemy.applyKnockback(player.x, player.y, CONFIG.abilities.dash.knockback);
-      world.particles.addBurst(enemy.x, enemy.y, 6, 0.7);
-    }
-    return;
-  }
-
   if (player.isInvulnerable) return;
 
   for (const enemy of world.enemies) {

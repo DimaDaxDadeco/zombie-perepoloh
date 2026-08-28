@@ -2,7 +2,7 @@
 // Карточка — это либо новое оружие, либо +1 звезда уже имеющемуся.
 
 import { CONFIG } from '../config.js';
-import { ALL_WEAPON_IDS } from '../weapons/weapons.js';
+import { ALL_WEAPON_IDS, baseWeaponId } from '../weapons/weapons.js';
 
 const MAX_WEAPONS = 5;   // сколько оружий герой может носить одновременно
 const CARDS_COUNT = 3;
@@ -16,7 +16,10 @@ export const CardKind = {
 
 // Возвращает массив карточек: { kind, weaponId, title, emoji, stars }
 export function generateCards(player) {
-  const owned = new Map(player.weapons.map((w) => [w.id, w]));
+  // Ключ — id ДО эволюции: водомёт занимает слот водяного пистолета и
+  // закрывает его от повторной выдачи. Иначе эволюционировавшее оружие снова
+  // выпадало бы как новое, с одной звездой, и съедало второй слот из пяти.
+  const owned = new Map(player.weapons.map((w) => [baseWeaponId(w.id), w]));
   const options = [];
 
   // Апгрейды имеющегося оружия

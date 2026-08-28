@@ -651,6 +651,22 @@ export function drawMoleMound(ctx, { radius, progress }) {
   ctx.fill();
 }
 
+// Дымка на месте ниндзя. Держится всю burrowTime и за это время редеет и
+// расходится — ребёнок должен успеть понять, что сейчас кто-то выпрыгнет.
+export function drawSmokePuff(ctx, { radius, progress }) {
+  const spread = radius * (0.7 + progress * 0.9);
+  ctx.save();
+  // Клубы по кругу, каждый со своим смещением фазы — иначе это одно пятно.
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 + progress * 1.2;
+    const dist = spread * (0.35 + (i % 2) * 0.35);
+    ctx.fillStyle = `rgba(226, 232, 240, ${0.55 * (1 - progress)})`;
+    circle(ctx, Math.cos(angle) * dist, Math.sin(angle) * dist * 0.6 + radius * 0.2,
+      radius * (0.5 - progress * 0.2));
+  }
+  ctx.restore();
+}
+
 // Ширина туловища по типу телосложения — так толстяк и шустрик
 // отличаются силуэтом, а не только цветом.
 const BODY_WIDTH = { thin: 0.72, normal: 1.0, fat: 1.34 };
@@ -745,6 +761,7 @@ export function drawZombie(ctx, {
     roundRect(ctx, -r * 0.06, -r * 0.58, r * 0.11, r * 0.15, r * 0.03);
   }
 
+  if (look.mask) drawNinjaMask(ctx, r, look.mask);
   if (look.skates) drawSkates(ctx, r, walkPhase, look.skates);
   if (look.beard) drawBeard(ctx, r, hurtFlash ? '#ffffff' : look.beard);
   if (look.cane) drawCane(ctx, r, walkPhase, hurtFlash ? '#dddddd' : look.cane);
@@ -981,6 +998,36 @@ function drawCane(ctx, r, walkPhase, color) {
 }
 
 // Строительная каска — зомби в ней заметно крепче.
+// Маска ниндзя: повязка на лбу с хвостами и закрытая нижняя половина лица.
+// Глаза намеренно остаются открытыми — именно кривые разнокалиберные глаза
+// делают зомби зомби, и прятать их нельзя. Заодно рисуется ПОСЛЕ ухмылки,
+// то есть закрывает её.
+function drawNinjaMask(ctx, r, color) {
+  ctx.save();
+  // Обрезаем по кругу головы, иначе повязка торчит за щёки прямоугольником.
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.8, r * 0.5, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = color;
+  // Накладка начинается ниже глаз: нижние края зрачков лежат на -0.68r, и
+  // всё, что выше, обязано остаться видимым.
+  ctx.fillRect(-r * 0.55, -r * 0.66, r * 1.1, r * 0.55);
+  ctx.restore();
+
+  ctx.fillStyle = color;
+  // Повязка сидит высоко на лбу — так между ней и накладкой остаётся широкая
+  // щель для глаз. Прижатая ниже, она превращала лицо в сплошное пятно.
+  roundRect(ctx, -r * 0.5, -r * 1.16, r * 1.0, r * 0.14, r * 0.06);
+  // Хвосты повязки уходят назад — в ту же сторону, что и волосы-ёжик.
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.42, -r * 1.12);
+  ctx.quadraticCurveTo(-r * 0.85, -r * 1.04, -r * 1.02, -r * 0.74);
+  ctx.lineTo(-r * 0.84, -r * 0.8);
+  ctx.quadraticCurveTo(-r * 0.72, -r * 1.0, -r * 0.42, -r * 0.98);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function drawHelmet(ctx, r, color) {
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -1368,17 +1415,30 @@ const WEAPON_IN_HAND = {
   // Ветки для laser здесь нет намеренно: у лазера, как у вертушки, в руке
   // ничего не держат — глаза светятся на лице, а луч рисует сам класс.
 
-  // 🪃 Бумеранг: плоский полумесяц
+  // 🪃 Бумеранг: галка из двух плеч. Раньше это была одна дуга, и на игровом
+  // размере она читалась как банан — у бумеранга обязан быть угол.
   boomerang(ctx, recoil) {
-    ctx.strokeStyle = '#c98b3a';
-    ctx.lineWidth = 4.5;
+    // Локоть чуть уводит вперёд при броске: замах виден без отдельной анимации.
+    const elbow = 3 + recoil * 2;
     ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-1, 6);
-    ctx.quadraticCurveTo(10 + recoil * 3, -3, 17, 5);
+    ctx.lineJoin = 'round';
+    const arms = () => {
+      ctx.beginPath();
+      ctx.moveTo(elbow - 10, -7);      // верхнее плечо
+      ctx.lineTo(elbow, 0);            // локоть
+      ctx.lineTo(elbow - 8, 9);        // нижнее плечо, угол около 100°
+    };
+    ctx.strokeStyle = '#8a5a24';       // тёмный контур
+    ctx.lineWidth = 7;
+    arms();
     ctx.stroke();
-    ctx.strokeStyle = '#f0c079';
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#c98b3a';       // дерево
+    ctx.lineWidth = 5;
+    arms();
+    ctx.stroke();
+    ctx.strokeStyle = '#f0c079';       // светлая жила вдоль плеч
+    ctx.lineWidth = 1.6;
+    arms();
     ctx.stroke();
   },
 
@@ -1395,6 +1455,106 @@ const WEAPON_IN_HAND = {
   },
 
   // --- Эволюции. Без своей ветки рука была бы пустой ---
+  // Циклона тут нет намеренно: у вертушки ствола в руке нет, и у её эволюции
+  // тоже — лопасти видны вокруг героя. Широкого луча нет по той же причине,
+  // что и лазера: он бьёт из глаз.
+
+  // 🌩 Гроза: жезл с разрядником на конце
+  stormbolt(ctx, recoil) {
+    ctx.fillStyle = '#3a4250';
+    roundRect(ctx, -4, -2, 15, 4, 2);
+    ctx.fillStyle = '#7fd8ff';
+    drawStarShape(ctx, 15, 0, 6 + recoil * 3, 4);
+    ctx.fillStyle = '#ffffff';
+    circle(ctx, 15, 0, 2 + recoil * 1.5);
+  },
+
+  // 🧡 Морковный залп: три ствола пучком
+  carrotswarm(ctx, recoil) {
+    ctx.fillStyle = '#5a6472';
+    [-4.5, 0, 4.5].forEach((dy) => roundRect(ctx, -4, dy - 2, 14, 4, 1.8));
+    ctx.fillStyle = '#39414c';
+    roundRect(ctx, -6, -7, 4, 14, 2);          // общий казённик
+    ctx.fillStyle = '#ff8a2b';
+    [-4.5, 0, 4.5].forEach((dy) => circle(ctx, 11, dy, 2));
+    if (recoil > 0.35) {
+      ctx.fillStyle = 'rgba(220,220,220,0.75)';
+      circle(ctx, -9, 0, 3 + recoil * 2.5);
+    }
+  },
+
+  // 🌋 Огненный шторм: раструб пошире и языки пламени
+  firestorm(ctx, recoil) {
+    ctx.fillStyle = '#7a2f1c';
+    roundRect(ctx, -4, -4, 12, 8, 3);
+    ctx.fillStyle = '#c2462a';
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.lineTo(16, -9);
+    ctx.lineTo(16, 9);
+    ctx.lineTo(8, 5);
+    ctx.closePath();
+    ctx.fill();
+    ['#ffd93d', '#ff8a2b'].forEach((color, i) => {
+      ctx.fillStyle = color;
+      circle(ctx, 18 + i * 3 + recoil * 4, (i - 0.5) * 4, 3.4 - i);
+    });
+  },
+
+  // 🌨 Метель: сопло в инее и снежинка на конце
+  blizzard(ctx, recoil) {
+    ctx.fillStyle = '#2f6f8f';
+    roundRect(ctx, -4, -4, 13, 8, 3);
+    ctx.fillStyle = '#bfe9ff';
+    roundRect(ctx, 9, -5, 5, 10, 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    const x = 18 + recoil * 3;
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI) / 3;
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(a) * 4, -Math.sin(a) * 4);
+      ctx.lineTo(x + Math.cos(a) * 4, Math.sin(a) * 4);
+      ctx.stroke();
+    }
+  },
+
+  // 🌟 Двойной бумеранг: две галки друг за другом
+  doubleboomerang(ctx, recoil) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    [0, 7].forEach((dx, i) => {
+      const elbow = 1 + dx + recoil * 2;
+      const arms = () => {
+        ctx.beginPath();
+        ctx.moveTo(elbow - 8, -6);
+        ctx.lineTo(elbow, 0);
+        ctx.lineTo(elbow - 6, 7);
+      };
+      ctx.strokeStyle = '#8a5a24';
+      ctx.lineWidth = 6;
+      arms();
+      ctx.stroke();
+      ctx.strokeStyle = i ? '#e0b060' : '#c98b3a';
+      ctx.lineWidth = 4;
+      arms();
+      ctx.stroke();
+    });
+  },
+
+  // 🍯 Улей: соты, из которых валит рой
+  hive(ctx, recoil) {
+    ctx.fillStyle = '#d9932c';
+    roundRect(ctx, -3, -7, 13, 14, 4);
+    ctx.fillStyle = '#b3761d';
+    [-3.5, 0.5].forEach((dy) => roundRect(ctx, 0, dy, 6, 3, 1.2));
+    ctx.fillStyle = '#3b3b46';
+    [[14, -7], [18, -3], [15, 2], [19, 6]].forEach(([bx, by], i) => {
+      circle(ctx, bx + recoil * 3, by + Math.sin(i * 1.7) * 1.5, 1.5);
+    });
+  },
+
 
   // 🌊 Водомёт: широкое сопло и струя
   watercannon(ctx, recoil) {
@@ -1911,6 +2071,51 @@ function drawBlazeRage(ctx, r, phase, layer) {
 // --- Пикапы ---
 
 // Медалька на ленточке — это опыт.
+// 🌀 Портал: дыра в земле в МИРОВЫХ координатах. Рисуется в слое земли, до
+// персонажей, — иначе воронка накрывала бы того, кто в неё падает.
+//
+// Тёмный круг рисуется ровно по grip: это и есть смертельная зона, и ребёнок
+// должен видеть её границу честно. Дуги выходят наружу до reach — докуда
+// портал дотягивается, чтобы тянуть.
+export function drawPortal(ctx, { x, y, grip, reach, color, phase, fade = 1 }) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = fade;
+  ctx.scale(1, 0.5);          // дыра в полу, а не шар
+
+  ctx.fillStyle = '#1b1030';
+  circle(ctx, 0, 0, grip);
+  // Подсвеченный край: без него дыра сливается с ночным тинтом.
+  ctx.strokeStyle = color;
+  ctx.lineWidth = grip * 0.16;
+  ctx.beginPath();
+  ctx.arc(0, 0, grip, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Рукава воронки: три дуги, закрученные наружу до предела досягаемости.
+  ctx.strokeStyle = color;
+  for (let i = 0; i < 3; i++) {
+    const spin = phase * (1.4 + i * 0.5) + (i * Math.PI * 2) / 3;
+    ctx.globalAlpha = fade * (0.5 - i * 0.11);
+    ctx.lineWidth = grip * 0.22;
+    ctx.beginPath();
+    ctx.arc(0, 0, grip + (reach - grip) * (0.25 + i * 0.3), spin, spin + Math.PI * 1.1);
+    ctx.stroke();
+  }
+
+  // Искры летят ВНУТРЬ — направление здесь важнее всего остального: это и
+  // есть «затягивает».
+  ctx.fillStyle = color;
+  for (let i = 0; i < 10; i++) {
+    const t = (phase * 0.5 + i / 10) % 1;
+    const angle = i * 2.4 + phase * 0.5;
+    const dist = grip + (reach - grip) * (1 - t) * 0.8;
+    ctx.globalAlpha = fade * t * 0.9;
+    circle(ctx, Math.cos(angle) * dist, Math.sin(angle) * dist, grip * 0.11 * t);
+  }
+  ctx.restore();
+}
+
 export function drawMedalPickup(ctx, { radius, phase }) {
   const swing = Math.sin(phase) * 0.15; // медалька слегка покачивается
   ctx.save();
@@ -2055,7 +2260,6 @@ export function drawAbilitySparks(ctx, { radius, color, phase, layer }) {
 export function drawAbilityEffect(ctx, { style, radius, color, phase, facing, layer }) {
   ctx.save();
   switch (style) {
-    case 'dash': drawDashEffect(ctx, radius, phase, facing, layer); break;
     case 'turbo': drawTurboEffect(ctx, radius, color, phase, layer); break;
     case 'meow': drawMeowEffect(ctx, radius, color, phase, layer); break;
     // 'shockwave' мгновенна: у неё нет длительности, и рисовать нечего —
@@ -2063,37 +2267,6 @@ export function drawAbilityEffect(ctx, { style, radius, color, phase, facing, la
     default: break;
   }
   ctx.restore();
-}
-
-// 🏃 Рывок: полосы скорости позади героя и пыль из-под ног.
-function drawDashEffect(ctx, r, phase, facing, layer) {
-  const back = -facing; // полосы тянутся назад, куда бы герой ни бежал
-
-  if (layer === 'back') {
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 5; i++) {
-      const y = -r * 0.9 + i * r * 0.45;
-      const wave = Math.sin(phase * 2.4 + i) * r * 0.3;
-      // Средние полосы длиннее и ярче — так пучок читается как скорость.
-      const weight = 2 - Math.abs(i - 2);
-      ctx.lineWidth = 2 + weight;
-      ctx.globalAlpha = 0.25 + weight * 0.2;
-      ctx.beginPath();
-      ctx.moveTo(back * r * (0.8 + i * 0.12), y);
-      ctx.lineTo(back * (r * (2.2 + i * 0.22) + wave), y);
-      ctx.stroke();
-    }
-    return;
-  }
-
-  // Пыль из-под ног: клубочки отлетают назад и вверх, тая на лету.
-  ctx.fillStyle = '#e8dcc0';
-  for (let i = 0; i < 4; i++) {
-    const t = (phase * 0.5 + i * 0.25) % 1;
-    ctx.globalAlpha = (1 - t) * 0.7;
-    circle(ctx, back * r * (0.5 + t * 1.6), r * (1.0 - t * 0.5), r * 0.22 * (0.5 + t));
-  }
 }
 
 // ⚡ Турбо: вокруг героя потрескивают короткие молнии.

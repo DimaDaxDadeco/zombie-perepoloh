@@ -186,6 +186,81 @@ html, body {
 .panel--weapons .hero-card { width: 150px; }
 .panel--weapons .weapon-choice__emoji { font-size: 52px; line-height: 1.2; }
 
+/* --- Колонки выбора: одна на игрока ---
+   При одном игроке колонка одна, заголовка и галочки нет — экран выглядит
+   ровно как до появления игры вдвоём. */
+.picker {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+}
+
+.picker__column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.picker--duo .picker__column {
+  padding: 14px 10px;
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* Сетка карточек обязана занимать всю колонку: при align-items: center она
+   сжимается по содержимому и карточки выстраиваются в столбик по одной. */
+.picker__column .heroes,
+.picker__column .cards {
+  width: 100%;
+}
+
+/* Вдвоём панель шире, а карточки мельче — иначе две колонки не помещаются. */
+.panel--duo { width: min(98vw, 1280px); max-width: min(98vw, 1280px); }
+.picker--duo .hero-card { width: 132px; padding: 8px 6px 12px; }
+.picker--duo .hero-card__name { font-size: 14px; }
+.picker--duo .hero-card__perk { font-size: 11px; }
+.picker--duo .card { width: 140px; }
+
+/* Герой над колонкой прыгает (анимация bounce) — без запаса снизу он на
+   размахе задевает верх карточек. */
+.picker__column .menu-hero-canvas {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 6px;
+}
+
+.picker__who {
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+
+/* «ГОТОВ ✓» показывается, только когда игрок подтвердил: до этого место под
+   него зарезервировано, иначе колонка дёргается в момент выбора. */
+.picker__ready {
+  color: var(--color-accent);
+  font-size: 20px;
+  visibility: hidden;
+}
+
+.picker__column--ready .picker__ready { visibility: visible; }
+/* Выбравший больше не листает — гасим его колонку, чтобы было видно, кого ждут. */
+.picker__column--ready .heroes,
+.picker__column--ready .cards { opacity: 0.55; }
+.picker__column--ready .btn { display: none; }
+
+/* Одиннадцать оружий в две колонки: карточки уже и по три в ряд. */
+.panel--weapons-duo { width: min(98vw, 1320px); max-width: min(98vw, 1320px); }
+.panel--weapons-duo .hero-card { width: 104px; padding: 8px 4px 10px; }
+.panel--weapons-duo .weapon-choice__emoji { font-size: 34px; line-height: 1.1; }
+.panel--weapons-duo .hero-card__name { font-size: 13px; }
+/* Подсказку в тесной раскладке убираем — её и так озвучивает кнопка 🔈. */
+.panel--weapons-duo .hero-card__perk { display: none; }
+.panel--weapons-duo .heroes { gap: 8px; }
+
 .hero-card__canvas {
   max-width: 100%;
   height: auto;
@@ -357,9 +432,12 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
 
 #touch-marker.visible { opacity: 1; }
 
+/* Слева: ребёнок держит устройство двумя руками и ведёт героя правой, а
+   способность жмёт левым большим пальцем. Справа кнопка попадала под ту же
+   руку, что ведёт героя. */
 #touch-ability {
   position: absolute;
-  right: calc(28px + env(safe-area-inset-right));
+  left: calc(28px + env(safe-area-inset-left));
   bottom: calc(28px + env(safe-area-inset-bottom));
   width: 88px;             /* вдвое больше рекомендаций Apple: промахнуться нельзя */
   height: 88px;
