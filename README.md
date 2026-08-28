@@ -19,7 +19,7 @@
 
 ## Играть
 
-**<https://REPLACE-ME.github.io/zombie-perepoloh/>** — открывается на
+**<https://dimadaxdadeco.github.io/zombie-perepoloh/>** — открывается на
 компьютере, планшете и телефоне, ничего устанавливать не надо.
 
 ## Как запустить локально
