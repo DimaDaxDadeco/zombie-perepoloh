@@ -44,6 +44,12 @@ export class Round {
     this.players = specs.map((spec, i) => this.createPlayer(spec, i, specs.length));
     this.coopFactor = specs.length > 1 ? CONFIG.coop : NO_COOP;
 
+    // Перки-множители команды: доллары Соника и опыт Пикачу достаются всем —
+    // и деньги, и уровень в игре общие, разделять их было бы странно.
+    // Берём ЛУЧШИЙ, а не сумму: два Соника не должны удваивать заработок.
+    this.coinFactor = 1 + Math.max(0, ...specs.map((spec) => spec.coinBonus || 0));
+    this.xpFactor = 1 + Math.max(0, ...specs.map((spec) => spec.xpBonus || 0));
+
     this.enemies = [];
     this.projectiles = [];
     this.pickups = [];
@@ -330,7 +336,7 @@ export class Round {
       // Множитель за сложность применяем один раз здесь, а не к каждой монете:
       // так он накрывает и медальки, и добычу с босса, и бонус за победу,
       // и не копится ошибка округления.
-      coinsEarned: Math.round(this.coinsEarned * this.difficultySpec.money),
+      coinsEarned: Math.round(this.coinsEarned * this.difficultySpec.money * this.coinFactor),
       discovered: {
         zombies: [...this.discovered.zombies],
         bosses: [...this.discovered.bosses],
@@ -461,7 +467,7 @@ export class Round {
       return;
     }
     this.audio.medal();
-    if (this.addXp(CONFIG.pickups.medalXp * this.coopFactor.xpFactor)) {
+    if (this.addXp(CONFIG.pickups.medalXp * this.coopFactor.xpFactor * this.xpFactor)) {
       this.audio.levelUp();
       this.callbacks.onLevelUp();
     }

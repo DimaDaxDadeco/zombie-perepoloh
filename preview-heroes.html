@@ -33,7 +33,7 @@
     <a href="./preview-bosses.html">→ стенд боссов</a>
     <a href="./preview-locations.html">→ стенд локаций</a>
   </div>
-  <canvas id="stage" width="1400" height="880"></canvas>
+  <canvas id="stage" width="1400"></canvas>
 
 <script type="module">
 // Стенд для просмотра героев. Импортирует настоящие модули игры, поэтому
@@ -47,10 +47,14 @@ import {
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
-const H = canvas.height;
 
 const heroes = CONFIG.characters;
-const LANE_HEIGHT = H / heroes.length;
+// Высоту ставим из JS по числу героев: при делении фиксированной высоты
+// добавление героя молча сплющивает полосы, и фигуры лезут друг на друга.
+// На четверых подпись уже залезала в соседнюю полосу на девять пикселей.
+const LANE_HEIGHT = 240;
+canvas.height = heroes.length * LANE_HEIGHT;
+const H = canvas.height;
 const RADIUS = 44;             // в игре 20, здесь крупнее — чтобы разглядеть детали
 const BASE_SPEED = 90;
 

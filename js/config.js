@@ -163,6 +163,58 @@ export const CONFIG = {
         cape: '#ffd93d', chest: 'none',
       },
     },
+    {
+      id: 'hulk',
+      name: 'Халк',
+      about: 'Два лишних сердечка',
+      perk: { extraHp: 2 },
+      ability: 'rage',
+      look: {
+        // Рубашка цвета кожи: у Халка её нет, и так торс читается голым.
+        skin: '#6cc24a', hair: '#2b1f14', hairStyle: 'bowl',
+        shirt: '#6cc24a', pants: '#6b4fa8',
+        cape: null, chest: 'none',
+      },
+    },
+    {
+      id: 'sonic',
+      name: 'Соник',
+      about: 'Приносит больше долларов',
+      perk: { coinBonus: 0.5 },
+      ability: 'spindash',
+      look: {
+        skin: '#3b7de0', hair: '#2550a8', hairStyle: 'quills',
+        shirt: '#f0c9a0', pants: '#e03b3b',
+        cape: null, chest: 'none',
+      },
+    },
+    {
+      id: 'pika',
+      name: 'Пикачу',
+      about: 'Быстрее набирает уровни',
+      perk: { xpBonus: 0.5 },
+      ability: 'zap',
+      look: {
+        // Плащ работает хвостом-молнией: рисуется позади и качается на бегу.
+        skin: '#f5cf3a', hair: '#3a2f14', hairStyle: 'pikaears',
+        shirt: '#f5cf3a', pants: '#e0a72b',
+        cape: '#e8bb2e', chest: 'none', cheeks: '#ff5d5d',
+      },
+    },
+    {
+      id: 'spider',
+      name: 'Человек-паук',
+      about: 'Своё оружие — паутина',
+      perk: {},
+      // Единственный герой со своим оружием: экран выбора ему не показывают.
+      fixedWeapon: 'web',
+      ability: 'swarm',
+      look: {
+        skin: '#d02b2b', hair: '#d02b2b', hairStyle: 'none',
+        shirt: '#d02b2b', pants: '#2a4bb0',
+        cape: null, chest: 'spider', mask: '#d02b2b',
+      },
+    },
   ],
   defaultCharacter: 'max',
 
@@ -231,6 +283,29 @@ export const CONFIG = {
       name: 'Турбо', emoji: '⚡', about: 'Оружие палит вдвое чаще',
       color: '#9be86b',
       duration: 6, rate: 2,
+    },
+    spindash: {
+      name: 'Спин-дэш', emoji: '💨', about: 'Катится шаром и всех сшибает',
+      color: '#4fd1ff',
+      duration: 0.9, speed: 620, damage: 6, force: 780,
+    },
+    swarm: {
+      name: 'Полчище паучков', emoji: '🕷', about: 'Паучки разбегаются и кусают',
+      color: '#c8b6ff',
+      // Их заметно больше, чем пчёл, и живут дольше — иначе на глаз это
+      // тот же рой. Плюс укус замедляет, чего пчёлы не умеют.
+      count: 14, damage: 2, life: 5, speed: 190, turnSpeed: 5,
+      chillFactor: 0.55, chillTime: 1.2,
+    },
+    rage: {
+      name: 'Ярость', emoji: '👊', about: 'Растёт и сносит всех подряд',
+      color: '#7bd94a',
+      duration: 5, size: 1.8, damage: 20, force: 900,
+    },
+    zap: {
+      name: 'Разряд', emoji: '⛈', about: 'Молнии бьют по всей толпе',
+      color: '#ffe14d',
+      bolts: 8, damage: 7, radius: 60, stunTime: 1.4, stunFactor: 0.15,
     },
     meow: {
       name: 'Мяу!', emoji: '🐾', about: 'Все зомби замирают',
@@ -642,6 +717,22 @@ export const CONFIG = {
       damage:   [2, 2, 2, 3, 3],
       speed: 210, turnSpeed: 6,                   // медленные, зато вертлявые
       life: 2.5, spread: 1.2, retarget: 0.35,
+    },
+
+    // 🕸 Паутина — оружие Человека-паука и только его: флаг signature
+    // прячет её из выбора стартового и из карточек «новое оружие» так же,
+    // как evolved прячет эволюции.
+    web: {
+      signature: true,
+      name: 'Паутина', emoji: '🕸', about: 'Липкие пятна замедляют зомби',
+      // Урон почти символический: это оружие-помеха. Паук выезжает не на нём
+      // одном, а на том, что наберёт карточками сверху.
+      cooldown: [0.9, 0.8, 0.72, 0.64, 0.55],
+      damage:   [1, 1, 1, 2, 2],
+      radius:   [46, 52, 58, 64, 72],   // размер пятна
+      patchLife: 2.2,                   // сколько лежит на земле
+      speed: 460,                       // скорость летящего комка
+      chillFactor: 0.4,                 // во столько раз медленнее внутри
     },
 
     // --- Эволюции: доступны только как награда за пятую звезду ---

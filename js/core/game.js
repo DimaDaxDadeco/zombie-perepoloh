@@ -399,16 +399,31 @@ export class Game {
   }
 
   openWeapons() {
+    // У Паука оружие своё, и выбирать ему нечего. Если своё оружие у ВСЕХ,
+    // экран показывать не из чего — уходим сразу в бой, иначе ребёнок увидел
+    // бы страницу, на которой нечего нажать.
+    const fixed = this.eachPlayer().map((i) => this.getCharacter(i).fixedWeapon || null);
+    if (fixed.every(Boolean)) {
+      this.startRound(this.storage.data.round);
+      return;
+    }
+
     this.state = GameState.WEAPONS;
     this.hideAllScreens();
     this.screens.weapons.render(
-      this.eachPlayer().map((i) => this.storage.data[Game.weaponKey(i)] || CONFIG.startingWeapon),
-      { total: this.playersCount },
+      this.eachPlayer().map((i) => fixed[i] || this.storage.data[Game.weaponKey(i)]
+        || CONFIG.startingWeapon),
+      { total: this.playersCount, fixed },
     );
   }
 
   chooseWeapons(ids) {
-    ids.forEach((id, i) => { this.storage.data[Game.weaponKey(i)] = id; });
+    // Своё оружие в сохранение не пишем: иначе, сменив Паука на другого
+    // героя, ребёнок обнаружил бы у него паутину.
+    ids.forEach((id, i) => {
+      if (this.getCharacter(i).fixedWeapon) return;
+      this.storage.data[Game.weaponKey(i)] = id;
+    });
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
@@ -488,9 +503,16 @@ export class Game {
       pets: Object.entries(CONFIG.shop)
         .filter(([id, spec]) => spec.pet && bought[id])
         .map(([, spec]) => spec.pet),
+      // Множители команды: применяются в Round, потому что и деньги, и опыт
+      // в игре общие.
+      coinBonus: perk.coinBonus || 0,
+      xpBonus: perk.xpBonus || 0,
       look: this.getCharacter(playerIndex).look,
       ability: this.getCharacter(playerIndex).ability,
-      startWeapon: this.storage.data[Game.weaponKey(playerIndex)] || CONFIG.startingWeapon,
+      // Герой со своим оружием (Паук) выбор игнорирует: у него оно одно.
+      startWeapon: this.getCharacter(playerIndex).fixedWeapon
+        || this.storage.data[Game.weaponKey(playerIndex)]
+        || CONFIG.startingWeapon,
     };
   }
 

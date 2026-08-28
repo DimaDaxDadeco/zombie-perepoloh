@@ -121,6 +121,24 @@ function drawChestEmblem(ctx, r, look, facing) {
     ctx.lineTo(r * 0.02, r * 0.0);
     ctx.closePath();
     ctx.fill();
+  } else if (kind === 'spider') {
+    // Паучок на груди: тельце из двух кружков и четыре пары лапок.
+    ctx.strokeStyle = '#1c1c28';
+    ctx.lineWidth = Math.max(1, r * 0.045);
+    ctx.lineCap = 'round';
+    [-1, 1].forEach((side) => {
+      [-0.16, -0.02, 0.12, 0.26].forEach((dy, i) => {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.05, r * (dy + 0.02));
+        // Лапки чуть загибаются книзу — иначе выходит снежинка, а не паук.
+        ctx.quadraticCurveTo(side * r * 0.24, r * dy, side * r * 0.3,
+          r * (dy + 0.08 + i * 0.02));
+        ctx.stroke();
+      });
+    });
+    ctx.fillStyle = '#1c1c28';
+    circle(ctx, 0, r * 0.0, r * 0.09);
+    circle(ctx, 0, r * 0.16, r * 0.12);
   }
 }
 
@@ -162,6 +180,42 @@ function drawHairStyle(ctx, r, look) {
         ctx.fill();
       });
       break;
+    case 'quills': // колючки ежа: назад и вверх, разной длины
+      // Длину держим в пределах половины радиуса от головы: голова — это круг
+      // 0.52r, и колючки длиннее неё читаются не как иглы, а как сдутый набок
+      // хохол. Проверено глазами на радиусе 20.
+      [[-1.02, -1.02], [-0.92, -1.42], [-0.5, -1.66]].forEach(([tipX, tipY], i) => {
+        ctx.beginPath();
+        // Растут из затылка (герой смотрит вправо) — отсюда минус по X.
+        ctx.moveTo(-r * 0.34, -r * (0.75 + i * 0.2));
+        ctx.lineTo(r * tipX, r * tipY);
+        ctx.lineTo(-r * 0.22, -r * (1.02 + i * 0.16));
+        ctx.closePath();
+        ctx.fill();
+      });
+      break;
+    case 'pikaears': // длинные уши с тёмными кончиками
+      [-1, 1].forEach((side) => {
+        ctx.fillStyle = look.hair;
+        ctx.beginPath();
+        // Кончик тёмный, поэтому ухо рисуем целиком светлым, а сверху
+        // накладываем тёмную макушку — так граница выходит ровной.
+        ctx.moveTo(side * r * 0.16, -r * 1.15);
+        ctx.lineTo(side * r * 0.5, -r * 1.95);
+        ctx.lineTo(side * r * 0.62, -r * 1.05);
+        ctx.closePath();
+        ctx.fill();
+      });
+      [-1, 1].forEach((side) => {
+        ctx.fillStyle = look.skin;
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.2, -r * 1.12);
+        ctx.lineTo(side * r * 0.42, -r * 1.62);
+        ctx.lineTo(side * r * 0.55, -r * 1.05);
+        ctx.closePath();
+        ctx.fill();
+      });
+      break;
     default:
       break;
   }
@@ -169,6 +223,13 @@ function drawHairStyle(ctx, r, look) {
 
 function drawFace(ctx, r, look) {
   if (look.hairStyle === 'ears') drawWhiskers(ctx, r);
+  // Маска закрывает лицо целиком и рисует свои глаза — обычные тут не нужны.
+  if (look.mask) return drawHeroMask(ctx, r, look.mask);
+
+  if (look.cheeks) {
+    ctx.fillStyle = look.cheeks;
+    [-1, 1].forEach((side) => circle(ctx, side * r * 0.42, -r * 0.72, r * 0.13));
+  }
   ctx.fillStyle = DARK;
   for (const eye of HERO_EYES) circle(ctx, eye.x * r, eye.y * r, r * 0.07);
   ctx.strokeStyle = look.hairStyle === 'antenna' ? '#5a6a7a' : '#a8663f';
@@ -176,6 +237,26 @@ function drawFace(ctx, r, look) {
   ctx.beginPath();
   ctx.arc(r * 0.02, -r * 0.72, r * 0.2, 0.2 * Math.PI, 0.8 * Math.PI);
   ctx.stroke();
+}
+
+// Маска на всё лицо: белые линзы вместо глаз, рта нет.
+//
+// Линзы рисуются ПО HERO_EYES и лишь крупнее — координаты глаз двигать
+// нельзя: по ним же бьёт лазер (см. heroEyePoints), и сдвиг увёл бы луч с лица.
+function drawHeroMask(ctx, r, color) {
+  ctx.fillStyle = color;
+  circle(ctx, 0, -r * 0.85, r * 0.52);      // сама маска поверх головы
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = Math.max(1, r * 0.045);
+  for (const eye of HERO_EYES) {
+    ctx.beginPath();
+    // Каплевидная линза: широкая у виска, острая к переносице.
+    ctx.ellipse(eye.x * r * 1.35, eye.y * r, r * 0.2, r * 0.13,
+      eye.x < 0 ? -0.35 : 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 // Усы и носик — без них котик читается как человек с ушами.
@@ -1452,6 +1533,24 @@ const WEAPON_IN_HAND = {
     [[13, -6], [16, -2], [12, 3]].forEach(([bx, by], i) => {
       circle(ctx, bx + recoil * 2, by + Math.sin(i) * 1.5, 1.4);
     });
+  },
+
+  // 🕸 Паутиномёт: браслет на запястье с соплом
+  web(ctx, recoil) {
+    ctx.fillStyle = '#b02525';
+    roundRect(ctx, -4, -3.5, 10, 7, 2.5);      // браслет
+    ctx.fillStyle = '#e8e8f5';
+    roundRect(ctx, 6, -2, 6, 4, 1.5);          // сопло
+    if (recoil > 0.25) {
+      ctx.strokeStyle = 'rgba(232,232,245,0.9)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(12 + recoil * 8, -2);
+      ctx.moveTo(12, 0);
+      ctx.lineTo(12 + recoil * 8, 2);
+      ctx.stroke();
+    }
   },
 
   // --- Эволюции. Без своей ветки рука была бы пустой ---

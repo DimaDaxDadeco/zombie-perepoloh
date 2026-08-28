@@ -72,9 +72,26 @@ html, body {
   width: min(92vw, 780px);
 }
 
+/* Героев восемь. При карточке 180px и панели 860px в ряд влезало ровно
+   четыре, восемь давали два ряда высотой ~528px, панель перерастала
+   max-height: 92vh — и кнопка «ИГРАТЬ» уезжала под сгиб на ноутбуке 768px.
+   Тот же приём, что у одиннадцати оружий: панель шире, карточки уже.
+   max-width переопределять обязательно — базовые 900px иначе срежут ширину. */
+/* Ширина подобрана так, чтобы вышло ровно 4+4, а не 7+1: контент 710px
+   вмещает четыре карточки по 160 с гэпами (688) и не вмещает пять (864). */
 .panel--characters {
-  width: min(94vw, 860px);
+  width: min(96vw, 790px);
+  max-width: min(96vw, 790px);
+  /* Два ряда карточек плюс заголовок, кнопка и подсказка едва помещаются в
+     92vh на ноутбуке 768px — отсюда поджатые отступы. */
+  padding: 20px 32px;
+  gap: 10px;
 }
+
+.panel--characters .hero-card { width: 152px; padding: 8px 8px 10px; }
+.panel--characters .hero-card__name { font-size: 15px; }
+.panel--characters .hero-card__perk { font-size: 11px; }
+.panel--characters .hero-card__ability { font-size: 11px; }
 
 .title {
   font-size: clamp(28px, 5vw, 46px);
@@ -186,6 +203,10 @@ html, body {
 .panel--weapons .hero-card { width: 150px; }
 .panel--weapons .weapon-choice__emoji { font-size: 52px; line-height: 1.2; }
 
+/* Своё оружие героя: карточка одна и выбрана, но она не кнопка — курсор
+   по ней не ходит, и рука это должна показывать. */
+.hero-card--locked { cursor: default; }
+
 /* --- Колонки выбора: одна на игрока ---
    При одном игроке колонка одна, заголовка и галочки нет — экран выглядит
    ровно как до появления игры вдвоём. */
@@ -224,6 +245,15 @@ html, body {
 .picker--duo .hero-card__name { font-size: 14px; }
 .picker--duo .hero-card__perk { font-size: 11px; }
 .picker--duo .card { width: 140px; }
+
+/* Восемь героев в две колонки: колонка даёт ~568px, и карточки 132px лезли бы
+   в три ряда. Ужимаем так же, как оружие, и убираем подписи — их и без того
+   озвучивает кнопка 🔈. */
+.panel--characters.panel--duo .hero-card { width: 100px; padding: 6px 4px 8px; }
+.panel--characters.panel--duo .hero-card__name { font-size: 12px; }
+.panel--characters.panel--duo .hero-card__perk,
+.panel--characters.panel--duo .hero-card__ability { display: none; }
+.panel--characters.panel--duo .heroes { gap: 8px; }
 
 /* Герой над колонкой прыгает (анимация bounce) — без запаса снизу он на
    размахе задевает верх карточек. */
@@ -284,6 +314,14 @@ html, body {
     width: 140px;
     padding: 8px 6px 12px;
   }
+
+  /* Восьмерых героев на телефоне надо ужать сильнее прочих экранов: при
+     138px в ряд влезало бы двое, то есть четыре ряда и прокрутка. */
+  .panel--characters .hero-card { width: 100px; padding: 6px 4px 8px; }
+  .panel--characters .hero-card__name { font-size: 12px; }
+  .panel--characters .hero-card__perk,
+  .panel--characters .hero-card__ability { display: none; }
+  .panel--characters .heroes { gap: 8px; }
 
   .hero-card__name {
     font-size: 15px;
