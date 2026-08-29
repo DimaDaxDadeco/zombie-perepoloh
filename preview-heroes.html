@@ -42,7 +42,9 @@
 import { CONFIG } from './js/config.js';
 import {
   drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect, drawBeast, drawDrone,
+  drawPortal, drawMedalPickup, drawStinkCloud, circle,
 } from './js/render/sprites.js';
+import { SpiderMinion } from './js/entities/projectile.js';
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
@@ -52,7 +54,7 @@ const heroes = CONFIG.characters;
 // Высоту ставим из JS по числу героев: при делении фиксированной высоты
 // добавление героя молча сплющивает полосы, и фигуры лезут друг на друга.
 // На четверых подпись уже залезала в соседнюю полосу на девять пикселей.
-const LANE_HEIGHT = 240;
+const LANE_HEIGHT = 260;
 canvas.height = heroes.length * LANE_HEIGHT;
 const H = canvas.height;
 const RADIUS = 44;             // в игре 20, здесь крупнее — чтобы разглядеть детали
@@ -108,11 +110,105 @@ function drawFx(w, ability, layer) {
   else drawAbilitySparks(ctx, fx);
 }
 
+// Способности, живущие в МИРЕ, а не на герое. drawAbilityEffect про них не
+// знает — он умеет только рисовать вокруг персонажа, — и раньше стенд честно
+// писал «эффект в бою», то есть не показывал ничего. Здесь они собраны
+// картинкой: настоящими функциями, где такие есть, и понятным намёком, где
+// эффект живёт снарядами или частицами.
+const WORLD_FX = {
+  // 💥 Волна: расходящиеся кольца, как их рисуют частицы в бою.
+  shockwave(w, spec) {
+    ctx.strokeStyle = spec.color;
+    [0.55, 0.85, 1.15].forEach((k, i) => {
+      ctx.globalAlpha = 0.75 - i * 0.22;
+      ctx.lineWidth = RADIUS * 0.16;
+      ctx.beginPath();
+      ctx.arc(0, RADIUS * 0.6, RADIUS * 2.2 * k, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  },
+
+  // 🌀 Портал: та же самая функция, что и в бою.
+  portal(w, spec) {
+    drawPortal(ctx, {
+      x: 0, y: RADIUS * 1.4, grip: spec.grip, reach: spec.radius * 0.5,
+      color: spec.color, phase: w.phase, fade: 1,
+    });
+  },
+
+  // ⛈ Разряд: молнии от героя к нескольким точкам вокруг.
+  zap(w, spec) {
+    ctx.strokeStyle = spec.color;
+    ctx.lineWidth = RADIUS * 0.09;
+    ctx.lineJoin = 'round';
+    [-2.4, -1.1, 0.5, 1.9].forEach((a, i) => {
+      const tx = Math.cos(a) * RADIUS * 2.4;
+      const ty = Math.sin(a) * RADIUS * 1.5 + RADIUS * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -RADIUS);
+      ctx.lineTo(tx * 0.45 + RADIUS * 0.2, ty * 0.4 - RADIUS * 0.3);
+      ctx.lineTo(tx * 0.72 - RADIUS * 0.2, ty * 0.75);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.fillStyle = spec.color;
+      ctx.globalAlpha = 0.35;
+      circle(ctx, tx, ty, spec.radius * 0.5);
+      ctx.globalAlpha = 1;
+    });
+  },
+
+  // 🕷 Полчище паучков: настоящие снаряды, нарисованные своим же кодом.
+  swarm(w, spec) {
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + w.phase * 0.2;
+      const d = RADIUS * (1.5 + Math.sin(w.phase + i) * 0.3);
+      const minion = new SpiderMinion(0, 0, a, {
+        speed: 0, turnSpeed: 0, damage: 0, life: 9, retarget: 1,
+        chillFactor: spec.chillFactor, chillTime: spec.chillTime,
+      });
+      minion.x = Math.cos(a) * d;
+      minion.y = Math.sin(a) * d * 0.7 + RADIUS * 0.5;
+      minion.wobble = w.phase + i;
+      minion.draw(ctx);
+    }
+  },
+
+  // 🎁 Подарки: хлопки кольцами и медальки, что остаются после.
+  gifts(w, spec) {
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.4;
+      const x = Math.cos(a) * RADIUS * 1.9;
+      const y = Math.sin(a) * RADIUS * 1.2 + RADIUS * 0.5;
+      ctx.strokeStyle = spec.color;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = RADIUS * 0.1;
+      ctx.beginPath();
+      ctx.arc(x, y, spec.blastRadius * 0.42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.translate(x, y);
+      drawMedalPickup(ctx, { radius: RADIUS * 0.22, phase: w.phase + i });
+      ctx.restore();
+    }
+  },
+};
+
 function drawWalker(w) {
   const ability = CONFIG.abilities[w.hero.ability];
+  const worldFx = WORLD_FX[w.hero.ability];
+  const active = w.state.glow === 'active';
   ctx.save();
   ctx.translate(w.x, w.y);
   drawShadow(ctx, RADIUS);
+  // Перк-облако Хэнки рисуется всегда, как и в бою: это не способность, а
+  // постоянное свойство героя, и на стенде оно должно быть в каждой колонке.
+  if (w.hero.perk?.stinkRadius) {
+    drawStinkCloud(ctx, w.hero.perk.stinkRadius * (RADIUS / 20) * 0.5, w.phase);
+  }
+  // Мировые эффекты — под героем: в бою они лежат на земле.
+  if (active && worldFx) worldFx(w, ability);
   drawFx(w, ability, 'back');
 
   drawHero(ctx, {
@@ -131,13 +227,14 @@ function drawWalker(w) {
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(28,26,56,0.7)';
   ctx.font = '13px system-ui, sans-serif';
-  // У волны нет длительности, а портал живёт не на герое, а на земле — в
-  // обеих колонках показывать нечего. Честнее написать об этом, чем оставить
-  // пустого героя.
-  const inWorld = ['shockwave', 'portal'].includes(w.hero.ability);
-  const instant = w.state.glow === 'active' && inWorld;
-  ctx.fillText(instant ? 'мгновенная — эффект в бою' : w.state.label,
-    w.x, w.y + RADIUS * 1.9);
+  // Раньше тут стояла заглушка «эффект в бою» для способностей, живущих в
+  // мире. Список в ней устаревал молча, и половина колонок оставалась пустой.
+  // Теперь рисуется всё, а подпись помечает мировые эффекты как таковые.
+  // Мировые эффекты лежат на земле и перекрывают подпись — её приходится
+  // отодвигать ниже. Портал наступал на неё ровно так.
+  const inWorld = active && WORLD_FX[w.hero.ability];
+  const label = inWorld ? `${w.state.label} (в мире)` : w.state.label;
+  ctx.fillText(label, w.x, w.y + RADIUS * (inWorld ? 2.7 : 2.1));
   ctx.restore();
 }
 
