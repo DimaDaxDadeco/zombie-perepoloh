@@ -178,7 +178,7 @@ export const CONFIG = {
         skin: '#6cc24a', hair: '#2b1f14', hairStyle: 'bowl',
         shirt: '#5faf3f', pants: '#6b4fa8',
         cape: null, chest: 'none',
-        build: 'buff', brows: '#241a10', mouth: 'frown',
+        build: 'buff', brows: '#241a10', mouth: 'snarl',
       },
     },
     {

@@ -115,10 +115,23 @@ function drawBulk(ctx, r, bodyW, look) {
   ctx.fill();
   ctx.strokeStyle = shade(look.shirt, -0.28);
   ctx.lineWidth = Math.max(1, r * 0.05);
-  ctx.beginPath();
-  ctx.moveTo(0, -r * 0.3);
-  ctx.lineTo(0, r * 0.12);
-  ctx.stroke();
+
+  // Пресс-кубики. Именно ЗАЛИВКОЙ, а не штрихами: линии, расходящиеся от
+  // центральной вертикали, читаются рыбьим скелетом — так вышло с первой
+  // версии, и с решёткой из сплошных поперечин до неё.
+  const cubeW = bodyW * 0.19;
+  const cubeH = r * 0.13;
+  const gap = r * 0.035;
+  ctx.fillStyle = shade(look.shirt, -0.14);
+  [0, 1, 2].forEach((row) => {
+    const y = -r * 0.04 + row * (cubeH + gap);
+    // Нижний ряд уже — так живот сужается к поясу, а не идёт кирпичом.
+    const w = cubeW * (1 - row * 0.12);
+    [-1, 1].forEach((side) => {
+      const x = side === -1 ? -gap / 2 - w : gap / 2;
+      roundRect(ctx, x, y, w, cubeH, r * 0.045);
+    });
+  });
 }
 
 function drawCape(ctx, r, walkPhase, color) {
@@ -295,10 +308,14 @@ function drawFace(ctx, r, look) {
     ctx.lineCap = 'round';
     HERO_EYES.forEach((eye, i) => {
       const side = i === 0 ? -1 : 1;
+      // Внутренний конец (у переносицы) НИЖЕ наружного — «\ /» над глазами.
+      // Наоборот, «/ \», получается расстроенное лицо, а не злое; первая
+      // версия была именно такой, и Халк вышел грустным.
+      const inner = { x: eye.x * r - side * r * 0.02, y: eye.y * r - r * 0.09 };
+      const outer = { x: eye.x * r + side * r * 0.26, y: eye.y * r - r * 0.28 };
       ctx.beginPath();
-      // Внутренний край ниже наружного — это и читается как насупленность.
-      ctx.moveTo(eye.x * r - side * r * 0.13, eye.y * r - r * 0.2);
-      ctx.lineTo(eye.x * r + side * r * 0.11, eye.y * r - r * 0.07);
+      ctx.moveTo(inner.x, inner.y);
+      ctx.lineTo(outer.x, outer.y);
       ctx.stroke();
     });
   }
@@ -306,13 +323,45 @@ function drawFace(ctx, r, look) {
   ctx.strokeStyle = look.hairStyle === 'antenna' ? '#5a6a7a' : '#a8663f';
   ctx.lineWidth = Math.max(1.5, r * 0.07);
   ctx.beginPath();
-  if (look.mouth === 'frown') {
-    // Дуга рта переворачивается: те же точки, только угол зеркальный.
-    ctx.arc(r * 0.02, -r * 0.5, r * 0.2, 1.2 * Math.PI, 1.8 * Math.PI);
+  if (look.mouth === 'snarl') {
+    ctx.stroke();          // пустой путь, чтобы не тянуть предыдущий
+    drawSnarl(ctx, r);
   } else {
     ctx.arc(r * 0.02, -r * 0.72, r * 0.2, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
   }
-  ctx.stroke();
+}
+
+// Оскал: открытый тёмный рот с зубами. Просто опущенная дуга не годится —
+// она читается как «расстроен», а не «зол»; злость даёт открытый рот.
+function drawSnarl(ctx, r) {
+  const w = r * 0.27;
+  const y = -r * 0.62;
+  const h = r * 0.17;
+
+  ctx.fillStyle = '#5a1f1f';
+  ctx.beginPath();
+  // Углы рта ОПУЩЕНЫ ниже середины — без этого получается ухмылка, что и
+  // вышло с первой версии. Верх выгнут вверх, низ вниз: открытая пасть.
+  ctx.moveTo(-w, y + h * 0.5);
+  ctx.quadraticCurveTo(0, y - h * 0.5, w, y + h * 0.5);
+  ctx.quadraticCurveTo(0, y + h * 1.6, -w, y + h * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Клыки, свисающие с верхней кромки. Ровная белая полоса читалась зубастой
+  // улыбкой; треугольники — злобой.
+  ctx.fillStyle = '#ffffff';
+  [-0.55, -0.18, 0.18, 0.55].forEach((k) => {
+    const fx = w * k;
+    const fy = y - h * 0.5 + Math.abs(k) * h * 0.55;   // по дуге верхней кромки
+    ctx.beginPath();
+    ctx.moveTo(fx - w * 0.13, fy);
+    ctx.lineTo(fx + w * 0.13, fy);
+    ctx.lineTo(fx, fy + h * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  });
 }
 
 // Морда Соника: светлый овал на нижней половине лица и чёрный нос.
