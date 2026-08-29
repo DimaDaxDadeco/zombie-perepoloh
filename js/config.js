@@ -347,7 +347,7 @@ export const CONFIG = {
       // Вес растёт вместе со списком видов: 10 → 13 на четырёх новых, 13 → 14
       // на ниндзя. Иначе доля обычного сползает (сейчас держится около 25%), а
       // он обязан оставаться большинством — на нём читается фон боя.
-      hp: 1, speed: 1, radius: 1, weight: 14, fromRound: 1,
+      hp: 1, speed: 1, radius: 1, weight: 17, fromRound: 1,
       look: { skin: '#8fd67a', clothes: '#7a6bb5', body: 'normal' },
     },
     {
@@ -474,6 +474,37 @@ export const CONFIG = {
         mask: '#1c1c28',
       },
     },
+    {
+      // Первый зомби, который делает что-то ГЕРОЮ, а не себе: до него все
+      // умели только ходить по-своему. Отсюда и поздний раунд.
+      id: 'frosty', name: 'Зомби-морозко', about: 'Касается — и ты идёшь медленно',
+      touch: 'chill',
+      hp: 1.4, speed: 0.85, radius: 1.05, weight: 3, fromRound: 10,
+      chillFactor: 0.55, chillTime: 1.6,
+      look: { skin: '#a8d8e8', clothes: '#4a6f8f', body: 'normal', hair: 'bald' },
+    },
+    {
+      id: 'brood', name: 'Зомби-мамка', about: 'На ходу роняет малышей',
+      behavior: 'brood',
+      hp: 2, speed: 0.7, radius: 1.15, weight: 2, fromRound: 11,
+      broodInterval: 4.5,
+      // Малыши поменьше и слабее, и — главное — БЕЗ behavior: иначе они
+      // роняют своих, и арена зарастает за полминуты. Тот же предохранитель,
+      // что у снеговика.
+      spawn: {
+        hp: 0.5, radius: 0.62, speed: 1.1,
+        look: { skin: '#c7b3d9', clothes: '#8f7aa8', body: 'thin' },
+      },
+      look: { skin: '#b89ccc', clothes: '#6f5a8a', body: 'fat', hair: 'bun' },
+    },
+    {
+      // Целиком на существующих полях: ни строчки нового кода. Живая
+      // проверка того, что конфиг и правда самодостаточен.
+      id: 'brute', name: 'Зомби-громила', about: 'Огромный, медленный, не сдвинуть',
+      hp: 6, speed: 0.35, radius: 1.7, weight: 2, fromRound: 12,
+      knockbackFactor: 0.15,
+      look: { skin: '#5f8f4a', clothes: '#3f5f33', body: 'fat', helmet: '#7a6a4a' },
+    },
   ],
 
   boss: {
@@ -598,6 +629,33 @@ export const CONFIG = {
       // толпе уйти из круга бывает физически некуда — поэтому реже, мельче
       // и с более долгим предупреждением.
       boltInterval: 6, boltWarn: 1.2, boltRadius: 60,
+    },
+    {
+      id: 'healer', name: 'Босс-знахарь', about: 'Залечивает себя, если не бить',
+      ability: 'heal', entrance: 'swirl', rage: 'hearts',
+      hp: 0.85, speed: 0.9, radius: 0.95,
+      look: {
+        skin: '#cfe8c0', clothes: '#3f7f5f', hat: 'hood', accent: '#ffd93d',
+        chest: 'badge',
+      },
+      // Лечится, только пока его не трогают: healDelay секунд без урона — и
+      // здоровье поползло вверх. Это не «дольше бить», а «бить НЕ переставая»,
+      // и ребёнку такое правило понятно с первого раза.
+      healDelay: 2.2, healPerSecond: 0.045,
+    },
+    {
+      id: 'king', name: 'Зомби-король', about: 'Зовёт свиту и гонит её вперёд',
+      ability: 'summon', entrance: 'slam', rage: 'command',
+      hp: 1.05, speed: 0.8, radius: 1.05,
+      look: {
+        skin: '#a8c9a0', clothes: '#6b3f8f', hat: 'crown', accent: '#ffd93d',
+        chest: 'number', chestText: '1',
+      },
+      // Двенадцатый и последний уникальный — поэтому совмещает два уже
+      // знакомых приёма: выпускает свиту, как мама, и разгоняет всех, как
+      // охранник. Новых правил ребёнку учить не надо, а finale выходит.
+      summonInterval: 7, summonCount: 4,
+      rallyTime: 2.5, rallyFactor: 1.45,
     },
   ],
 

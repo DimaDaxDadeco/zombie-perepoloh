@@ -13,9 +13,19 @@ import {
 import { CakeLob } from './projectile.js';
 
 // Босс раунда: список типов проходится по кругу.
+// Какой босс в этом раунде.
+//
+// Первые двенадцать раундов — фиксированный порядок: каждый босс ровно один
+// раз, и ребёнок каждый раз встречает нового. Дальше тот же круг по второму
+// разу читался бы как «игра кончилась», поэтому выбираем случайно.
+//
+// ВАЖНО: функция возвращает РАЗНОЕ при повторных вызовах на одном и том же
+// позднем раунде. Звать её дважды за раунд нельзя — баннер объявит одного, а
+// выйдет другой. Раунд спрашивает один раз и запоминает (Round.bossType).
 export function bossTypeForRound(round) {
   const types = CONFIG.bossTypes;
-  return types[(round - 1) % types.length];
+  if (round <= types.length) return types[round - 1];
+  return types[Math.floor(Math.random() * types.length)];
 }
 
 export class Boss extends Zombie {
@@ -50,6 +60,7 @@ export class Boss extends Zombie {
   // добыча, ни счётчик зомби: всё это живёт в onEnemyDefeated, а его зовут
   // по возвращаемому значению takeDamage.
   takeDamage(amount) {
+    this.calmTimer = 0;                         // знахаря сбили с лечения
     if (this.isDown) return false;              // кости неуязвимы
     const spec = this.type.revive;
     if (!spec || this.reviveUsed || this.hp - amount > 0) return super.takeDamage(amount);
@@ -127,8 +138,37 @@ export class Boss extends Zombie {
       case 'rally': return this.updateRally(dt, world);
       case 'web': return this.updateWebs(dt, world);
       case 'bolt': return this.updateBolts(dt, world);
+      case 'heal': return this.updateHeal(dt);
+      case 'summon': return this.updateSummon(world);
       default: return;
     }
+  }
+
+  // Знахарь залечивается, пока его не трогают. Отсчёт ведётся от последнего
+  // полученного урона — hurtTimer для этого не годится, он живёт доли секунды
+  // ради вспышки, поэтому таймер свой.
+  updateHeal(dt) {
+    this.calmTimer = (this.calmTimer ?? 0) + dt;
+    if (this.calmTimer < this.type.healDelay) return;
+    this.hp = Math.min(this.maxHp, this.hp + this.maxHp * this.type.healPerSecond * dt);
+  }
+
+  // Король зовёт свиту и тут же гонит её вперёд: два уже знакомых приёма
+  // разом — малыши как у мамы, ускорение как у охранника.
+  updateSummon(world) {
+    if (this.abilityTimer > 0) return;
+    this.abilityTimer = this.abilityInterval(this.type.summonInterval);
+
+    for (let i = 0; i < this.type.summonCount; i++) {
+      const angle = (i / this.type.summonCount) * Math.PI * 2;
+      const dist = this.radius + 34;
+      const guard = world.spawner.createZombie(world.arena, world.players);
+      guard.x = this.x + Math.cos(angle) * dist;
+      guard.y = this.y + Math.sin(angle) * dist;
+      world.addEnemy(guard);
+    }
+    world.particles.addBurst(this.x, this.y, 14, 1);
+    world.rallyZombies(this.type.rallyFactor, this.type.rallyTime);
   }
 
   // Мама-зомби выпускает малышей — обычных зомби этого раунда.
