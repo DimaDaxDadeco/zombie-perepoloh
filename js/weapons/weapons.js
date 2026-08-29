@@ -3,9 +3,9 @@
 import { CONFIG } from '../config.js';
 import { Weapon } from './weapon.js';
 import {
-  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee,
+  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee, WebGlob,
 } from '../entities/projectile.js';
-import { circle, heroEyePoints } from '../render/sprites.js';
+import { circle, heroEyePoints, drawWeb } from '../render/sprites.js';
 
 // 💧 Водяной пистолет — базовое оружие, стреляет каплями в ближайшего зомби.
 class WaterGun extends Weapon {
@@ -440,6 +440,76 @@ class BeeSwarm extends Weapon {
   }
 }
 
+// 🕸 Паутина — оружие Человека-паука. Стреляет комками, комок падает и
+// оставляет липкое пятно.
+//
+// Замедление не заводит у зомби нового состояния: Zombie.freeze(factor,
+// duration) уже делает ровно «медленнее во столько на столько секунд», и мы
+// зовём её коротким импульсом каждый кадр, пока зомби в пятне. Вышел —
+// импульс не продлевается, и он разгоняется сам.
+class WebShooter extends Weapon {
+  constructor(id = 'web') {
+    super(id);
+    this.patches = [];   // пятна живут в оружии, как кулдауны у вертушки
+  }
+
+  update(dt, world, owner) {
+    this.updatePatches(dt, world);
+    super.update(dt, world, owner);
+  }
+
+  updatePatches(dt, world) {
+    const factor = this.spec.chillFactor;
+    for (const patch of this.patches) patch.life -= dt;
+    this.patches = this.patches.filter((patch) => patch.life > 0);
+
+    for (const patch of this.patches) {
+      for (const enemy of world.enemies) {
+        if (!enemy.alive || enemy.isHidden) continue;
+        // Эллипс, а не круг: пятно лежит на земле и нарисовано приплюснутым,
+        // и зона должна совпадать с картинкой.
+        const dx = (enemy.x - patch.x) / patch.radius;
+        const dy = (enemy.y - patch.y) / (patch.radius * 0.55);
+        if (dx * dx + dy * dy > 1) continue;
+        enemy.freeze(factor, 0.15);
+      }
+    }
+  }
+
+  fire(world, target) {
+    world.addProjectile(new WebGlob(this.aimFrom.x, this.aimFrom.y, target.x, target.y, {
+      speed: this.spec.speed,
+      damage: this.stat('damage'),
+      onLand: (x, y) => this.land(world, x, y),
+    }));
+    world.audio.shoot();
+  }
+
+  // Запоминаем, откуда стрелять: fire получает мир и цель, а владельца — нет.
+  aimAt(owner, target) {
+    super.aimAt(owner, target);
+    this.aimFrom = { x: owner.x, y: owner.y };
+  }
+
+  land(world, x, y) {
+    const radius = this.stat('radius');
+    this.patches.push({ x, y, radius, life: this.spec.patchLife, seed: this.patches.length });
+    const damage = this.stat('damage');
+    for (const enemy of [...world.enemies]) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      if (Math.hypot(enemy.x - x, enemy.y - y) > radius) continue;
+      world.damageEnemy(enemy, damage);
+    }
+  }
+
+  draw(ctx, player) {
+    for (const patch of this.patches) {
+      drawWeb(ctx, patch, patch.radius, this.spec.patchLife);
+    }
+    super.draw(ctx, player);   // ствол в руке рисует базовый класс
+  }
+}
+
 const WEAPON_CLASSES = {
   water: WaterGun,
   tomato: TomatoLauncher,
@@ -470,6 +540,7 @@ const WEAPON_CLASSES = {
   laser: LaserEyes,
   boomerang: BoomerangThrower,
   bees: BeeSwarm,
+  web: WebShooter,
 };
 
 export function createWeapon(id) {
@@ -478,10 +549,11 @@ export function createWeapon(id) {
   return new WeaponClass(id);   // эволюции переиспользуют класс родителя
 }
 
-// Эволюции существуют только как награда за пятую звезду: ни в выборе
-// стартового оружия, ни в карточках «новое оружие» им не место.
+// Что вообще можно выбрать и получить карточкой. Прячем два вида оружия:
+// эволюции (они награда за пятую звезду) и именное — паутину, которая есть
+// только у Человека-паука и другим героям не предлагается.
 export const ALL_WEAPON_IDS = Object.keys(CONFIG.weapons)
-  .filter((id) => !CONFIG.weapons[id].evolved);
+  .filter((id) => !CONFIG.weapons[id].evolved && !CONFIG.weapons[id].signature);
 
 // Обратная карта к CONFIG.weapons[*].evolution: «водомёт» → «водяной пистолет».
 // Считаем из уже существующего поля, а не пишем руками: второй список тех же

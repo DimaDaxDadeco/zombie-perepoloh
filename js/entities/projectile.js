@@ -421,6 +421,98 @@ export class Bee extends Projectile {
 //
 // Отдельный класс, а не Lob: тот на приземлении зовёт world.explode(),
 // который бьёт врагов. Здесь всё наоборот — достаётся героям.
+// 🕷 Паучок из полчища Человека-паука.
+//
+// Наследник пчелы — самонаведение, ограниченная жизнь и тихое угасание у него
+// те же. Отличий два, и оба нужны, чтобы полчище не читалось вторым роем:
+// укус ещё и замедляет (тот же freeze, что у паутины), и бежит он по земле,
+// а не порхает.
+export class SpiderMinion extends Bee {
+  constructor(x, y, angle, opts) {
+    super(x, y, angle, opts);
+    this.chillFactor = opts.chillFactor;
+    this.chillTime = opts.chillTime;
+    this.radius = 6;
+  }
+
+  onHit(enemy) {
+    enemy.freeze(this.chillFactor, this.chillTime);
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    // Лапки перебирают — по той же фазе, что у пчелы махали крылья.
+    ctx.strokeStyle = '#2a2438';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    [-1, 1].forEach((side) => {
+      [-3, 0, 3].forEach((dy, i) => {
+        const step = Math.sin(this.wobble * 3 + i) * 1.6;
+        ctx.beginPath();
+        ctx.moveTo(side * 2, dy);
+        ctx.lineTo(side * 7, dy + step);
+        ctx.stroke();
+      });
+    });
+    ctx.fillStyle = '#3b3350';
+    circle(ctx, 0, -2, 2.6);
+    circle(ctx, 0, 2, 3.6);
+    ctx.fillStyle = '#c8b6ff';
+    circle(ctx, -1.2, -2.6, 0.9);
+    circle(ctx, 1.2, -2.6, 0.9);
+    ctx.restore();
+  }
+}
+
+// 🕸 Комок паутины: летит по дуге в точку и оставляет там пятно.
+//
+// Про само пятно снаряд ничего не знает — он только зовёт onLand. Список
+// пятен держит оружие (см. WebShooter), как вертушка держит свои кулдауны:
+// заводить ради них сущность в мире было бы лишним.
+export class WebGlob extends Projectile {
+  constructor(x, y, targetX, targetY, { speed, damage, onLand }) {
+    super(x, y, damage);
+    this.startX = x;
+    this.startY = y;
+    this.targetX = targetX;
+    this.targetY = targetY;
+    this.flightTime = Math.max(0.12, Math.hypot(targetX - x, targetY - y) / speed);
+    this.elapsed = 0;
+    this.onLand = onLand;
+    this.radius = 9;
+  }
+
+  update(dt) {
+    this.elapsed += dt;
+    const t = Math.min(1, this.elapsed / this.flightTime);
+    this.x = this.startX + (this.targetX - this.startX) * t;
+    this.y = this.startY + (this.targetY - this.startY) * t;
+    this.hopHeight = Math.sin(t * Math.PI) * 44;
+    if (t < 1) return;
+    this.alive = false;
+    this.onLand(this.x, this.y);
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y - (this.hopHeight || 0));
+    ctx.rotate(this.elapsed * 9);
+    ctx.fillStyle = '#e8e8f5';
+    circle(ctx, 0, 0, this.radius);
+    ctx.strokeStyle = 'rgba(140,140,170,0.8)';
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(-Math.cos(a) * this.radius, -Math.sin(a) * this.radius);
+      ctx.lineTo(Math.cos(a) * this.radius, Math.sin(a) * this.radius);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 export class CakeLob extends Projectile {
   constructor(x, y, targetX, targetY, flightTime, blastRadius) {
     super(x, y, 0);
