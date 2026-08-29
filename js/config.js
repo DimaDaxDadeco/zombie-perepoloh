@@ -504,10 +504,10 @@ export const CONFIG = {
       hp: 6, speed: 0.35, radius: 1.7, weight: 2, fromRound: 12,
       knockbackFactor: 0.15,
       look: {
-        // Землистый камень с мохом — чтобы не путать с боссом того же
-        // раунда: тот светло-серый, этот бурый.
-        skin: '#8a8272', clothes: '#5f6a4a', body: 'fat',
-        stone: true, cracks: '#4a4438',
+        // shape: 'golem' рисует его целиком отдельной функцией — из семи
+        // крупных кубов, а не из частей человеческого тела.
+        shape: 'golem',
+        skin: '#c2c6cc', clothes: '#5a5f6a', accent: '#d9b169', eyes: '#4fd1ff',
       },
     },
   ],
