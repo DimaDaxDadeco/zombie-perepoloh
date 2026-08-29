@@ -176,8 +176,9 @@ export const CONFIG = {
       look: {
         // Рубашка цвета кожи: у Халка её нет, и так торс читается голым.
         skin: '#6cc24a', hair: '#2b1f14', hairStyle: 'bowl',
-        shirt: '#6cc24a', pants: '#6b4fa8',
+        shirt: '#5faf3f', pants: '#6b4fa8',
         cape: null, chest: 'none',
+        build: 'buff', brows: '#241a10', mouth: 'snarl',
       },
     },
     {
@@ -187,9 +188,13 @@ export const CONFIG = {
       perk: { coinBonus: 0.5 },
       ability: 'spindash',
       look: {
-        skin: '#3b7de0', hair: '#2550a8', hairStyle: 'quills',
-        shirt: '#f0c9a0', pants: '#e03b3b',
+        // Синий целиком, светлая только морда. Живот тоже светлым делать
+        // нельзя: голова и торс соприкасаются, и два бежевых пятна сливаются
+        // в одно — лицо пропадает.
+        skin: '#2f7ae5', hair: '#1f5cc0', hairStyle: 'quills',
+        shirt: '#2f7ae5', pants: '#2f7ae5',
         cape: null, chest: 'none',
+        muzzle: '#f3d0a8', gloves: '#ffffff', shoes: '#e03b3b',
       },
     },
     {
