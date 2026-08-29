@@ -49,6 +49,14 @@ export function drawHero(ctx, { radius, walkPhase, facing, blinking, look = DEFA
   ctx.translate(0, bob);
   ctx.scale(facing, 1);
 
+  // У Хэнки нет ни ног, ни рубахи — своя форма целиком, как у зверей-зомби.
+  if (look.shape === 'hankey') {
+    drawHankey(ctx, r, walkPhase, look);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
   if (look.cape) drawCape(ctx, r, walkPhase, look.cape);
 
   const build = HERO_BUILD[look.build] ?? 1;
@@ -132,6 +140,73 @@ function drawBulk(ctx, r, bodyW, look) {
       roundRect(ctx, x, y, w, cubeH, r * 0.045);
     });
   });
+}
+
+// 🎅 Мистер Хэнки: витая горка, ручки по бокам и колпак.
+//
+// Форма своя целиком: человеческий силуэт ему не подходит совсем — ни ног, ни
+// туловища у него нет. Витки рисуются снизу вверх и сужаются, поэтому порядок
+// важен: каждый следующий ложится поверх предыдущего и прикрывает шов.
+function drawHankey(ctx, r, walkPhase, look) {
+  const dark = shade(look.skin, -0.22);
+  const lite = shade(look.skin, 0.16);
+  // Лёгкое покачивание витков в такт шагу — он не идёт, а переваливается.
+  const sway = Math.sin(walkPhase) * r * 0.06;
+
+  // Ручки — за горкой, чтобы не заслоняли витки.
+  ctx.fillStyle = look.skin;
+  circle(ctx, -r * 0.66, r * 0.15 - Math.sin(walkPhase) * r * 0.1, r * 0.18);
+  circle(ctx, r * 0.66, r * 0.15 + Math.sin(walkPhase) * r * 0.1, r * 0.18);
+
+  // Три витка: широкий низ, узкий верх.
+  const coils = [
+    { y: 0.72, rx: 0.78, ry: 0.3, sway: sway * 0.3 },
+    { y: 0.24, rx: 0.6, ry: 0.26, sway: sway * 0.7 },
+    { y: -0.2, rx: 0.44, ry: 0.22, sway },
+  ];
+  coils.forEach((c, i) => {
+    ctx.fillStyle = i % 2 ? dark : look.skin;
+    ctx.beginPath();
+    ctx.ellipse(c.sway, r * c.y, r * c.rx, r * c.ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // Макушка-завиток
+  ctx.fillStyle = look.skin;
+  ctx.beginPath();
+  ctx.ellipse(sway * 1.2, -r * 0.54, r * 0.26, r * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = lite;
+  ctx.beginPath();
+  ctx.ellipse(sway * 1.2 - r * 0.06, -r * 0.6, r * 0.12, r * 0.07, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Глаза и улыбка — на среднем витке, там же, где у прочих героев лицо.
+  ctx.fillStyle = EYE_WHITE;
+  [-0.2, 0.18].forEach((x0) => circle(ctx, r * x0 + sway, -r * 0.16, r * 0.15));
+  ctx.fillStyle = DARK;
+  [-0.18, 0.2].forEach((x0) => circle(ctx, r * x0 + sway, -r * 0.16, r * 0.07));
+  ctx.strokeStyle = DARK;
+  ctx.lineWidth = Math.max(1.5, r * 0.06);
+  ctx.beginPath();
+  ctx.arc(sway, -r * 0.05, r * 0.17, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // Колпак — поверх завитка, набок.
+  if (look.hat) drawSantaHat(ctx, r, look.hat.color, sway);
+}
+
+// Колпак Санты: конус набок, белая опушка и помпон.
+function drawSantaHat(ctx, r, color, sway) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(sway - r * 0.3, -r * 0.66);
+  ctx.quadraticCurveTo(sway - r * 0.1, -r * 1.16, sway + r * 0.5, -r * 1.02);
+  ctx.lineTo(sway + r * 0.28, -r * 0.66);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  roundRect(ctx, sway - r * 0.34, -r * 0.74, r * 0.66, r * 0.16, r * 0.08);
+  circle(ctx, sway + r * 0.54, -r * 1.02, r * 0.12);
 }
 
 function drawCape(ctx, r, walkPhase, color) {

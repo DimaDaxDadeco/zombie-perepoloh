@@ -47,6 +47,7 @@ export class Round {
     // Перки-множители команды: доллары Соника и опыт Пикачу достаются всем —
     // и деньги, и уровень в игре общие, разделять их было бы странно.
     // Берём ЛУЧШИЙ, а не сумму: два Соника не должны удваивать заработок.
+    this.dropBonus = Math.max(0, ...specs.map((spec) => spec.dropBonus || 0));
     this.coinFactor = 1 + Math.max(0, ...specs.map((spec) => spec.coinBonus || 0));
     this.xpFactor = 1 + Math.max(0, ...specs.map((spec) => spec.xpBonus || 0));
 
@@ -453,7 +454,8 @@ export class Round {
     }
 
     // Медаль падает не с каждого зомби: так опыт ощущается наградой, а не фоном.
-    if (Math.random() < CONFIG.zombie.medalDropChance) {
+    // dropBonus — перк Мистера Хэнки, прибавка к шансу для всей команды.
+    if (Math.random() < CONFIG.zombie.medalDropChance + this.dropBonus) {
       const medals = Math.random() < CONFIG.zombie.doubleMedalChance ? 2 : 1;
       for (let i = 0; i < medals; i++) {
         this.pickups.push(new Pickup(enemy.x, enemy.y, PickupType.MEDAL));

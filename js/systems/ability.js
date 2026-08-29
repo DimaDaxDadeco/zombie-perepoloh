@@ -10,6 +10,7 @@
 import { CONFIG } from '../config.js';
 import { drawPortal } from '../render/sprites.js';
 import { SpiderMinion } from '../entities/projectile.js';
+import { Pickup, PickupType } from '../entities/pickup.js';
 
 export class Ability {
   constructor(id) {
@@ -250,6 +251,34 @@ class Zap extends Ability {
   }
 }
 
+// 🎁 Подарки: вокруг героя сыплются медальки и одно сердечко.
+//
+// Единственная способность, которая вообще не бьёт. Помощь непрямая, но
+// настоящая: медальки — это опыт, опыт — карточки прокачки. А для пятилетнего
+// дождь подарков и сам по себе праздник.
+class Gifts extends Ability {
+  constructor() { super('gifts'); }
+
+  activate(world, owner) {
+    const { medals, radius, color } = this.spec;
+    for (let i = 0; i < medals; i++) {
+      // Кольцом вокруг героя, а не в точке: кучей они слиплись бы в одну
+      // медальку, и щедрость перестала бы читаться.
+      const angle = (i / medals) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = radius * (0.35 + Math.random() * 0.65);
+      const x = clamp(owner.x + Math.cos(angle) * dist, 20, world.arena.width - 20);
+      const y = clamp(owner.y + Math.sin(angle) * dist, 20, world.arena.height - 20);
+      world.pickups.push(new Pickup(x, y, PickupType.MEDAL));
+    }
+    world.particles.addFirework(owner.x, owner.y - 40);
+    world.particles.addRing(owner.x, owner.y, radius, color);
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export const ABILITY_CLASSES = {
   shockwave: Shockwave,
   portal: Portal,
@@ -259,6 +288,7 @@ export const ABILITY_CLASSES = {
   swarm: Swarm,
   rage: Rage,
   zap: Zap,
+  gifts: Gifts,
 };
 
 // Герой без способности возможен: старое сохранение или автотест. Поэтому

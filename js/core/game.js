@@ -506,6 +506,7 @@ export class Game {
       // Множители команды: применяются в Round, потому что и деньги, и опыт
       // в игре общие.
       coinBonus: perk.coinBonus || 0,
+      dropBonus: perk.dropBonus || 0,
       xpBonus: perk.xpBonus || 0,
       look: this.getCharacter(playerIndex).look,
       ability: this.getCharacter(playerIndex).ability,
