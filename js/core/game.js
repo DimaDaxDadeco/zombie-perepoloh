@@ -506,8 +506,9 @@ export class Game {
       // Множители команды: применяются в Round, потому что и деньги, и опыт
       // в игре общие.
       coinBonus: perk.coinBonus || 0,
-      dropBonus: perk.dropBonus || 0,
       xpBonus: perk.xpBonus || 0,
+      // Ноль у всех, кроме Хэнки: по нулю проход по врагам не запускается.
+      stinkRadius: perk.stinkRadius || 0,
       look: this.getCharacter(playerIndex).look,
       ability: this.getCharacter(playerIndex).ability,
       // Герой со своим оружием (Паук) выбор игнорирует: у него оно одно.

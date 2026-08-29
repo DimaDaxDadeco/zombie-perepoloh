@@ -3,7 +3,7 @@
 import { CONFIG } from '../config.js';
 import {
   drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect,
-  drawPlayerMarker, drawDownedTimer,
+  drawPlayerMarker, drawDownedTimer, drawStinkCloud,
 } from '../render/sprites.js';
 
 // Реже стреляет — значит выстрел заметнее, и показать его важнее.
@@ -13,7 +13,7 @@ function isRarer(weapon, other) {
 }
 
 export class Player {
-  constructor(x, y, { speed, maxHp, magnetRadius, look, regenInterval }) {
+  constructor(x, y, { speed, maxHp, magnetRadius, look, regenInterval, stinkRadius }) {
     this.x = x;
     this.y = y;
     // Радиус — геттер, потому что Ярость Халка временно раздувает героя, а
@@ -24,6 +24,9 @@ export class Player {
     this.maxHp = maxHp;
     this.hp = maxHp;
     this.magnetRadius = magnetRadius;
+    // Перк Мистера Хэнки: зомби в этом радиусе ползут медленнее. У прочих
+    // героев ноль, и проход по врагам не запускается вовсе.
+    this.stinkRadius = stinkRadius || 0;
     // Интервал регенерации зависит от уровня сложности, поэтому приходит
     // снаружи. Фолбэк — для автотеста и неполных upgrades.
     this.regenInterval = regenInterval ?? CONFIG.player.regenInterval;
@@ -204,6 +207,26 @@ export class Player {
     this.clampToArena(world.arena);
 
     this.updateWeapons(dt, world);
+    this.updateStink(world);
+  }
+
+  // Вонючее облако: всех вокруг замедляет, пока они рядом.
+  //
+  // Нового состояния у зомби не заводит — та же freeze(), что у липких пятен
+  // паутины, коротким импульсом каждый кадр. Вышел из облака — импульс не
+  // продлевается, и зомби разгоняется сам. Третьим аргументом идёт «без
+  // льда»: вонь замедляет, а не морозит.
+  //
+  // Живёт на герое, а не в Round: аура принадлежит конкретному игроку, и
+  // вдвоём у каждого своя.
+  updateStink(world) {
+    if (!this.stinkRadius) return;
+    const factor = CONFIG.player.stinkFactor;
+    for (const enemy of world.enemies) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      if (Math.hypot(enemy.x - this.x, enemy.y - this.y) > this.stinkRadius + enemy.radius) continue;
+      enemy.freeze(factor, 0.15, false);
+    }
   }
 
   // Турбо ускоряет всё оружие разом: мы просто ускоряем для него время.
@@ -291,6 +314,9 @@ export class Player {
     ctx.save();
     ctx.translate(this.x, this.y);
     drawShadow(ctx, this.radius);
+    // Облако — под героем и до кольца игрока: невидимый перк для нечитающего
+    // ребёнка не существует.
+    if (this.stinkRadius) drawStinkCloud(ctx, this.stinkRadius, this.glowPhase);
 
     // Кольцо цвета игрока. Дети оба захотят Котика, и без маркера отличить
     // своего героя на экране будет нельзя.

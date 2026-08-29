@@ -2937,6 +2937,37 @@ function drawPaw(ctx, x, y, size, color) {
 // Кольцо цвета игрока под ногами — единственный способ различить двух
 // одинаковых героев. Разрешать одинаковых важнее, чем запрещать: дети оба
 // захотят Котика, и запрет кончится слезами.
+// 💨 Вонючее облако Мистера Хэнки: бледные зеленоватые клубы по кругу.
+//
+// Рисуется ПОД героем и до кольца игрока. Цвет и форма нарочно не спорят с
+// двумя соседями: кольцо у ног — сплошной эллипс своего цвета, звёздочки
+// готовой способности — мелкие яркие точки. Облако же большое, тусклое и
+// рыхлое, и на игровом радиусе спутать их нельзя.
+export function drawStinkCloud(ctx, radius, phase) {
+  ctx.save();
+  ctx.scale(1, 0.55);   // лежит на земле, а не облепляет героя
+
+  // Тон нарочно ЖЕЛТее травы: зеленоватое облако на зелёном поле не видно
+  // вовсе — первая версия была именно такой.
+  ctx.fillStyle = 'rgba(196, 208, 74, 0.26)';
+  circle(ctx, 0, 0, radius * 0.74);
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2 + phase * 0.25;
+    const puff = radius * (0.62 + Math.sin(phase * 1.4 + i) * 0.06);
+    circle(ctx, Math.cos(angle) * puff, Math.sin(angle) * puff, radius * 0.34);
+  }
+  // Кромка: без неё непонятно, где облако кончается, а это ровно та граница,
+  // за которой зомби разгоняется.
+  ctx.strokeStyle = 'rgba(150, 165, 40, 0.5)';
+  ctx.lineWidth = Math.max(1.5, radius * 0.035);
+  ctx.setLineDash([radius * 0.22, radius * 0.16]);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.96, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 export function drawPlayerMarker(ctx, radius, color) {
   ctx.save();
   ctx.strokeStyle = color;

@@ -37,6 +37,9 @@ export class Zombie {
     this.freezeTimer = 0;
     this.freezeFactor = 1;
     this.freezeDuration = 1;    // сколько длилась заморозка — нужно для трещин
+    // Покрывать ли льдом. Стартует ЛОЖЬЮ: «этого зомби ещё никто не морозил».
+    // С истиной оговорка в freeze() удерживала бы лёд на всех подряд.
+    this.icy = false;
     this.freezeSeed = Math.random() * 1000; // форма льдины, чтобы не дёргалась
 
     // Цель пересматривается не каждый кадр (см. retarget).
@@ -287,6 +290,7 @@ export class Zombie {
 
   updateStatuses(dt, world) {
     this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+    if (this.freezeTimer === 0) this.icy = false;   // оттаял — лёд забыт
 
     if (this.burnTimer <= 0) return;
     this.burnTimer -= dt;
@@ -306,12 +310,19 @@ export class Zombie {
   }
 
   // Заморозить: factor 0.5 — вдвое медленнее.
-  freeze(factor, duration) {
+  // icy — про ВИД, а не про механику. Замедляют зомби трое: ледяная пушка,
+  // паутина Паука и вонь Мистера Хэнки. Скорость они меняют одинаково, а вот
+  // покрывать зомби льдом вправе только первая — иначе выходит, что и у Паука,
+  // и у Хэнки ледяное оружие. Так и было до этой правки.
+  freeze(factor, duration, icy = true) {
     this.freezeFactor = Math.min(this.freezeFactor === 1 ? factor : this.freezeFactor, factor);
     this.freezeTimer = Math.max(this.freezeTimer, duration);
     // Длительность берём по остатку, а не по duration: иначе повторное
     // попадание оставило бы треснувший лёд на свежей заморозке.
     this.freezeDuration = Math.max(this.freezeTimer, duration);
+    // Лёд включается настоящей заморозкой и не выключается замедлением поверх:
+    // попавший под пушку и зашедший в паутину обязан остаться во льду.
+    this.icy = icy || (this.icy && this.freezeTimer > 0);
   }
 
   // Возвращает true, если этот удар добил зомби.
@@ -389,7 +400,7 @@ export class Zombie {
       hurtFlash: this.hurtTimer > 0,
       look: this.look,
       burning: this.isBurning,
-      frozen: this.isFrozen,
+      frozen: this.isFrozen && this.icy,
       freezeProgress: this.freezeProgress,
       freezeSeed: this.freezeSeed,
     });

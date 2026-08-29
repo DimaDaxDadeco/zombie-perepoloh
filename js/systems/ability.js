@@ -245,7 +245,8 @@ class Zap extends Ability {
     for (const enemy of visible.slice(0, bolts)) {
       world.particles.addLightning([{ x: owner.x, y: owner.y - owner.radius }, enemy]);
       world.particles.addRing(enemy.x, enemy.y, radius, color);
-      enemy.freeze(stunFactor, stunTime);
+      // Без льда: это оглушение током, а не заморозка.
+      enemy.freeze(stunFactor, stunTime, false);
       world.damageEnemy(enemy, damage);
     }
   }
