@@ -23,6 +23,12 @@ export class Zombie {
     this.facing = 1;
     this.hurtTimer = 0;
     this.knockback = { x: 0, y: 0 };
+    // Замеренная скорость — см. measureVelocity(). null означает «ещё не
+    // мерили»: в первый кадр разницы позиций нет.
+    this.vx = 0;
+    this.vy = 0;
+    this.lastX = null;
+    this.lastY = null;
 
     // Стихийные статусы: горение (урон со временем) и заморозка (замедление).
     this.burnTimer = 0;
@@ -55,6 +61,7 @@ export class Zombie {
   }
 
   update(dt, world) {
+    this.measureVelocity(dt);
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
     this.updateStatuses(dt, world);
     if (!this.alive) return; // догорел
@@ -96,6 +103,30 @@ export class Zombie {
     this.y += vy * speed * dt;
     this.facing = dx > 0 ? 1 : -1;
     this.walkPhase += dt * 6 * this.speedFactor;
+  }
+
+  // Куда и как быстро зомби едет на самом деле — по смещению с прошлого кадра.
+  //
+  // Считаем ЗАМЕРОМ, а не выводом из типа: видов движения уже пять (обычный,
+  // виляющий, катящийся, ныряющий, прыгающий), и вывод означал бы вторую копию
+  // всей этой логики, которая разъедется при следующем новом поведении.
+  //
+  // Нужно упреждению паутины: её комок летит по дуге, и без скорости цели он
+  // всегда падает туда, где зомби только что был.
+  measureVelocity(dt) {
+    if (this.lastX !== null && dt > 0) {
+      // Потолок обязателен: крот и ниндзя телепортируются, и без него один
+      // кадр давал бы скорость в тысячи пикселей в секунду.
+      const cap = this.speed * 2.5;
+      const vx = (this.x - this.lastX) / dt;
+      const vy = (this.y - this.lastY) / dt;
+      const len = Math.hypot(vx, vy);
+      const scale = len > cap ? cap / len : 1;
+      this.vx = vx * scale;
+      this.vy = vy * scale;
+    }
+    this.lastX = this.x;
+    this.lastY = this.y;
   }
 
   // Кого догоняем. Цель держим CONFIG.coop.retargetTime секунд, а не
