@@ -27,6 +27,11 @@ export function heroEyePoints({ radius, walkPhase = 0, facing = 1 }) {
   }));
 }
 
+// Телосложение героя. Тот же приём, что BODY_WIDTH у зомби: силуэт должен
+// отличаться шириной, а не только цветом — Халка от Соника надо узнавать по
+// контуру, а на игровом радиусе 20 цвет и деталей не разглядеть.
+const HERO_BUILD = { normal: 1, buff: 1.42 };
+
 // Запасная внешность героя, если look почему-то не передали.
 const DEFAULT_LOOK = {
   skin: '#ffcc99', hair: '#5c3a21', hairStyle: 'bowl',
@@ -46,29 +51,47 @@ export function drawHero(ctx, { radius, walkPhase, facing, blinking, look = DEFA
 
   if (look.cape) drawCape(ctx, r, walkPhase, look.cape);
 
-  // Ноги-сапожки, шагают в такт
+  const build = HERO_BUILD[look.build] ?? 1;
+
+  // Ноги-сапожки, шагают в такт. Ширина идёт за телосложением: при широком
+  // торсе и прежних ногах качок выходит на спичках.
+  const legW = r * 0.35 * build;
+  const legX = r * 0.45 * build;
   ctx.fillStyle = look.pants;
-  roundRect(ctx, -r * 0.45 + step, r * 0.5, r * 0.35, r * 0.6, r * 0.15);
-  roundRect(ctx, r * 0.1 - step, r * 0.5, r * 0.35, r * 0.6, r * 0.15);
+  roundRect(ctx, -legX + step, r * 0.5, legW, r * 0.6, r * 0.15);
+  roundRect(ctx, legX - legW + step * -1, r * 0.5, legW, r * 0.6, r * 0.15);
+  // Ботинки: широкие носки поверх низа ног (красные кроссовки Соника).
+  if (look.shoes) {
+    ctx.fillStyle = look.shoes;
+    roundRect(ctx, -legX - r * 0.07 + step, r * 0.86, legW + r * 0.15, r * 0.28, r * 0.13);
+    roundRect(ctx, legX - legW - r * 0.08 - step, r * 0.86, legW + r * 0.15, r * 0.28, r * 0.13);
+  }
 
   // Туловище
+  const bodyW = r * build;
   ctx.fillStyle = look.shirt;
-  roundRect(ctx, -r * 0.5, -r * 0.4, r, r * 1.0, r * 0.3);
+  roundRect(ctx, -bodyW / 2, -r * 0.4, bodyW, r * 1.0, r * 0.3);
   // Белой футболке нужен контур, иначе она сливается со светлым фоном
   if (isLight(look.shirt)) {
     ctx.strokeStyle = 'rgba(0,0,0,0.18)';
     ctx.lineWidth = Math.max(1, r * 0.05);
     ctx.beginPath();
-    ctx.roundRect(-r * 0.5, -r * 0.4, r, r * 1.0, r * 0.3);
+    ctx.roundRect(-bodyW / 2, -r * 0.4, bodyW, r * 1.0, r * 0.3);
     ctx.stroke();
   }
+  // Качку — плечи и намёк на грудные: без них широкое туловище читается
+  // просто как «толстый», а не «сильный».
+  if (build > 1) drawBulk(ctx, r, bodyW, look);
 
   drawChestEmblem(ctx, r, look, facing);
 
-  // Руки
-  ctx.fillStyle = look.skin;
-  circle(ctx, -r * 0.62, r * 0.05 - step * 0.5, r * 0.2);
-  circle(ctx, r * 0.62, r * 0.05 + step * 0.5, r * 0.2);
+  // Руки. Перчатки — необязательный цвет поверх кожи (белые у Соника).
+  const armR = r * 0.2 * build;
+  const armX = r * 0.62 * build;
+  const armY = build > 1 ? -r * 0.06 : r * 0.05;   // качок держит руки выше
+  ctx.fillStyle = look.gloves || look.skin;
+  circle(ctx, -armX, armY - step * 0.5, armR);
+  circle(ctx, armX, armY + step * 0.5, armR);
 
   // Голова
   ctx.fillStyle = look.skin;
@@ -80,6 +103,22 @@ export function drawHero(ctx, { radius, walkPhase, facing, blinking, look = DEFA
 
   ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+// Плечи и грудные качка: тёмная дуга по верху туловища и разделяющая
+// вертикаль. Рисуется тем же цветом рубашки, лишь притемнённым, — так деталь
+// работает при любом цвете и не требует второго поля в look.
+function drawBulk(ctx, r, bodyW, look) {
+  ctx.fillStyle = shade(look.shirt, -0.18);
+  ctx.beginPath();
+  ctx.ellipse(0, -r * 0.34, bodyW * 0.46, r * 0.2, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shade(look.shirt, -0.28);
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.3);
+  ctx.lineTo(0, r * 0.12);
+  ctx.stroke();
 }
 
 function drawCape(ctx, r, walkPhase, color) {
@@ -226,17 +265,68 @@ function drawFace(ctx, r, look) {
   // Маска закрывает лицо целиком и рисует свои глаза — обычные тут не нужны.
   if (look.mask) return drawHeroMask(ctx, r, look.mask);
 
+  // Морда: нижняя половина лица другого цвета. Рисуется ДО глаз и рта, чтобы
+  // они легли поверх, — без неё Соник выходит синим человечком.
+  if (look.muzzle) drawMuzzle(ctx, r, look.muzzle);
+
   if (look.cheeks) {
     ctx.fillStyle = look.cheeks;
     [-1, 1].forEach((side) => circle(ctx, side * r * 0.42, -r * 0.72, r * 0.13));
   }
+  // Белки. Нужны там, где зрачок тонет в тёмной коже: на синем Сонике
+  // тёмная точка не видна вовсе. Привязаны к морде, а не к отдельному полю —
+  // у зверей с мордой крупные глаза и так положены.
+  if (look.muzzle) {
+    ctx.fillStyle = EYE_WHITE;
+    for (const eye of HERO_EYES) {
+      ctx.beginPath();
+      ctx.ellipse(eye.x * r * 1.1, eye.y * r, r * 0.15, r * 0.19, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   ctx.fillStyle = DARK;
   for (const eye of HERO_EYES) circle(ctx, eye.x * r, eye.y * r, r * 0.07);
+
+  // Брови домиком вниз — весь «злой» держится на них, а не на рте.
+  if (look.brows) {
+    ctx.strokeStyle = look.brows;
+    ctx.lineWidth = Math.max(1.5, r * 0.09);
+    ctx.lineCap = 'round';
+    HERO_EYES.forEach((eye, i) => {
+      const side = i === 0 ? -1 : 1;
+      ctx.beginPath();
+      // Внутренний край ниже наружного — это и читается как насупленность.
+      ctx.moveTo(eye.x * r - side * r * 0.13, eye.y * r - r * 0.2);
+      ctx.lineTo(eye.x * r + side * r * 0.11, eye.y * r - r * 0.07);
+      ctx.stroke();
+    });
+  }
+
   ctx.strokeStyle = look.hairStyle === 'antenna' ? '#5a6a7a' : '#a8663f';
   ctx.lineWidth = Math.max(1.5, r * 0.07);
   ctx.beginPath();
-  ctx.arc(r * 0.02, -r * 0.72, r * 0.2, 0.2 * Math.PI, 0.8 * Math.PI);
+  if (look.mouth === 'frown') {
+    // Дуга рта переворачивается: те же точки, только угол зеркальный.
+    ctx.arc(r * 0.02, -r * 0.5, r * 0.2, 1.2 * Math.PI, 1.8 * Math.PI);
+  } else {
+    ctx.arc(r * 0.02, -r * 0.72, r * 0.2, 0.2 * Math.PI, 0.8 * Math.PI);
+  }
   ctx.stroke();
+}
+
+// Морда Соника: светлый овал на нижней половине лица и чёрный нос.
+function drawMuzzle(ctx, r, color) {
+  // Верх морды держим ниже зрачков (они на -0.85r, радиус 0.07r): если морда
+  // накрывает глаза, лицо превращается в светлое пятно.
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(r * 0.08, -r * 0.55, r * 0.4, r * 0.24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1c1c28';
+  ctx.beginPath();
+  ctx.ellipse(r * 0.12, -r * 0.68, r * 0.11, r * 0.09, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Маска на всё лицо: белые линзы вместо глаз, рта нет.
