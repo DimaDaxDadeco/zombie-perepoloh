@@ -144,6 +144,7 @@ export class Zombie {
   // способом. Стая собак — целиком забота спавнера, здесь её нет.
   updateBehavior(dt, world) {
     this.behaviorTimer += dt;
+    if (this.type?.behavior === 'brood') this.updateBrood(world);
     if (this.type?.behavior === 'skate') return this.updateSkate(dt, world);
     // Крот и ниндзя — одно поведение под двумя именами: пропасть и появиться
     // рядом с героем. Различаются только тем, что видно, пока их нет
@@ -160,6 +161,33 @@ export class Zombie {
       this.vanish(world);
     }
     return false;
+  }
+
+  // Мамка роняет малыша и идёт дальше — поэтому НЕ возвращает true: в отличие
+  // от крота и роликов, обычное движение ей никто не отменяет.
+  updateBrood(world) {
+    if (this.behaviorTimer < this.type.broodInterval) return;
+    this.behaviorTimer = 0;
+    const spec = this.type.spawn;
+    // Тип малыша производный, и spawn с behavior с него сняты: иначе малыши
+    // роняют своих, и арена зарастает за полминуты. Тот же предохранитель,
+    // что у снеговика.
+    const kidType = { ...this.type, ...spec, spawn: null, behavior: null };
+    const angle = Math.random() * Math.PI * 2;
+    const dist = this.radius + 12;
+    world.addEnemy(world.spawner.makeZombie(
+      this.x + Math.cos(angle) * dist,
+      this.y + Math.sin(angle) * dist,
+      kidType,
+    ));
+    world.particles.addBurst(this.x, this.y, 8, 0.6);
+  }
+
+  // Морозко примораживает героя касанием. Крючок общий с боссами — его зовёт
+  // resolvePlayerHits, и до сих пор им пользовался только ледяной босс.
+  onTouchPlayer(player) {
+    if (this.type?.touch !== 'chill') return;
+    player.chill(this.type.chillFactor, this.type.chillTime);
   }
 
   get isVanisher() {

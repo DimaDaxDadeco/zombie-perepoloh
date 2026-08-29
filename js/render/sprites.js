@@ -887,6 +887,217 @@ export function drawSmokePuff(ctx, { radius, progress }) {
   ctx.restore();
 }
 
+// Псевдослучайность, привязанная к координатам: форма одного и того же камня
+// обязана быть одинаковой в каждом кадре, иначе он кипит.
+function chip(seed) {
+  return (Math.sin(seed * 127.1) * 43758.5453) % 1;
+}
+
+// Одна каменная плита: неровный многоугольник с тёмным контуром и светлой
+// верхней гранью. Контур обязателен — без него плиты сливаются в пятно, и
+// весь смысл мозаики теряется.
+function stonePlate(ctx, x, y, w, h, seed, fill, edge, lite) {
+  const j = Math.min(w, h) * 0.2;
+  const shape = [[0, 0.18], [0.22, 0], [0.76, 0], [1, 0.22],
+                 [1, 0.78], [0.74, 1], [0.24, 1], [0, 0.8]];
+  ctx.beginPath();
+  shape.forEach(([fx, fy], i) => {
+    const px = x + w * fx + chip(seed + i * 3) * j;
+    const py = y + h * fy + chip(seed * 2 - i * 5) * j;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, Math.min(w, h) * 0.14);
+  ctx.stroke();
+  // Блик по верхней грани — камень не бывает плоским.
+  ctx.fillStyle = lite;
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.24, y + h * 0.12);
+  ctx.lineTo(x + w * 0.72, y + h * 0.1);
+  ctx.lineTo(x + w * 0.6, y + h * 0.3);
+  ctx.lineTo(x + w * 0.3, y + h * 0.32);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Один каменный куб: грань, светлый верх, тёмный низ и скол. Крупные куски
+// вместо мелких плит — на игровом радиусе 36 мозаика превращается в кашу, а
+// семь больших кубов читаются.
+function stoneCube(ctx, x, y, w, h, seed, fill, edge, lite, accent) {
+  const j = Math.min(w, h) * 0.12;
+  const p = (fx, fy, i) => [x + w * fx + chip(seed + i) * j, y + h * fy + chip(seed * 3 - i) * j];
+  const pts = [p(0.08, 0, 1), p(0.92, 0, 2), p(1, 0.14, 3), p(1, 0.9, 4),
+               p(0.9, 1, 5), p(0.1, 1, 6), p(0, 0.86, 7), p(0, 0.12, 8)];
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, Math.min(w, h) * 0.11);
+  ctx.stroke();
+
+  // Верхняя грань светлее, нижняя темнее — так плоская заливка даёт объём.
+  ctx.fillStyle = lite;
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.1, y + h * 0.06);
+  ctx.lineTo(x + w * 0.9, y + h * 0.06);
+  ctx.lineTo(x + w * 0.78, y + h * 0.26);
+  ctx.lineTo(x + w * 0.2, y + h * 0.26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.14, y + h * 0.82);
+  ctx.lineTo(x + w * 0.86, y + h * 0.82);
+  ctx.lineTo(x + w * 0.86, y + h * 0.98);
+  ctx.lineTo(x + w * 0.14, y + h * 0.98);
+  ctx.closePath();
+  ctx.fill();
+
+  // Песчаная фаска на одной грани — та самая золотая кромка с картинки.
+  if (accent) {
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = Math.max(1, Math.min(w, h) * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h * 0.18);
+    ctx.lineTo(x + w, y + h * 0.82);
+    ctx.stroke();
+  }
+}
+
+// Голем-моб: семь крупных кубов и светящиеся глаза прямо на корпусе.
+//
+// Устроен иначе, чем босс-голем: тому идёт мозаика из множества плит, а этот
+// втрое мельче, и на нём работают только большие простые формы. Голова у него
+// не отдельная — глаза горят на самом корпусе, как у мобов из кубических игр.
+export function drawGolemMob(ctx, { radius, walkPhase, look, hurtFlash }) {
+  const r = radius;
+  const skin = hurtFlash ? '#ffffff' : look.skin;
+  const dark = hurtFlash ? '#dddddd' : look.clothes;
+  const edge = shade(look.skin, -0.45);
+  const lite = shade(look.skin, 0.22);
+  const accent = look.accent;
+  const step = Math.sin(walkPhase) * r * 0.12;
+
+  // Ступни
+  stoneCube(ctx, -r * 0.5 + step, r * 0.52, r * 0.46, r * 0.42, 3, dark, edge, lite);
+  stoneCube(ctx, r * 0.04 - step, r * 0.52, r * 0.46, r * 0.42, 21, dark, edge, lite);
+  // Кулаки — свисают по бокам, ниже плеч
+  stoneCube(ctx, -r * 1.06, r * 0.08, r * 0.44, r * 0.44, 39, dark, edge, lite, accent);
+  stoneCube(ctx, r * 0.62, r * 0.08, r * 0.44, r * 0.44, 57, dark, edge, lite, accent);
+  // Плечи. Выступают НАД корпусом: спрятанные вровень с ним, они сливались
+  // в один прямоугольник, и вся кубическая угловатость пропадала.
+  stoneCube(ctx, -r * 1.02, -r * 0.88, r * 0.52, r * 0.52, 75, skin, edge, lite, accent);
+  stoneCube(ctx, r * 0.5, -r * 0.88, r * 0.52, r * 0.52, 93, skin, edge, lite, accent);
+  // Корпус — самый крупный, он же голова
+  stoneCube(ctx, -r * 0.56, -r * 0.72, r * 1.12, r * 1.24, 111, skin, edge, lite, accent);
+
+  // Трещина через корпус
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(r * 0.1, -r * 0.72);
+  ctx.lineTo(r * 0.24, -r * 0.44);
+  ctx.lineTo(r * 0.06, -r * 0.26);
+  ctx.stroke();
+
+  // Глаза прямо на корпусе, со свечением.
+  const eyes = look.eyes || '#4fd1ff';
+  ctx.fillStyle = eyes;
+  ctx.globalAlpha = 0.3;
+  [-0.22, 0.2].forEach((x0) => circle(ctx, r * x0, -r * 0.16, r * 0.22));
+  ctx.globalAlpha = 1;
+  [-0.22, 0.2].forEach((x0) => {
+    ctx.beginPath();
+    ctx.ellipse(r * x0, -r * 0.16, r * 0.13, r * 0.11, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#ffffff';
+  [-0.22, 0.2].forEach((x0) => circle(ctx, r * x0, -r * 0.19, r * 0.05));
+}
+
+// Каменный голем целиком. Отдельная форма, а не подмена примитивов: он
+// сложен из МНОЖЕСТВА камней, а не вытесан из одного, и это главное, по чему
+// голем узнаётся. Плюс огромные плечи, утопленная между ними голова и
+// светящиеся глаза без рта.
+export function drawStoneGolem(ctx, { radius, walkPhase, skin, clothes, accent }) {
+  const r = radius;
+  const edge = shade(skin, -0.42);
+  const lite = shade(skin, 0.2);
+  const dark = clothes;
+  const step = Math.sin(walkPhase * 0.7) * r * 0.14;
+
+  // Ноги: две колонны почти вплотную. Разводить их нельзя — врозь они
+  // читаются двумя отдельными стопками камней, а не одной фигурой.
+  [[-0.34, step, 0], [0.0, -step, 30]].forEach(([lx, off, seed]) => {
+    for (let k = 0; k < 3; k++) {
+      stonePlate(ctx, r * lx + off, r * (0.44 + k * 0.22), r * 0.34, r * 0.25,
+        seed + k * 7, k === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Торс: книзу УЖЕ — вся масса уходит в плечи, талия узкая. Ровные ряды
+  // выглядели бочкой.
+  const rows = [
+    { y: -0.52, n: 3, w: 0.30 },
+    { y: -0.26, n: 3, w: 0.26 },
+    { y: 0.0, n: 2, w: 0.26 },
+    { y: 0.24, n: 2, w: 0.22 },
+  ];
+  rows.forEach((row, ri) => {
+    const total = row.n * row.w;
+    for (let i = 0; i < row.n; i++) {
+      stonePlate(ctx, r * (-total / 2 + i * row.w), r * row.y, r * row.w, r * 0.28,
+        60 + ri * 11 + i * 5, (ri + i) % 3 === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Плечи — самые крупные валуны, вровень с макушкой и чуть шире торса.
+  [-1, 1].forEach((side) => {
+    stonePlate(ctx, side === -1 ? -r * 0.72 : r * 0.2, -r * 0.74, r * 0.52, r * 0.46,
+      side === -1 ? 90 : 120, skin, edge, lite);
+  });
+
+  // Руки: цепочки плит вдоль тела, вплотную к плечам.
+  [[-0.7, -1, 150], [0.26, 1, 180]].forEach(([ax, dir, seed]) => {
+    for (let k = 0; k < 3; k++) {
+      stonePlate(ctx, r * (ax + dir * k * 0.04), r * (-0.32 + k * 0.26),
+        r * 0.4, r * 0.28, seed + k * 9, k === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Голова: маленькая, утоплена между плечами, с зубчатой макушкой.
+  stonePlate(ctx, -r * 0.26, -r * 0.96, r * 0.52, r * 0.46, 210, skin, edge, lite);
+  ctx.fillStyle = skin;
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  [-0.17, 0.0, 0.17].forEach((x0, i) => {
+    ctx.beginPath();
+    ctx.moveTo(r * x0, -r * 0.92);
+    ctx.lineTo(r * (x0 + 0.06), -r * (1.08 + i * 0.03));
+    ctx.lineTo(r * (x0 + 0.13), -r * 0.92);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // Глаза — светящиеся щели. Рта нет: у камня его и не должно быть.
+  ctx.fillStyle = accent || '#ffd23d';
+  [-0.15, 0.13].forEach((x0) => {
+    ctx.beginPath();
+    ctx.ellipse(r * x0, -r * 0.74, r * 0.08, r * 0.05, x0 < 0 ? -0.3 : 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 0.35;
+  [-0.15, 0.13].forEach((x0) => circle(ctx, r * x0, -r * 0.74, r * 0.13));
+  ctx.globalAlpha = 1;
+}
+
 // Ширина туловища по типу телосложения — так толстяк и шустрик
 // отличаются силуэтом, а не только цветом.
 const BODY_WIDTH = { thin: 0.72, normal: 1.0, fat: 1.34 };
@@ -907,6 +1118,16 @@ export function drawZombie(ctx, {
   }
   // Шарик и снеговик — тоже свои силуэты: натягивать человеческое тело на
   // три снежных шара дороже, чем завести ветку.
+  if (look.shape === 'golem') {
+    ctx.save();
+    ctx.rotate(Math.sin(walkPhase) * 0.05);
+    drawGolemMob(ctx, { radius, walkPhase, look, hurtFlash });
+    if (burning) drawFlames(ctx, radius, walkPhase);
+    if (frozen) drawIceBlock(ctx, radius, freezeProgress, freezeSeed);
+    ctx.restore();
+    return;
+  }
+
   if (look.shape === 'balloon' || look.shape === 'snow') {
     const draw = look.shape === 'balloon' ? drawBalloonZombie : drawSnowZombie;
     draw(ctx, {
@@ -1289,6 +1510,17 @@ export function drawBoss(ctx, {
     clothes = tint(clothes, '#7fd8ff', 0.25);
   } else if (!hurtFlash && burning) {
     skin = tint(skin, '#ff7a2b', 0.4);
+  }
+
+  // Голем нарисован целиком иначе: он сложен из множества камней, а не из
+  // тех же частей тела другой формы. Поэтому — отдельная ветка, как у
+  // зверей-зомби, а не подмена примитивов.
+  if (look.shape === 'golem') {
+    drawStoneGolem(ctx, { radius: r, walkPhase, skin, clothes, accent: look.accent });
+    if (burning) drawFlames(ctx, r, walkPhase);
+    if (frozen) drawIceBlock(ctx, r, freezeProgress, freezeSeed);
+    ctx.restore();
+    return;
   }
 
   // Что уходит за спину (лапки паука) — до ног, иначе окажется поверх.

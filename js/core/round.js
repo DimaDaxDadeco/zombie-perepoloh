@@ -73,6 +73,10 @@ export class Round {
     this.zombiesDefeated = 0;
     this.coinsEarned = 0;
     this.bossPhase = 'none'; // none -> intro -> fight -> done
+    // Спрашиваем ОДИН раз за раунд и запоминаем: после двенадцатого раунда
+    // выбор случайный, и повторный вызов дал бы другого босса — баннер
+    // объявил бы одного, а вышел бы другой.
+    this.bossType = bossTypeForRound(this.round);
     this.bossIntroTimer = 0;
     this.bossSpawnPoint = null; // где именно появится босс (внутри экрана)
     this.freezeTimer = 0;       // пока идёт — обычные зомби стоят
@@ -219,7 +223,7 @@ export class Round {
   }
 
   startBossIntro() {
-    const type = bossTypeForRound(this.round);
+    const type = this.bossType;
     this.bossPhase = 'intro';
     this.bossIntroTimer = CONFIG.boss.introTime;
     this.freezeTimer = CONFIG.boss.freezeTime;
@@ -238,9 +242,9 @@ export class Round {
   }
 
   spawnBoss() {
-    const type = bossTypeForRound(this.round);
+    const type = this.bossType;
     this.bossPhase = 'fight';
-    this.boss = this.spawner.createBoss(this.arena, this.players, this.bossSpawnPoint);
+    this.boss = this.spawner.createBoss(this.arena, this.players, this.bossSpawnPoint, type);
     this.enemies.push(this.boss);
 
     // Момент приземления: хлопок, тряска и звук удара.
@@ -514,7 +518,7 @@ export class Round {
 
     this.modifier?.drawWorld(ctx, this);
     this.particles.draw(ctx);
-    if (this.bossPhase === 'intro') this.drawBanner(ctx, bossTypeForRound(this.round).name);
+    if (this.bossPhase === 'intro') this.drawBanner(ctx, this.bossType.name);
     else if (this.bannerTimer > 0) this.drawBanner(ctx, this.modifier.spec.name, this.bannerTimer);
 
     ctx.restore();

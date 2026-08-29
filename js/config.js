@@ -347,7 +347,7 @@ export const CONFIG = {
       // Вес растёт вместе со списком видов: 10 → 13 на четырёх новых, 13 → 14
       // на ниндзя. Иначе доля обычного сползает (сейчас держится около 25%), а
       // он обязан оставаться большинством — на нём читается фон боя.
-      hp: 1, speed: 1, radius: 1, weight: 14, fromRound: 1,
+      hp: 1, speed: 1, radius: 1, weight: 17, fromRound: 1,
       look: { skin: '#8fd67a', clothes: '#7a6bb5', body: 'normal' },
     },
     {
@@ -474,6 +474,42 @@ export const CONFIG = {
         mask: '#1c1c28',
       },
     },
+    {
+      // Первый зомби, который делает что-то ГЕРОЮ, а не себе: до него все
+      // умели только ходить по-своему. Отсюда и поздний раунд.
+      id: 'frosty', name: 'Зомби-морозко', about: 'Касается — и ты идёшь медленно',
+      touch: 'chill',
+      hp: 1.4, speed: 0.85, radius: 1.05, weight: 3, fromRound: 10,
+      chillFactor: 0.55, chillTime: 1.6,
+      look: { skin: '#a8d8e8', clothes: '#4a6f8f', body: 'normal', hair: 'bald' },
+    },
+    {
+      id: 'brood', name: 'Зомби-мамка', about: 'На ходу роняет малышей',
+      behavior: 'brood',
+      hp: 2, speed: 0.7, radius: 1.15, weight: 2, fromRound: 11,
+      broodInterval: 4.5,
+      // Малыши поменьше и слабее, и — главное — БЕЗ behavior: иначе они
+      // роняют своих, и арена зарастает за полминуты. Тот же предохранитель,
+      // что у снеговика.
+      spawn: {
+        hp: 0.5, radius: 0.62, speed: 1.1,
+        look: { skin: '#c7b3d9', clothes: '#8f7aa8', body: 'thin' },
+      },
+      look: { skin: '#b89ccc', clothes: '#6f5a8a', body: 'fat', hair: 'bun' },
+    },
+    {
+      // Кроме трещин — целиком на существующих полях. Живая проверка того,
+      // что конфиг и правда самодостаточен.
+      id: 'golem', name: 'Голем', about: 'Каменный, медленный, не сдвинуть',
+      hp: 6, speed: 0.35, radius: 1.7, weight: 2, fromRound: 12,
+      knockbackFactor: 0.15,
+      look: {
+        // shape: 'golem' рисует его целиком отдельной функцией — из семи
+        // крупных кубов, а не из частей человеческого тела.
+        shape: 'golem',
+        skin: '#c2c6cc', clothes: '#5a5f6a', accent: '#d9b169', eyes: '#4fd1ff',
+      },
+    },
   ],
 
   boss: {
@@ -598,6 +634,35 @@ export const CONFIG = {
       // толпе уйти из круга бывает физически некуда — поэтому реже, мельче
       // и с более долгим предупреждением.
       boltInterval: 6, boltWarn: 1.2, boltRadius: 60,
+    },
+    {
+      id: 'healer', name: 'Босс-знахарь', about: 'Залечивает себя, если не бить',
+      ability: 'heal', entrance: 'swirl', rage: 'hearts',
+      hp: 0.85, speed: 0.9, radius: 0.95,
+      look: {
+        skin: '#cfe8c0', clothes: '#3f7f5f', hat: 'hood', accent: '#ffd93d',
+        chest: 'badge',
+      },
+      // Лечится, только пока его не трогают: healDelay секунд без урона — и
+      // здоровье поползло вверх. Это не «дольше бить», а «бить НЕ переставая»,
+      // и ребёнку такое правило понятно с первого раза.
+      healDelay: 2.2, healPerSecond: 0.045,
+    },
+    {
+      id: 'stonegolem', name: 'Каменный голем', about: 'Бьёт по земле — не стой рядом',
+      ability: 'slam', entrance: 'slam', rage: 'stomp',
+      hp: 1.15, speed: 0.7, radius: 1.15,
+      look: {
+        // shape: 'golem' рисует его целиком отдельной функцией — hat, chest
+        // и cracks туда не идут, у него нет ни того, ни другого.
+        shape: 'golem',
+        skin: '#a8a89a', clothes: '#87877a', accent: '#ffd23d',
+      },
+      // Удар по земле вокруг СЕБЯ — единственная атака в игре, которая учит
+      // держать дистанцию (прочие бьют туда, где герой, или навесом). Круг
+      // показывается заранее, и slamWarn от ярости не зависит: правило
+      // «у ребёнка всегда есть время увидеть и убежать».
+      slamInterval: 4.5, slamWarn: 1.1, slamRadius: 150,
     },
   ],
 

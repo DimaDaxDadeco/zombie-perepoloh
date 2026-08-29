@@ -104,9 +104,13 @@ export class Spawner {
     return this.makeZombie(x, y, this.pickType());
   }
 
-  createBoss(arena, players, at = null) {
+  // type приходит снаружи и не выбирается здесь: после двенадцатого раунда
+  // он случайный, и второй бросок дал бы босса, отличного от объявленного
+  // в баннере. Раунд выбирает один раз и передаёт сюда.
+  createBoss(arena, players, at = null, type = undefined) {
     const point = at || bossSpawnPoint(arena, players);
     return new Boss(point.x, point.y, this.round, {
+      type,
       hpFactor: this.spec.bossHp * this.coop.bossHpFactor,
     });
   }

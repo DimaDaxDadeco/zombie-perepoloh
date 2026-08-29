@@ -13,9 +13,19 @@ import {
 import { CakeLob } from './projectile.js';
 
 // Босс раунда: список типов проходится по кругу.
+// Какой босс в этом раунде.
+//
+// Первые двенадцать раундов — фиксированный порядок: каждый босс ровно один
+// раз, и ребёнок каждый раз встречает нового. Дальше тот же круг по второму
+// разу читался бы как «игра кончилась», поэтому выбираем случайно.
+//
+// ВАЖНО: функция возвращает РАЗНОЕ при повторных вызовах на одном и том же
+// позднем раунде. Звать её дважды за раунд нельзя — баннер объявит одного, а
+// выйдет другой. Раунд спрашивает один раз и запоминает (Round.bossType).
 export function bossTypeForRound(round) {
   const types = CONFIG.bossTypes;
-  return types[(round - 1) % types.length];
+  if (round <= types.length) return types[round - 1];
+  return types[Math.floor(Math.random() * types.length)];
 }
 
 export class Boss extends Zombie {
@@ -33,6 +43,7 @@ export class Boss extends Zombie {
     this.type = type;
     this.radius = CONFIG.boss.radius * type.radius;
     this.abilityTimer = 0;
+    this.slamTimer = 0;   // замах голема перед ударом по земле
     this.dashTimer = 0;   // сколько ещё секунд длится рывок
     this.flames = [];     // огоньки за спиной огненного босса
     this.webs = [];       // липкие зоны паука
@@ -50,6 +61,7 @@ export class Boss extends Zombie {
   // добыча, ни счётчик зомби: всё это живёт в onEnemyDefeated, а его зовут
   // по возвращаемому значению takeDamage.
   takeDamage(amount) {
+    this.calmTimer = 0;                         // знахаря сбили с лечения
     if (this.isDown) return false;              // кости неуязвимы
     const spec = this.type.revive;
     if (!spec || this.reviveUsed || this.hp - amount > 0) return super.takeDamage(amount);
@@ -127,8 +139,40 @@ export class Boss extends Zombie {
       case 'rally': return this.updateRally(dt, world);
       case 'web': return this.updateWebs(dt, world);
       case 'bolt': return this.updateBolts(dt, world);
+      case 'heal': return this.updateHeal(dt);
+      case 'slam': return this.updateSlam(dt, world);
       default: return;
     }
+  }
+
+  // Знахарь залечивается, пока его не трогают. Отсчёт ведётся от последнего
+  // полученного урона — hurtTimer для этого не годится, он живёт доли секунды
+  // ради вспышки, поэтому таймер свой.
+  updateHeal(dt) {
+    this.calmTimer = (this.calmTimer ?? 0) + dt;
+    if (this.calmTimer < this.type.healDelay) return;
+    this.hp = Math.min(this.maxHp, this.hp + this.maxHp * this.type.healPerSecond * dt);
+  }
+
+  // Голем бьёт по земле ВОКРУГ СЕБЯ. Единственная атака в игре, которая учит
+  // держать дистанцию: прочие бьют туда, где стоит герой, или навесом.
+  //
+  // Круг показывается заранее частицей, а не рисуется в Boss.draw: ночной тинт
+  // ложится между персонажами и частицами, и нарисованный в боссе круг ночью
+  // притух бы. Ровно этим же путём ходит электрический босс.
+  updateSlam(dt, world) {
+    if (this.slamTimer > 0) {
+      this.slamTimer -= dt;
+      if (this.slamTimer > 0) return;
+      world.splat(this.x, this.y, this.type.slamRadius);
+      world.shake(CONFIG.boss.slamShake.strength, CONFIG.boss.slamShake.time);
+      return;
+    }
+    if (this.abilityTimer > 0) return;
+    this.abilityTimer = this.abilityInterval(this.type.slamInterval);
+    // Замах: круг виден всю slamWarn, и она от ярости НЕ сокращается.
+    this.slamTimer = this.type.slamWarn;
+    world.particles.addTelegraph(this.x, this.y, this.type.slamRadius, this.type.slamWarn);
   }
 
   // Мама-зомби выпускает малышей — обычных зомби этого раунда.
