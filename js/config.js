@@ -498,12 +498,17 @@ export const CONFIG = {
       look: { skin: '#b89ccc', clothes: '#6f5a8a', body: 'fat', hair: 'bun' },
     },
     {
-      // Целиком на существующих полях: ни строчки нового кода. Живая
-      // проверка того, что конфиг и правда самодостаточен.
-      id: 'brute', name: 'Зомби-громила', about: 'Огромный, медленный, не сдвинуть',
+      // Кроме трещин — целиком на существующих полях. Живая проверка того,
+      // что конфиг и правда самодостаточен.
+      id: 'golem', name: 'Голем', about: 'Каменный, медленный, не сдвинуть',
       hp: 6, speed: 0.35, radius: 1.7, weight: 2, fromRound: 12,
       knockbackFactor: 0.15,
-      look: { skin: '#5f8f4a', clothes: '#3f5f33', body: 'fat', helmet: '#7a6a4a' },
+      look: {
+        // Землистый камень с мохом — чтобы не путать с боссом того же
+        // раунда: тот светло-серый, этот бурый.
+        skin: '#8a8272', clothes: '#5f6a4a', body: 'fat',
+        stone: true, cracks: '#4a4438',
+      },
     },
   ],
 
@@ -644,18 +649,18 @@ export const CONFIG = {
       healDelay: 2.2, healPerSecond: 0.045,
     },
     {
-      id: 'king', name: 'Зомби-король', about: 'Зовёт свиту и гонит её вперёд',
-      ability: 'summon', entrance: 'slam', rage: 'command',
-      hp: 1.05, speed: 0.8, radius: 1.05,
+      id: 'stonegolem', name: 'Каменный голем', about: 'Бьёт по земле — не стой рядом',
+      ability: 'slam', entrance: 'slam', rage: 'stomp',
+      hp: 1.15, speed: 0.7, radius: 1.15,
       look: {
-        skin: '#a8c9a0', clothes: '#6b3f8f', hat: 'crown', accent: '#ffd93d',
-        chest: 'number', chestText: '1',
+        skin: '#b0b0bc', clothes: '#7a7a88', hat: 'none', accent: '#ff8a2b',
+        chest: 'none', stone: true, cracks: '#5a5a68',
       },
-      // Двенадцатый и последний уникальный — поэтому совмещает два уже
-      // знакомых приёма: выпускает свиту, как мама, и разгоняет всех, как
-      // охранник. Новых правил ребёнку учить не надо, а finale выходит.
-      summonInterval: 7, summonCount: 4,
-      rallyTime: 2.5, rallyFactor: 1.45,
+      // Удар по земле вокруг СЕБЯ — единственная атака в игре, которая учит
+      // держать дистанцию (прочие бьют туда, где герой, или навесом). Круг
+      // показывается заранее, и slamWarn от ярости не зависит: правило
+      // «у ребёнка всегда есть время увидеть и убежать».
+      slamInterval: 4.5, slamWarn: 1.1, slamRadius: 150,
     },
   ],
 

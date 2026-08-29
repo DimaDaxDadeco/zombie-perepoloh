@@ -887,6 +887,78 @@ export function drawSmokePuff(ctx, { radius, progress }) {
   ctx.restore();
 }
 
+// --- Камень ---
+//
+// Голем не отличается от прочих ничем, кроме ФОРМЫ: серая заливка на круглом
+// силуэте читается как «серый зомби», а не как камень. Поэтому у него те же
+// части тела, но нарисованные неровными глыбами.
+//
+// Обе функции повторяют сигнатуры roundRect и circle — это и позволяет
+// подменить их одной строкой, не переписывая рисовку тела целиком.
+
+// Псевдослучайность, привязанная к координатам: forma одной и той же глыбы
+// обязана быть одинаковой в каждом кадре, иначе камень кипит.
+function chip(seed) {
+  return (Math.sin(seed * 127.1) * 43758.5453) % 1;
+}
+
+export function rockRect(ctx, x, y, w, h) {
+  const pts = [
+    [x, y], [x + w * 0.45, y], [x + w, y],
+    [x + w, y + h * 0.5], [x + w, y + h],
+    [x + w * 0.5, y + h], [x, y + h], [x, y + h * 0.45],
+  ];
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => {
+    const j = Math.min(w, h) * 0.12;
+    const nx = px + chip(px + py + i) * j;
+    const ny = py + chip(px * 2 - py + i) * j;
+    if (i === 0) ctx.moveTo(nx, ny); else ctx.lineTo(nx, ny);
+  });
+  ctx.closePath();
+  ctx.fill();
+}
+
+export function rockBlob(ctx, cx, cy, r) {
+  // Восемь граней и умеренный разброс: на семи с большим разбросом макушка
+  // вытягивалась в остриё и читалась колпаком, а не сколом.
+  const sides = 8;
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Math.PI * 2;
+    const rad = r * (1 + chip(cx + cy + i * 7) * 0.13);
+    const px = cx + Math.cos(a) * rad;
+    const py = cy + Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Трещины и сколы. Толстые и через всё тело: тонкие царапины на игровом
+// размере пропадают, а именно они и делают фигуру каменной.
+export function drawCracks(ctx, r, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.5, r * 0.075);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  [[-0.34, -0.34, 1], [0.26, -0.18, -1], [-0.1, 0.12, 1]].forEach(([x0, y0, dir], i) => {
+    ctx.beginPath();
+    ctx.moveTo(r * x0, r * y0);
+    ctx.lineTo(r * (x0 + dir * 0.16), r * (y0 + 0.2));
+    ctx.lineTo(r * (x0 - dir * 0.04), r * (y0 + 0.44));
+    ctx.stroke();
+  });
+  // Светлый скол сверху: камень не бывает одного тона, и блик даёт объём.
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.34, -r * 0.3);
+  ctx.lineTo(r * 0.1, -r * 0.36);
+  ctx.lineTo(-r * 0.02, -r * 0.12);
+  ctx.closePath();
+  ctx.fill();
+}
+
 // Ширина туловища по типу телосложения — так толстяк и шустрик
 // отличаются силуэтом, а не только цветом.
 const BODY_WIDTH = { thin: 0.72, normal: 1.0, fat: 1.34 };
@@ -937,20 +1009,25 @@ export function drawZombie(ctx, {
     skin = tint(skin, '#ff7a2b', 0.4);
   }
 
+  // Голем сложен из тех же частей, но глыбами вместо скруглённых форм:
+  // сигнатуры совпадают, поэтому хватает подмены двух имён.
+  const block = look.stone ? rockRect : roundRect;
+  const lump = look.stone ? rockBlob : circle;
+
   // Ноги. stride: 0 — ноги стоят вместе и не шагают: ролик катится, а не идёт.
   const step = Math.sin(walkPhase) * r * 0.35 * (look.stride ?? 1);
   ctx.fillStyle = hurtFlash ? '#eeeeee' : shade(look.skin, -0.18);
-  roundRect(ctx, -r * 0.42 + step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
-  roundRect(ctx, r * 0.1 - step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
+  block(ctx, -r * 0.42 + step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
+  block(ctx, r * 0.1 - step, r * 0.45, r * 0.32, r * 0.6, r * 0.12);
 
   // Рваная рубаха
   ctx.fillStyle = clothes;
-  roundRect(ctx, -r * 0.48 * width, -r * 0.35, r * 0.96 * width, r * 0.9, r * 0.2);
+  block(ctx, -r * 0.48 * width, -r * 0.35, r * 0.96 * width, r * 0.9, r * 0.2);
 
   // Руки вытянуты вперёд — классика
   ctx.fillStyle = skin;
-  roundRect(ctx, r * 0.2 * width, -r * 0.25, r * 0.85, r * 0.24, r * 0.12);
-  roundRect(ctx, r * 0.2 * width, r * 0.05, r * 0.85, r * 0.24, r * 0.12);
+  block(ctx, r * 0.2 * width, -r * 0.25, r * 0.85, r * 0.24, r * 0.12);
+  block(ctx, r * 0.2 * width, r * 0.05, r * 0.85, r * 0.24, r * 0.12);
 
   // Голова. У тыквы она своя целиком — тело, ноги и руки при этом обычные,
   // поэтому отдельной ветки shape ей не нужно.
@@ -958,7 +1035,7 @@ export function drawZombie(ctx, {
     drawPumpkinHead(ctx, r, hurtFlash ? '#ffffff' : look.headColor);
   } else {
     ctx.fillStyle = skin;
-    circle(ctx, 0, -r * 0.8, r * 0.5);
+    lump(ctx, 0, -r * 0.8, r * 0.5);
 
     drawZombieHair(ctx, r, look, hurtFlash);
 
@@ -981,6 +1058,7 @@ export function drawZombie(ctx, {
     roundRect(ctx, -r * 0.06, -r * 0.58, r * 0.11, r * 0.15, r * 0.03);
   }
 
+  if (look.cracks) drawCracks(ctx, r, look.cracks);
   if (look.mask) drawNinjaMask(ctx, r, look.mask);
   if (look.skates) drawSkates(ctx, r, walkPhase, look.skates);
   if (look.beard) drawBeard(ctx, r, hurtFlash ? '#ffffff' : look.beard);
@@ -1294,16 +1372,21 @@ export function drawBoss(ctx, {
   // Что уходит за спину (лапки паука) — до ног, иначе окажется поверх.
   if (look.back) drawBossBack(ctx, r, look);
 
+  // Каменный босс собирается теми же частями, но глыбами — см. rockRect.
+  const block = look.stone ? rockRect : roundRect;
+  const lump = look.stone ? rockBlob : circle;
+
   // Ноги
   const step = Math.sin(walkPhase * 0.7) * r * 0.2;
   ctx.fillStyle = hurtFlash ? '#eeeeee' : shade(look.skin, -0.2);
-  roundRect(ctx, -r * 0.4 + step, r * 0.5, r * 0.34, r * 0.55, r * 0.12);
-  roundRect(ctx, r * 0.06 - step, r * 0.5, r * 0.34, r * 0.55, r * 0.12);
+  block(ctx, -r * 0.4 + step, r * 0.5, r * 0.34, r * 0.55, r * 0.12);
+  block(ctx, r * 0.06 - step, r * 0.5, r * 0.34, r * 0.55, r * 0.12);
 
   // Пузо в жилетке
   ctx.fillStyle = clothes;
-  circle(ctx, 0, r * 0.1, r * 0.62);
+  lump(ctx, 0, r * 0.1, r * 0.62);
 
+  if (look.cracks) drawCracks(ctx, r, look.cracks);
   drawBossChest(ctx, r, look, facing);
 
   // Руки. У командира верхняя уходит вверх — это и телеграф приказа.
@@ -1315,13 +1398,13 @@ export function drawBoss(ctx, {
     roundRect(ctx, 0, 0, r * 0.8, r * 0.26, r * 0.13);
     ctx.restore();
   } else {
-    roundRect(ctx, r * 0.3, -r * 0.2, r * 0.8, r * 0.26, r * 0.13);
+    block(ctx, r * 0.3, -r * 0.2, r * 0.8, r * 0.26, r * 0.13);
   }
-  roundRect(ctx, r * 0.3, r * 0.15, r * 0.8, r * 0.26, r * 0.13);
+  block(ctx, r * 0.3, r * 0.15, r * 0.8, r * 0.26, r * 0.13);
 
   // Голова
   ctx.fillStyle = skin;
-  circle(ctx, 0, -r * 0.72, r * 0.48);
+  lump(ctx, 0, -r * 0.72, r * 0.48);
 
   // Головной убор — в слое головы, до глаз и лица: капюшон охранника
   // обрамляет лицо, и маска обязана лечь поверх него. Остальные уборы сидят

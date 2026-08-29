@@ -43,6 +43,7 @@ export class Boss extends Zombie {
     this.type = type;
     this.radius = CONFIG.boss.radius * type.radius;
     this.abilityTimer = 0;
+    this.slamTimer = 0;   // замах голема перед ударом по земле
     this.dashTimer = 0;   // сколько ещё секунд длится рывок
     this.flames = [];     // огоньки за спиной огненного босса
     this.webs = [];       // липкие зоны паука
@@ -139,7 +140,7 @@ export class Boss extends Zombie {
       case 'web': return this.updateWebs(dt, world);
       case 'bolt': return this.updateBolts(dt, world);
       case 'heal': return this.updateHeal(dt);
-      case 'summon': return this.updateSummon(world);
+      case 'slam': return this.updateSlam(dt, world);
       default: return;
     }
   }
@@ -153,22 +154,25 @@ export class Boss extends Zombie {
     this.hp = Math.min(this.maxHp, this.hp + this.maxHp * this.type.healPerSecond * dt);
   }
 
-  // Король зовёт свиту и тут же гонит её вперёд: два уже знакомых приёма
-  // разом — малыши как у мамы, ускорение как у охранника.
-  updateSummon(world) {
-    if (this.abilityTimer > 0) return;
-    this.abilityTimer = this.abilityInterval(this.type.summonInterval);
-
-    for (let i = 0; i < this.type.summonCount; i++) {
-      const angle = (i / this.type.summonCount) * Math.PI * 2;
-      const dist = this.radius + 34;
-      const guard = world.spawner.createZombie(world.arena, world.players);
-      guard.x = this.x + Math.cos(angle) * dist;
-      guard.y = this.y + Math.sin(angle) * dist;
-      world.addEnemy(guard);
+  // Голем бьёт по земле ВОКРУГ СЕБЯ. Единственная атака в игре, которая учит
+  // держать дистанцию: прочие бьют туда, где стоит герой, или навесом.
+  //
+  // Круг показывается заранее частицей, а не рисуется в Boss.draw: ночной тинт
+  // ложится между персонажами и частицами, и нарисованный в боссе круг ночью
+  // притух бы. Ровно этим же путём ходит электрический босс.
+  updateSlam(dt, world) {
+    if (this.slamTimer > 0) {
+      this.slamTimer -= dt;
+      if (this.slamTimer > 0) return;
+      world.splat(this.x, this.y, this.type.slamRadius);
+      world.shake(CONFIG.boss.slamShake.strength, CONFIG.boss.slamShake.time);
+      return;
     }
-    world.particles.addBurst(this.x, this.y, 14, 1);
-    world.rallyZombies(this.type.rallyFactor, this.type.rallyTime);
+    if (this.abilityTimer > 0) return;
+    this.abilityTimer = this.abilityInterval(this.type.slamInterval);
+    // Замах: круг виден всю slamWarn, и она от ярости НЕ сокращается.
+    this.slamTimer = this.type.slamWarn;
+    world.particles.addTelegraph(this.x, this.y, this.type.slamRadius, this.type.slamWarn);
   }
 
   // Мама-зомби выпускает малышей — обычных зомби этого раунда.
