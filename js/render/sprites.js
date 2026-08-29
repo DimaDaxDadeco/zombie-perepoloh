@@ -935,6 +935,113 @@ export function rockBlob(ctx, cx, cy, r) {
   ctx.fill();
 }
 
+// Одна каменная плита: неровный многоугольник с тёмным контуром и светлой
+// верхней гранью. Контур обязателен — без него плиты сливаются в пятно, и
+// весь смысл мозаики теряется.
+function stonePlate(ctx, x, y, w, h, seed, fill, edge, lite) {
+  const j = Math.min(w, h) * 0.2;
+  const shape = [[0, 0.18], [0.22, 0], [0.76, 0], [1, 0.22],
+                 [1, 0.78], [0.74, 1], [0.24, 1], [0, 0.8]];
+  ctx.beginPath();
+  shape.forEach(([fx, fy], i) => {
+    const px = x + w * fx + chip(seed + i * 3) * j;
+    const py = y + h * fy + chip(seed * 2 - i * 5) * j;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, Math.min(w, h) * 0.14);
+  ctx.stroke();
+  // Блик по верхней грани — камень не бывает плоским.
+  ctx.fillStyle = lite;
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.24, y + h * 0.12);
+  ctx.lineTo(x + w * 0.72, y + h * 0.1);
+  ctx.lineTo(x + w * 0.6, y + h * 0.3);
+  ctx.lineTo(x + w * 0.3, y + h * 0.32);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Каменный голем целиком. Отдельная форма, а не подмена примитивов: он
+// сложен из МНОЖЕСТВА камней, а не вытесан из одного, и это главное, по чему
+// голем узнаётся. Плюс огромные плечи, утопленная между ними голова и
+// светящиеся глаза без рта.
+export function drawStoneGolem(ctx, { radius, walkPhase, skin, clothes, accent }) {
+  const r = radius;
+  const edge = shade(skin, -0.42);
+  const lite = shade(skin, 0.2);
+  const dark = clothes;
+  const step = Math.sin(walkPhase * 0.7) * r * 0.14;
+
+  // Ноги: две колонны почти вплотную. Разводить их нельзя — врозь они
+  // читаются двумя отдельными стопками камней, а не одной фигурой.
+  [[-0.34, step, 0], [0.0, -step, 30]].forEach(([lx, off, seed]) => {
+    for (let k = 0; k < 3; k++) {
+      stonePlate(ctx, r * lx + off, r * (0.44 + k * 0.22), r * 0.34, r * 0.25,
+        seed + k * 7, k === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Торс: книзу УЖЕ — вся масса уходит в плечи, талия узкая. Ровные ряды
+  // выглядели бочкой.
+  const rows = [
+    { y: -0.52, n: 3, w: 0.30 },
+    { y: -0.26, n: 3, w: 0.26 },
+    { y: 0.0, n: 2, w: 0.26 },
+    { y: 0.24, n: 2, w: 0.22 },
+  ];
+  rows.forEach((row, ri) => {
+    const total = row.n * row.w;
+    for (let i = 0; i < row.n; i++) {
+      stonePlate(ctx, r * (-total / 2 + i * row.w), r * row.y, r * row.w, r * 0.28,
+        60 + ri * 11 + i * 5, (ri + i) % 3 === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Плечи — самые крупные валуны, вровень с макушкой и чуть шире торса.
+  [-1, 1].forEach((side) => {
+    stonePlate(ctx, side === -1 ? -r * 0.72 : r * 0.2, -r * 0.74, r * 0.52, r * 0.46,
+      side === -1 ? 90 : 120, skin, edge, lite);
+  });
+
+  // Руки: цепочки плит вдоль тела, вплотную к плечам.
+  [[-0.7, -1, 150], [0.26, 1, 180]].forEach(([ax, dir, seed]) => {
+    for (let k = 0; k < 3; k++) {
+      stonePlate(ctx, r * (ax + dir * k * 0.04), r * (-0.32 + k * 0.26),
+        r * 0.4, r * 0.28, seed + k * 9, k === 1 ? dark : skin, edge, lite);
+    }
+  });
+
+  // Голова: маленькая, утоплена между плечами, с зубчатой макушкой.
+  stonePlate(ctx, -r * 0.26, -r * 0.96, r * 0.52, r * 0.46, 210, skin, edge, lite);
+  ctx.fillStyle = skin;
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  [-0.17, 0.0, 0.17].forEach((x0, i) => {
+    ctx.beginPath();
+    ctx.moveTo(r * x0, -r * 0.92);
+    ctx.lineTo(r * (x0 + 0.06), -r * (1.08 + i * 0.03));
+    ctx.lineTo(r * (x0 + 0.13), -r * 0.92);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // Глаза — светящиеся щели. Рта нет: у камня его и не должно быть.
+  ctx.fillStyle = accent || '#ffd23d';
+  [-0.15, 0.13].forEach((x0) => {
+    ctx.beginPath();
+    ctx.ellipse(r * x0, -r * 0.74, r * 0.08, r * 0.05, x0 < 0 ? -0.3 : 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 0.35;
+  [-0.15, 0.13].forEach((x0) => circle(ctx, r * x0, -r * 0.74, r * 0.13));
+  ctx.globalAlpha = 1;
+}
+
 // Трещины и сколы. Толстые и через всё тело: тонкие царапины на игровом
 // размере пропадают, а именно они и делают фигуру каменной.
 export function drawCracks(ctx, r, color) {
@@ -1367,6 +1474,17 @@ export function drawBoss(ctx, {
     clothes = tint(clothes, '#7fd8ff', 0.25);
   } else if (!hurtFlash && burning) {
     skin = tint(skin, '#ff7a2b', 0.4);
+  }
+
+  // Голем нарисован целиком иначе: он сложен из множества камней, а не из
+  // тех же частей тела другой формы. Поэтому — отдельная ветка, как у
+  // зверей-зомби, а не подмена примитивов.
+  if (look.shape === 'golem') {
+    drawStoneGolem(ctx, { radius: r, walkPhase, skin, clothes, accent: look.accent });
+    if (burning) drawFlames(ctx, r, walkPhase);
+    if (frozen) drawIceBlock(ctx, r, freezeProgress, freezeSeed);
+    ctx.restore();
+    return;
   }
 
   // Что уходит за спину (лапки паука) — до ног, иначе окажется поверх.

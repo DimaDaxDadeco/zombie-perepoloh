@@ -653,8 +653,10 @@ export const CONFIG = {
       ability: 'slam', entrance: 'slam', rage: 'stomp',
       hp: 1.15, speed: 0.7, radius: 1.15,
       look: {
-        skin: '#b0b0bc', clothes: '#7a7a88', hat: 'none', accent: '#ff8a2b',
-        chest: 'none', stone: true, cracks: '#5a5a68',
+        // shape: 'golem' рисует его целиком отдельной функцией — hat, chest
+        // и cracks туда не идут, у него нет ни того, ни другого.
+        shape: 'golem',
+        skin: '#a8a89a', clothes: '#87877a', accent: '#ffd23d',
       },
       // Удар по земле вокруг СЕБЯ — единственная атака в игре, которая учит
       // держать дистанцию (прочие бьют туда, где герой, или навесом). Круг
