@@ -477,7 +477,8 @@ class WebShooter extends Weapon {
   }
 
   fire(world, target) {
-    world.addProjectile(new WebGlob(this.aimFrom.x, this.aimFrom.y, target.x, target.y, {
+    const at = leadPoint(this.aimFrom, target, this.spec.speed);
+    world.addProjectile(new WebGlob(this.aimFrom.x, this.aimFrom.y, at.x, at.y, {
       speed: this.spec.speed,
       damage: this.stat('damage'),
       onLand: (x, y) => this.land(world, x, y),
@@ -580,6 +581,26 @@ export function evolveWeapon(weapon) {
   const evolved = createWeapon(nextId);
   evolved.stars = CONFIG.maxStars;     // звёзды ей уже ничего не значат
   return evolved;
+}
+
+// Куда стрелять с упреждением: точка, где цель окажется, когда снаряд долетит.
+//
+// Нужно только навесным снарядам — тем, что летят в ТОЧКУ, а не в цель. Пуля
+// быстрая, а ракета и пчела доворачивают на лету и промахнуться не могут;
+// комок паутины же летит в заранее выбранное место, и без упреждения он всегда
+// падает туда, где зомби только что был.
+//
+// Считаем итерацией: время полёта зависит от точки, а точка — от времени
+// полёта. Двух проходов хватает с запасом — цель за это время не разгоняется.
+export function leadPoint(from, target, speed) {
+  let x = target.x;
+  let y = target.y;
+  for (let i = 0; i < 2; i++) {
+    const flight = Math.hypot(x - from.x, y - from.y) / speed;
+    x = target.x + (target.vx || 0) * flight;
+    y = target.y + (target.vy || 0) * flight;
+  }
+  return { x, y };
 }
 
 // Расстояние от точки до отрезка — «попал ли зомби на луч».
