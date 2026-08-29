@@ -251,27 +251,44 @@ class Zap extends Ability {
   }
 }
 
-// 🎁 Подарки: вокруг героя сыплются медальки и одно сердечко.
+// 🎁 Подарки-хлопушки: вокруг героя падают подарки, хлопают и оставляют
+// медальки.
 //
-// Единственная способность, которая вообще не бьёт. Помощь непрямая, но
-// настоящая: медальки — это опыт, опыт — карточки прокачки. А для пятилетнего
-// дождь подарков и сам по себе праздник.
+// Делает две вещи разом — бьёт и даёт. Урон и отброс здесь главное, медальки
+// приятная добавка: способность, которая только дарит, оказалась слишком
+// пассивной для ребёнка, который жмёт кнопку, чтобы что-то произошло.
 class Gifts extends Ability {
   constructor() { super('gifts'); }
 
   activate(world, owner) {
-    const { medals, radius, color } = this.spec;
-    for (let i = 0; i < medals; i++) {
-      // Кольцом вокруг героя, а не в точке: кучей они слиплись бы в одну
-      // медальку, и щедрость перестала бы читаться.
-      const angle = (i / medals) * Math.PI * 2 + Math.random() * 0.4;
+    const { gifts, radius, blastRadius, damage, force, color } = this.spec;
+    for (let i = 0; i < gifts; i++) {
+      // Кольцом вокруг героя, а не в точке: кучей подарки слиплись бы в один
+      // хлопок, и вся щедрость перестала бы читаться.
+      const angle = (i / gifts) * Math.PI * 2 + Math.random() * 0.4;
       const dist = radius * (0.35 + Math.random() * 0.65);
       const x = clamp(owner.x + Math.cos(angle) * dist, 20, world.arena.width - 20);
       const y = clamp(owner.y + Math.sin(angle) * dist, 20, world.arena.height - 20);
+      this.pop(world, x, y, blastRadius, damage, force, color);
+      // Медалька остаётся ПОСЛЕ хлопка — подарок, а не приманка.
       world.pickups.push(new Pickup(x, y, PickupType.MEDAL));
     }
+    // Звук один на всю очередь: world.explode() здесь не подошёл именно
+    // поэтому — шесть «бабахов» в один кадр невыносимы на слух.
+    world.audio.boom();
     world.particles.addFirework(owner.x, owner.y - 40);
-    world.particles.addRing(owner.x, owner.y, radius, color);
+  }
+
+  // Один хлопок: урон и отброс всем вокруг точки.
+  pop(world, x, y, blastRadius, damage, force, color) {
+    world.particles.addRing(x, y, blastRadius, color);
+    world.particles.addBurst(x, y, 8, 0.8);
+    for (const enemy of [...world.enemies]) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      if (Math.hypot(enemy.x - x, enemy.y - y) > blastRadius + enemy.radius) continue;
+      enemy.applyKnockback(x, y, force);
+      world.damageEnemy(enemy, damage);
+    }
   }
 }
 
