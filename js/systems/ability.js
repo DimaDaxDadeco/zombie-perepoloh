@@ -9,7 +9,7 @@
 
 import { CONFIG } from '../config.js';
 import { drawPortal } from '../render/sprites.js';
-import { SpiderMinion } from '../entities/projectile.js';
+import { SpiderMinion, GiftLob } from '../entities/projectile.js';
 import { Pickup, PickupType } from '../entities/pickup.js';
 
 export class Ability {
@@ -262,7 +262,7 @@ class Gifts extends Ability {
   constructor() { super('gifts'); }
 
   activate(world, owner) {
-    const { gifts, radius, blastRadius, damage, force, color } = this.spec;
+    const { gifts, radius, speed, color } = this.spec;
     for (let i = 0; i < gifts; i++) {
       // Кольцом вокруг героя, а не в точке: кучей подарки слиплись бы в один
       // хлопок, и вся щедрость перестала бы читаться.
@@ -270,26 +270,32 @@ class Gifts extends Ability {
       const dist = radius * (0.35 + Math.random() * 0.65);
       const x = clamp(owner.x + Math.cos(angle) * dist, 20, world.arena.width - 20);
       const y = clamp(owner.y + Math.sin(angle) * dist, 20, world.arena.height - 20);
-      this.pop(world, x, y, blastRadius, damage, force, color);
-      // Медалька остаётся ПОСЛЕ хлопка — подарок, а не приманка.
-      world.pickups.push(new Pickup(x, y, PickupType.MEDAL));
+      // Подарки ВЫЛЕТАЮТ и хлопают в точке падения. Раньше все шесть хлопали
+      // мгновенно, и понять, что это подарки, было нельзя — просто вспышки.
+      world.addProjectile(new GiftLob(owner.x, owner.y, x, y, {
+        speed, damage: 0, color, onLand: (lx, ly) => this.pop(world, lx, ly),
+      }));
     }
-    // Звук один на всю очередь: world.explode() здесь не подошёл именно
-    // поэтому — шесть «бабахов» в один кадр невыносимы на слух.
-    world.audio.boom();
     world.particles.addFirework(owner.x, owner.y - 40);
   }
 
-  // Один хлопок: урон и отброс всем вокруг точки.
-  pop(world, x, y, blastRadius, damage, force, color) {
+  // Один подарок долетел: хлопок с уроном и медалька после него.
+  pop(world, x, y) {
+    const { blastRadius, damage, force, color } = this.spec;
     world.particles.addRing(x, y, blastRadius, color);
     world.particles.addBurst(x, y, 8, 0.8);
+    // Звук на каждый хлопок теперь уместен: они разнесены по времени полёта,
+    // и шести «бабахов» в один кадр, из-за которых world.explode() не подошёл,
+    // больше не случается.
+    world.audio.boom();
     for (const enemy of [...world.enemies]) {
       if (!enemy.alive || enemy.isHidden) continue;
       if (Math.hypot(enemy.x - x, enemy.y - y) > blastRadius + enemy.radius) continue;
       enemy.applyKnockback(x, y, force);
       world.damageEnemy(enemy, damage);
     }
+    // Медалька остаётся ПОСЛЕ хлопка — подарок, а не приманка.
+    world.pickups.push(new Pickup(x, y, PickupType.MEDAL));
   }
 }
 

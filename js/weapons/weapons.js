@@ -373,13 +373,16 @@ class LaserEyes extends Weapon {
     const ex = eye.x + Math.cos(this.aimAngle) * this.beamLen;
     const ey = eye.y + Math.sin(this.aimAngle) * this.beamLen;
 
+    // Цвет берётся по звёздам: на пятой луч фиолетовый. Прокачка должна быть
+    // ВИДНА — числа ребёнок не читает.
+    const core = this.stat('beamColor');
     ctx.save();
     ctx.lineCap = 'round';
     // По лучу из каждого глаза — иначе это «лазер», а не «лазерные глаза».
     // Оба сходятся в одной точке, так что вдали пара читается как один луч.
     // Слои тоньше прежних: две линии рядом и так дают нужную толщину.
     for (const from of this.eyes(player)) {
-      [[this.spec.beamWidth * 0.6, 'rgba(255,80,80,0.35)'], [2.6, '#ff4d6d'], [1.2, '#ffffff']]
+      [[this.spec.beamWidth * 0.6, this.stat('beamGlow')], [2.6, core], [1.2, '#ffffff']]
         .forEach(([width, color]) => {
           ctx.strokeStyle = color;
           ctx.lineWidth = width;
@@ -389,7 +392,7 @@ class LaserEyes extends Weapon {
           ctx.stroke();
         });
       // Светящийся зрачок — это и есть «оружие в руке» для лазера.
-      ctx.fillStyle = '#ff4d6d';
+      ctx.fillStyle = core;
       circle(ctx, from.x, from.y, 3);
     }
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
