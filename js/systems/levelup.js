@@ -2,7 +2,9 @@
 // Карточка — это либо новое оружие, либо +1 звезда уже имеющемуся.
 
 import { CONFIG } from '../config.js';
-import { ALL_WEAPON_IDS, baseWeaponId } from '../weapons/weapons.js';
+import {
+  ALL_WEAPON_IDS, baseWeaponId, createWeapon, evolveWeapon,
+} from '../weapons/weapons.js';
 
 const MAX_WEAPONS = 5;   // сколько оружий герой может носить одновременно
 const CARDS_COUNT = 3;
@@ -87,6 +89,33 @@ export function generateCards(player) {
     });
   }
   return cards;
+}
+
+// Применить выбранную карточку к герою. Живёт рядом с generateCards, которая
+// эти карточки и производит: разнести производство и применение по разным
+// модулям значит завести два места, где надо помнить состав CardKind.
+//
+// Возвращает эволюционировавшее оружие или null. Салют, звук и голос остаются
+// на Game: они трогают audio и speech, а этот модуль обязан оставаться чистым —
+// его зовёт автотест в Node, где ни того, ни другого нет.
+export function applyCard(player, card) {
+  if (!player || !card) return null;
+  if (card.kind === CardKind.NEW_WEAPON) {
+    player.weapons.push(createWeapon(card.weaponId));
+    return null;
+  }
+  if (card.kind === CardKind.EVOLVE) {
+    // Замена на месте, по индексу: слот в HUD не должен переезжать.
+    const index = player.weapons.findIndex((w) => w.id === card.weaponId);
+    player.weapons[index] = evolveWeapon(player.weapons[index]);
+    return player.weapons[index];
+  }
+  if (card.kind === CardKind.UPGRADE) {
+    player.findWeapon(card.weaponId)?.upgrade();
+    return null;
+  }
+  player.hp = Math.min(player.maxHp, player.hp + 1);
+  return null;
 }
 
 function pickRandom(items, count) {

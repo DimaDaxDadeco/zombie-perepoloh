@@ -3,14 +3,18 @@
 // Схема состояний описана в docs/architecture.md.
 
 import { CONFIG } from '../config.js';
+import {
+  buildUpgrades, getCharacter, getDifficulty, characterKey, weaponKey,
+} from './upgrades.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
 import { Round } from './round.js';
-import { generateCards, CardKind } from '../systems/levelup.js';
-import { createWeapon, evolveWeapon } from '../weapons/weapons.js';
+// applyCard под псевдонимом: одноимённый метод ниже — обёртка над ней,
+// и без псевдонима вызов читался бы как рекурсия.
+import { generateCards, applyCard as applyCardTo } from '../systems/levelup.js';
 import { MenuScreen } from '../screens/menu.js';
 import { CardsScreen } from '../screens/cards.js';
 import { ShopScreen } from '../screens/shop.js';
@@ -362,10 +366,11 @@ export class Game {
     this.openCharacters(); // выбор героя — второй шаг новой игры
   }
 
-  // Ключи сохранения для игрока N. Второй хранится отдельными полями —
-  // см. комментарий в storage.js.
-  static characterKey(i) { return i === 0 ? 'character' : `character${i + 1}`; }
-  static weaponKey(i) { return i === 0 ? 'weapon' : `weapon${i + 1}`; }
+  // Ключи сохранения для игрока N. Сами функции живут в upgrades.js рядом с
+  // остальной работой по сохранению; здесь они остаются под привычными
+  // именами, чтобы не править пять мест вызова.
+  static characterKey(i) { return characterKey(i); }
+  static weaponKey(i) { return weaponKey(i); }
 
   get playersCount() {
     return this.storage.data.playersCount || 1;
@@ -465,57 +470,19 @@ export class Game {
     }
   }
 
-  // Уровень сложности из сохранения. Незнакомый id (правленый localStorage
-  // или сохранение из будущей версии) — «Легко»: ошибаться надо в сторону
-  // проходимости, а не в сторону непроходимой игры.
+  // Уровень сложности, герой и бонусы считаются в upgrades.js — чистой
+  // арифметикой над сохранением, без DOM. Здесь только подстановка save,
+  // чтобы автотест в Node звал ровно те же формулы, что и игра.
   getDifficulty() {
-    const id = this.storage.data.difficulty || CONFIG.defaultDifficulty;
-    return CONFIG.difficulties.find((d) => d.id === id) || CONFIG.difficulties[0];
+    return getDifficulty(this.storage.data);
   }
 
-  // Выбранный герой; если сохранения ещё нет — герой по умолчанию.
   getCharacter(playerIndex = 0) {
-    const id = this.storage.data[Game.characterKey(playerIndex)] || CONFIG.defaultCharacter;
-    return CONFIG.characters.find((c) => c.id === id) || CONFIG.characters[0];
+    return getCharacter(this.storage.data, playerIndex);
   }
 
-  // Бонусы, применяемые к герою на старте раунда: покупки из магазина
-  // плюс небольшой перк выбранного персонажа.
   getUpgrades(playerIndex = 0) {
-    const bought = this.storage.data.shop;
-    const perk = this.getCharacter(playerIndex).perk;
-    const diff = this.getDifficulty();
-    return {
-      speed: CONFIG.player.baseSpeed
-        + bought.speed * CONFIG.shop.speed.bonus
-        + (perk.speedBonus || 0),
-      // На «Сложно» сердечек на одно меньше, но никогда не ноль.
-      maxHp: Math.max(1, CONFIG.player.baseMaxHp
-        + bought.heart * CONFIG.shop.heart.bonus
-        + (perk.extraHp || 0)
-        + diff.extraHearts),
-      regenInterval: CONFIG.player.regenInterval * diff.regenFactor,
-      startStars: bought.star * CONFIG.shop.star.bonus + (perk.startStars || 0),
-      magnetRadius: CONFIG.pickups.baseMagnetRadius
-        + bought.magnet * CONFIG.pickups.magnetPerLevel
-        + (perk.magnetBonus || 0),
-      // Питомцы: товар с полем pet отдаёт id живого спутника.
-      pets: Object.entries(CONFIG.shop)
-        .filter(([id, spec]) => spec.pet && bought[id])
-        .map(([, spec]) => spec.pet),
-      // Множители команды: применяются в Round, потому что и деньги, и опыт
-      // в игре общие.
-      coinBonus: perk.coinBonus || 0,
-      xpBonus: perk.xpBonus || 0,
-      // Ноль у всех, кроме Хэнки: по нулю проход по врагам не запускается.
-      stinkRadius: perk.stinkRadius || 0,
-      look: this.getCharacter(playerIndex).look,
-      ability: this.getCharacter(playerIndex).ability,
-      // Герой со своим оружием (Паук) выбор игнорирует: у него оно одно.
-      startWeapon: this.getCharacter(playerIndex).fixedWeapon
-        || this.storage.data[Game.weaponKey(playerIndex)]
-        || CONFIG.startingWeapon,
-    };
+    return buildUpgrades(this.storage.data, playerIndex);
   }
 
   endRound(outcome, summary) {
@@ -589,19 +556,8 @@ export class Game {
 
   applyCard(card, playerIndex = 0) {
     const player = this.round.players[playerIndex];
-    if (!player || !card) return;
-    if (card.kind === CardKind.NEW_WEAPON) {
-      player.weapons.push(createWeapon(card.weaponId));
-    } else if (card.kind === CardKind.EVOLVE) {
-      // Замена на месте, по индексу: слот в HUD не должен переезжать.
-      const index = player.weapons.findIndex((w) => w.id === card.weaponId);
-      player.weapons[index] = evolveWeapon(player.weapons[index]);
-      this.celebrateEvolution(player.weapons[index], player);
-    } else if (card.kind === CardKind.UPGRADE) {
-      player.findWeapon(card.weaponId)?.upgrade();
-    } else {
-      player.hp = Math.min(player.maxHp, player.hp + 1);
-    }
+    const evolved = applyCardTo(player, card);
+    if (evolved) this.celebrateEvolution(evolved, player);
   }
 
   // --- Магазин ---
