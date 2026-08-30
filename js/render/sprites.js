@@ -2953,18 +2953,12 @@ export function drawStinkCloud(ctx, radius, phase) {
   circle(ctx, 0, 0, radius * 0.74);
   for (let i = 0; i < 7; i++) {
     const angle = (i / 7) * Math.PI * 2 + phase * 0.25;
-    const puff = radius * (0.62 + Math.sin(phase * 1.4 + i) * 0.06);
-    circle(ctx, Math.cos(angle) * puff, Math.sin(angle) * puff, radius * 0.34);
+    const puff = radius * (0.66 + Math.sin(phase * 1.4 + i) * 0.07);
+    circle(ctx, Math.cos(angle) * puff, Math.sin(angle) * puff, radius * 0.38);
   }
-  // Кромка: без неё непонятно, где облако кончается, а это ровно та граница,
-  // за которой зомби разгоняется.
-  ctx.strokeStyle = 'rgba(150, 165, 40, 0.5)';
-  ctx.lineWidth = Math.max(1.5, radius * 0.035);
-  ctx.setLineDash([radius * 0.22, radius * 0.16]);
-  ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.96, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Пунктирной кромки тут была: она честно показывала границу, но читалась
+  // как нарисованный круг, а не как облако. Заказчик забраковал — границу
+  // теперь обозначают сами клубы, размытым краем.
   ctx.restore();
 }
 

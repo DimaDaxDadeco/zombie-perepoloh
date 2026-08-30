@@ -143,6 +143,21 @@ export class Overlay {
     this.root.innerHTML = html;
   }
 
+  // То же, но с сохранением прокрутки панели.
+  //
+  // Перерисовка заменяет innerHTML целиком, то есть выбрасывает и сам .panel
+  // вместе с его scrollTop. Для экранов, которые перерисовываются в ответ на
+  // действие игрока (магазин после покупки), это значит бросок к началу
+  // списка: на телефоне магазин не помещается на экран, и ребёнок после
+  // каждой покупки терял место, где был.
+  setContentKeepingScroll(html) {
+    const before = this.root.querySelector('.panel')?.scrollTop || 0;
+    this.setContent(html);
+    if (!before) return;
+    const panel = this.root.querySelector('.panel');
+    if (panel) panel.scrollTop = before;
+  }
+
   // Навешивает обработчик клика на элемент внутри оверлея.
   on(selector, handler) {
     const el = this.root.querySelector(selector);

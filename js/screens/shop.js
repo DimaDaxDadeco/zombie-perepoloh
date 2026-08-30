@@ -53,7 +53,9 @@ export class ShopScreen extends Overlay {
       .map(([id, spec]) => this.renderItem(id, spec, save))
       .join('');
 
-    this.setContent(`
+    // Прокрутку сохраняем: экран перерисовывается после КАЖДОЙ покупки, и без
+    // этого список отскакивал бы к началу — заметнее всего на телефоне.
+    this.setContentKeepingScroll(`
       <div class="panel panel--shop">
         <h2 class="title title--small">МАГАЗИН</h2>
         <div class="stats-row"><span class="stat">💵 ${save.coins}</span></div>

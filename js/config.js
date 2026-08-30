@@ -349,6 +349,7 @@ export const CONFIG = {
       // побед из девяноста и в одиночку выносило Хэнки за пределы коридора.
       // Замеры — в balance.md.
       gifts: 6, radius: 190,
+      speed: 300,     // скорость вылета: подарок должен быть виден в полёте
       blastRadius: 72, damage: 4, force: 420,
     },
     zap: {
@@ -814,6 +815,11 @@ export const CONFIG = {
       range:      [300, 330, 360, 390, 420],      // короче экрана — это тормоз баланса
       maxTargets: [3, 3, 4, 4, 5],                // и второй тормоз
       beamWidth: 9,       // луч тонкий: задевает только тех, кто реально на линии
+      // Цвет по звёздам: на пятой луч становится фиолетовым — прокачка должна
+      // быть видна, а не только чувствоваться.
+      beamColor: ['#ff4d6d', '#ff4d6d', '#ff4d6d', '#ff4d6d', '#b06bff'],
+      beamGlow: ['rgba(255,80,80,0.35)', 'rgba(255,80,80,0.35)', 'rgba(255,80,80,0.35)',
+        'rgba(255,80,80,0.35)', 'rgba(176,107,255,0.4)'],
     },
     boomerang: {
       name: 'Бумеранг', emoji: '🪃', evolution: 'doubleboomerang',
@@ -909,6 +915,7 @@ export const CONFIG = {
       // дальность ниже, чем у лазера даже на первой звезде.
       cooldown: [0.22], damage: [2], range: [260], maxTargets: [10],
       beamWidth: 30,
+      beamColor: ['#b06bff'], beamGlow: ['rgba(176,107,255,0.4)'],
     },
     doubleboomerang: {
       evolved: true,

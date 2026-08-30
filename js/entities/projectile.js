@@ -466,13 +466,14 @@ export class SpiderMinion extends Bee {
   }
 }
 
-// 🕸 Комок паутины: летит по дуге в точку и оставляет там пятно.
+// Полёт по дуге в заданную точку с колбэком на приземление.
 //
-// Про само пятно снаряд ничего не знает — он только зовёт onLand. Список
-// пятен держит оружие (см. WebShooter), как вертушка держит свои кулдауны:
-// заводить ради них сущность в мире было бы лишним.
-export class WebGlob extends Projectile {
-  constructor(x, y, targetX, targetY, { speed, damage, onLand }) {
+// Про то, ЧТО случится в точке падения, снаряд не знает ничего — он только
+// зовёт onLand. Так один и тот же полёт обслуживает и комок паутины (кладёт
+// липкое пятно), и подарок Хэнки (хлопает). Наследники переопределяют только
+// draw().
+class ArcLob extends Projectile {
+  constructor(x, y, targetX, targetY, { speed, damage, onLand, hop = 44 }) {
     super(x, y, damage);
     this.startX = x;
     this.startY = y;
@@ -481,6 +482,7 @@ export class WebGlob extends Projectile {
     this.flightTime = Math.max(0.12, Math.hypot(targetX - x, targetY - y) / speed);
     this.elapsed = 0;
     this.onLand = onLand;
+    this.hop = hop;
     this.radius = 9;
   }
 
@@ -489,12 +491,48 @@ export class WebGlob extends Projectile {
     const t = Math.min(1, this.elapsed / this.flightTime);
     this.x = this.startX + (this.targetX - this.startX) * t;
     this.y = this.startY + (this.targetY - this.startY) * t;
-    this.hopHeight = Math.sin(t * Math.PI) * 44;
+    this.hopHeight = Math.sin(t * Math.PI) * this.hop;
     if (t < 1) return;
     this.alive = false;
     this.onLand(this.x, this.y);
   }
+}
 
+// 🎁 Подарок Мистера Хэнки: вылетает, летит по дуге и хлопает в точке падения.
+//
+// Раньше хлопки случались мгновенно, все шесть разом, и понять, что это
+// ПОДАРКИ, было нельзя — просто вспышки вокруг. Теперь они вылетают.
+export class GiftLob extends ArcLob {
+  constructor(x, y, targetX, targetY, opts) {
+    super(x, y, targetX, targetY, { ...opts, hop: 70 });
+    this.radius = 10;
+    this.color = opts.color;
+    this.spin = (Math.random() - 0.5) * 6;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y - (this.hopHeight || 0));
+    ctx.rotate(this.elapsed * this.spin);
+    const r = this.radius;
+    // Коробка
+    ctx.fillStyle = this.color;
+    roundRect(ctx, -r, -r, r * 2, r * 2, r * 0.3);
+    // Лента крест-накрест и бантик
+    ctx.fillStyle = '#ffd93d';
+    roundRect(ctx, -r * 0.22, -r, r * 0.44, r * 2, 0);
+    roundRect(ctx, -r, -r * 0.22, r * 2, r * 0.44, 0);
+    circle(ctx, -r * 0.3, -r * 1.1, r * 0.3);
+    circle(ctx, r * 0.3, -r * 1.1, r * 0.3);
+    ctx.restore();
+  }
+}
+
+// 🕸 Комок паутины: летит по дуге в точку и оставляет там пятно.
+//
+// Список пятен держит оружие (см. WebShooter), как вертушка держит свои
+// кулдауны: заводить ради них сущность в мире было бы лишним.
+export class WebGlob extends ArcLob {
   draw(ctx) {
     ctx.save();
     ctx.translate(this.x, this.y - (this.hopHeight || 0));
