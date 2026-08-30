@@ -56,7 +56,10 @@ export class EndScreen extends Overlay {
     if (page) this.onSpeak?.('Ура! Страница вернулась в альбом!');
   }
 
-  renderDefeat({ zombiesDefeated, coinsEarned }, { fresh = null, medals = [] } = {}) {
+  // back — куда ведёт вторая кнопка. Из главы это карта, а не меню: провалив
+  // главу, ребёнок хочет вернуться к путешествию, а не выпасть из него.
+  renderDefeat({ zombiesDefeated, coinsEarned }, { fresh = null, medals = [], back = null } = {}) {
+    this.onBack = back?.action || this.onMenu;
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--soft">ПОЧТИ ПОЛУЧИЛОСЬ!</h2>
@@ -66,12 +69,13 @@ export class EndScreen extends Overlay {
         ${renderFresh(fresh)}
         ${renderMedals(medals)}
         <button class="btn btn--big" data-action="retry">ЕЩЁ РАЗ ▶</button>
-        <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
+        <button class="btn btn--secondary" data-action="back">${back?.label || '🏠 В меню'}</button>
       </div>
     `);
     this.paintFresh(fresh);
     this.on('[data-action="retry"]', this.onRetry);
-    this.on('[data-action="menu"]', this.onMenu);
+    this.on('[data-action="back"]', () => this.onBack());
+    this.bindSpeakButtons(this.onSpeak);
     this.show();
   }
 

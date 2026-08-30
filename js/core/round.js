@@ -100,7 +100,7 @@ export class Round {
     this.medalsCollected = 0;
     this.zombiesDefeated = 0;
     this.coinsEarned = 0;
-    this.bossPhase = 'none'; // none -> intro -> fight -> done
+    this.bossPhase = 'none'; // none -> intro -> fight
     // Спрашиваем ОДИН раз за раунд и запоминаем: после двенадцатого раунда
     // выбор случайный, и повторный вызов дал бы другого босса — баннер
     // объявил бы одного, а вышел бы другой.

@@ -646,7 +646,11 @@ export class Game {
       });
     } else {
       this.audio.fail();
-      this.screens.end.renderDefeat(summary, { fresh, medals });
+      this.screens.end.renderDefeat(summary, {
+        fresh,
+        medals,
+        back: this.chapter ? { label: '🗺 На карту', action: () => this.openMap() } : null,
+      });
     }
     // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Одну, даже
     // если их несколько: список подряд он не дослушает.
