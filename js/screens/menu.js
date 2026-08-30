@@ -1,22 +1,29 @@
 // Главное меню. Две главные кнопки: «Продолжить» (если есть сохранение) и
-// «Новая игра». Выбор героя и оружия сюда не вынесен намеренно — он идёт
+// «Новая игра», плюс кампания отдельной строкой ниже — она НЕ внутри ветки
+// «есть сохранение», иначе при первом запуске её бы не было вовсе, то есть
+// ровно тогда, когда начинать историю логичнее всего. Выбор героя и оружия сюда не вынесен намеренно — он идёт
 // сразу после «Новой игры», чтобы у ребёнка был один понятный путь.
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
+import { campaignProgress } from '../core/campaign.js';
 const HERO_PREVIEW_SIZE = 130;
 
 export class MenuScreen extends Overlay {
-  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum }) {
+  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum, onCampaign }) {
     super(rootId);
     this.onContinue = onContinue;
     this.onNewGame = onNewGame;
     this.onShop = onShop;
     this.onAlbum = onAlbum;
+    this.onCampaign = onCampaign;
 
     // С геймпада главная кнопка нажимается сама собой: она в меню одна
-    // большая и всегда означает «играем дальше».
+    // большая и всегда означает «играем дальше». Поэтому вторая .btn--big в
+    // меню запрещена: querySelector берёт первую в разметке, и новая кнопка
+    // молча перехватила бы геймпад. Кампания живёт .btn--secondary именно
+    // из-за этого, а не потому, что она второстепенна.
     this.bindNavigation({
       onMove: () => {},
       onConfirm: () => this.root.querySelector('.btn--big')?.click(),
@@ -54,6 +61,11 @@ export class MenuScreen extends Overlay {
         ` : `
           <button class="btn btn--big" data-action="new">НОВАЯ ИГРА ▶</button>
         `}
+        <div class="menu-buttons">
+          <button class="btn btn--secondary" data-action="campaign">
+            ${CONFIG.campaign.emoji} ${CONFIG.campaign.title} ${campaignOpen(save)}
+          </button>
+        </div>
         <p class="hint">Бегай стрелками ← ↑ → ↓ — оружие стреляет само!</p>
       </div>
     `);
@@ -63,6 +75,7 @@ export class MenuScreen extends Overlay {
     this.on('[data-action="new"]', this.onNewGame);
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="album"]', this.onAlbum);
+    this.on('[data-action="campaign"]', this.onCampaign);
     this.show();
   }
 
@@ -78,4 +91,9 @@ export class MenuScreen extends Overlay {
 function albumOpen(save) {
   const p = albumProgress(save);
   return `${p.zombies.open + p.bosses.open}/${p.zombies.total + p.bosses.total}`;
+}
+
+function campaignOpen(save) {
+  const p = campaignProgress(save);
+  return `${p.open}/${p.total}`;
 }

@@ -75,7 +75,11 @@ export class Round {
       modifier === undefined ? modifierForRound(round) : modifier,
     );
     this.modifier?.tuneSpawner(this.spawner);
-    this.bannerTimer = this.modifier ? CONFIG.specialRounds.bannerTime : 0;
+    // Баннер в начале раунда: имя особого раунда или задача сюжетной главы.
+    // Слот один — двух надписей поверх арены разом ребёнок всё равно не
+    // прочитает, а кто именно его занял, решает Game (см. announceRound).
+    this.bannerText = this.modifier ? this.modifier.spec.name : null;
+    this.bannerTimer = this.bannerText ? CONFIG.specialRounds.bannerTime : 0;
     // Локация: сюжетная глава задаёт её явно, обычный раунд считает по номеру.
     this.theme = theme;
     this.background = new Background();
@@ -353,6 +357,14 @@ export class Round {
 
   // Тряска мира при появлении босса. HUD рисуется отдельно в game.js и
   // не трясётся — интерфейс должен оставаться на месте.
+  // Показать надпись поверх арены. Тем же слотом, что и особый раунд: если
+  // глава объявляет задачу, она вытесняет имя модификатора, а не рисуется
+  // поверх него.
+  showBanner(text) {
+    this.bannerText = text;
+    this.bannerTimer = CONFIG.specialRounds.bannerTime;
+  }
+
   shake(strength, time) {
     this.shakeStrength = strength;
     this.shakeTimer = time;
@@ -585,7 +597,7 @@ export class Round {
     this.modifier?.drawWorld(ctx, this);
     this.particles.draw(ctx);
     if (this.bossPhase === 'intro') this.drawBanner(ctx, this.bossType.name);
-    else if (this.bannerTimer > 0) this.drawBanner(ctx, this.modifier.spec.name, this.bannerTimer);
+    else if (this.bannerTimer > 0) this.drawBanner(ctx, this.bannerText, this.bannerTimer);
 
     ctx.restore();
   }

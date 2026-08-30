@@ -768,6 +768,53 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* --- Карта кампании --- */
+
+.panel--map { width: min(94vw, 900px); }
+
+/* Дорожка, а не сетка: остановки идут по порядку глав, и стрелки листают их
+   тем же порядком. Двумерной навигации в проекте нет — Game.feedScreen шлёт
+   экранам только влево-вправо. */
+.map-road {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.map-stop { position: relative; }
+
+.map-stop__number {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  opacity: 0.75;
+}
+
+/* Пройденная остановка — тёплая, со страницей в углу. Ребёнок не читает, и
+   «сделано» обязано читаться цветом, а не подписью. */
+.map-stop--done { background: rgba(255, 217, 61, 0.16); }
+.map-stop--open { background: rgba(127, 216, 255, 0.14); }
+
+/* Значок состояния — снизу справа: сверху справа уже сидит кнопка 🔈, и на
+   пройденных остановках они налезали друг на друга. */
+.map-stop__page,
+.map-stop__here {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 20px;
+}
+
+/* Кадр истории: картинка крупно, фраза под ней. Кнопка 🔈 живёт в углу самой
+   панели, а не внутри строки: .speak позиционируется абсолютно и налезала бы
+   на конец фразы — на длинных репликах прямо поверх слов. */
+.panel--story { position: relative; width: min(92vw, 520px); }
+.story-art { font-size: 76px; line-height: 1.1; }
+.story-line { max-width: 440px; }
+
 /* Свежие наклейки на экране конца раунда */
 .fresh-stickers {
   display: flex;
@@ -791,4 +838,6 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
   .album-card__name { font-size: 10px; }
   .album-card__emoji { width: 72px; height: 72px; font-size: 34px; }
+  .map-road { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .story-art { font-size: 58px; }
 }
