@@ -744,6 +744,30 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
   opacity: 0.9;
 }
 
+/* Медаль вместо картинки — крупное эмодзи в золотом кольце. Высота подобрана
+   под canvas наклейки (110px), чтобы три сетки альбома не прыгали. */
+.album-card__emoji {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 46px;
+  line-height: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, rgba(255, 233, 150, 0.55), rgba(255, 190, 40, 0.18) 62%, transparent 70%);
+  box-shadow: inset 0 0 0 3px rgba(255, 217, 61, 0.55);
+}
+
+/* Незаработанная медаль — приглушённая, но узнаваемая: имя и условие у неё
+   остаются видимыми (см. album.js), прячется только «золото». */
+.album-card--locked .album-card__emoji {
+  filter: grayscale(1);
+  opacity: 0.45;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* Свежие наклейки на экране конца раунда */
 .fresh-stickers {
   display: flex;
@@ -752,7 +776,19 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
   flex-wrap: wrap;
 }
 
+.fresh-medal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+}
+
+.fresh-medal__emoji { font-size: 40px; line-height: 1; }
+.fresh-medal__name { font-size: 12px; text-align: center; }
+
 @media (max-width: 760px) {
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
   .album-card__name { font-size: 10px; }
+  .album-card__emoji { width: 72px; height: 72px; font-size: 34px; }
 }

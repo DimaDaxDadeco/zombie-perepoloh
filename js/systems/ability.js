@@ -86,7 +86,7 @@ class Shockwave extends Ability {
       if (!enemy.alive) continue;
       if (Math.hypot(enemy.x - p.x, enemy.y - p.y) > radius + enemy.radius) continue;
       enemy.applyKnockback(p.x, p.y, force);
-      world.damageEnemy(enemy, damage);
+      world.damageEnemy(enemy, damage, 'ability');
     }
   }
 }
@@ -128,7 +128,7 @@ class Portal extends Ability {
         // Урон идёт через damageEnemy — тем же путём, что и любой выстрел.
         // Поэтому заряд, медальки, счётчик убитых и наклейка отрабатывают
         // сами, и отдельной ветки в onEnemyDefeated не появляется.
-        world.damageEnemy(enemy, damage);
+        world.damageEnemy(enemy, damage, 'ability');
         world.particles.addBurst(enemy.x, enemy.y, 10, 0.9);
         continue;
       }
@@ -204,9 +204,14 @@ class Swarm extends Ability {
       // Веером во все стороны, а не в сторону цели: полчище должно именно
       // РАЗБЕГАТЬСЯ, иначе на глаз это залп, а не орава.
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
-      world.addProjectile(new SpiderMinion(owner.x, owner.y, angle, {
+      const minion = new SpiderMinion(owner.x, owner.y, angle, {
         speed, turnSpeed, damage, life, retarget: 0.4, chillFactor, chillTime,
-      }));
+      });
+      // Паучок бьёт контактом, то есть через resolveProjectileHits, — тег
+      // источника ему приходится нести на себе. Подаркам он не нужен: у них
+      // урон нулевой, а хлопок считается прямо в pop().
+      minion.source = 'ability';
+      world.addProjectile(minion);
     }
     world.audio.buzz();
   }
@@ -247,7 +252,7 @@ class Zap extends Ability {
       world.particles.addRing(enemy.x, enemy.y, radius, color);
       // Без льда: это оглушение током, а не заморозка.
       enemy.freeze(stunFactor, stunTime, false);
-      world.damageEnemy(enemy, damage);
+      world.damageEnemy(enemy, damage, 'ability');
     }
   }
 }
@@ -292,7 +297,7 @@ class Gifts extends Ability {
       if (!enemy.alive || enemy.isHidden) continue;
       if (Math.hypot(enemy.x - x, enemy.y - y) > blastRadius + enemy.radius) continue;
       enemy.applyKnockback(x, y, force);
-      world.damageEnemy(enemy, damage);
+      world.damageEnemy(enemy, damage, 'ability');
     }
     // Медалька остаётся ПОСЛЕ хлопка — подарок, а не приманка.
     world.pickups.push(new Pickup(x, y, PickupType.MEDAL));

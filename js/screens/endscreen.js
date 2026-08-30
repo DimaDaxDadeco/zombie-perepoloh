@@ -22,7 +22,7 @@ export class EndScreen extends Overlay {
 
   // look — внешность выбранного героя: на победе он и радуется,
   // а не абстрактный смайлик супергероя.
-  renderVictory({ round, zombiesDefeated, coinsEarned }, look, fresh = null) {
+  renderVictory({ round, zombiesDefeated, coinsEarned }, look, fresh = null, medals = []) {
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title">ПОБЕДА! 🎉</h2>
@@ -30,6 +30,7 @@ export class EndScreen extends Overlay {
         <p class="big-line">Ты прогнал <b>${zombiesDefeated}</b> зомби!</p>
         <p class="big-line">Заработано 💵 <b>${coinsEarned}</b></p>
         ${renderFresh(fresh)}
+        ${renderMedals(medals)}
         <button class="btn btn--big" data-action="next">РАУНД ${round + 1} ▶</button>
         <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
       </div>
@@ -41,7 +42,7 @@ export class EndScreen extends Overlay {
     this.show();
   }
 
-  renderDefeat({ zombiesDefeated, coinsEarned }, fresh = null) {
+  renderDefeat({ zombiesDefeated, coinsEarned }, fresh = null, medals = []) {
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--soft">ПОЧТИ ПОЛУЧИЛОСЬ!</h2>
@@ -49,6 +50,7 @@ export class EndScreen extends Overlay {
         <p class="big-line">Ты прогнал <b>${zombiesDefeated}</b> зомби — это много!</p>
         <p class="big-line">Заработано 💵 <b>${coinsEarned}</b></p>
         ${renderFresh(fresh)}
+        ${renderMedals(medals)}
         <button class="btn btn--big" data-action="retry">ЕЩЁ РАЗ ▶</button>
         <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
       </div>
@@ -72,6 +74,26 @@ export class EndScreen extends Overlay {
       if (spec) paint(canvas, spec.look, {});
     }
   }
+}
+
+// Медали — сюда же, где и наклейки, и по той же причине: награда приходит
+// туда, где ребёнок уже стоит. Отдельного экрана «Ты получил медаль!» нет и
+// не надо — это лишнее нажатие между ним и следующим раундом.
+//
+// Canvas тут не нужен: медаль это эмодзи (см. album.js).
+function renderMedals(medals) {
+  if (!medals || !medals.length) return '';
+  return `
+    <p class="big-line">🏅 ${medals.length > 1 ? 'НОВЫЕ МЕДАЛИ!' : 'НОВАЯ МЕДАЛЬ!'}</p>
+    <div class="fresh-stickers">
+      ${medals.map((m) => `
+        <span class="fresh-medal" title="${m.name}">
+          <span class="fresh-medal__emoji">${m.emoji}</span>
+          <span class="fresh-medal__name">${m.name}</span>
+        </span>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderFresh(fresh) {
