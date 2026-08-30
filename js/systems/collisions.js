@@ -18,7 +18,9 @@ export function resolveProjectileHits(world) {
         // пока не кончится запас пробития.
         if (projectile.alreadyHit?.(enemy)) continue;
         projectile.onHit(enemy, world); // поджечь или заморозить, если снаряд стихийный
-        world.damageEnemy(enemy, projectile.damage);
+        // Снаряд несёт свой тег: паучки Паука и подарки Хэнки летят от
+        // способности, пули и пчёлы — от оружия.
+        world.damageEnemy(enemy, projectile.damage, projectile.source || 'weapon');
         if (!projectile.piercing) projectile.alive = false;
         break;
       }
@@ -44,7 +46,7 @@ function resolveHitsFor(world, player) {
     for (const enemy of world.enemies) {
       if (!enemy.alive || enemy.isHidden || !circlesOverlap(player, enemy)) continue;
       enemy.applyKnockback(player.x, player.y, contact.force);
-      world.damageEnemy(enemy, contact.damage);
+      world.damageEnemy(enemy, contact.damage, 'ability');
       world.particles.addBurst(enemy.x, enemy.y, 8, 0.8);
     }
     return;

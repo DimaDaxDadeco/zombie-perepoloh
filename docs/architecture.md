@@ -93,7 +93,7 @@ loop(timestamp)
 | `addProjectile(p)` | оружие при выстреле |
 | `addEnemy(e)` | спавнер |
 | `findNearestEnemy(x, y, opts)` | оружие для авто-прицела, ракета для наведения |
-| `damageEnemy(enemy, amount)` | оружие прямого действия (молния, вертушка) |
+| `damageEnemy(enemy, amount, source)` | оружие прямого действия (молния, вертушка); `source` — `'weapon'` по умолчанию, `'ability'` или `'enemy'` |
 | `explode(x, y, radius, damage, kind)` | помидор и ракета |
 | `collectPickup(pickup)` | пикап, долетевший до героя |
 | `onPlayerHurt()` / `onPlayerHealed()` | столкновения и регенерация |

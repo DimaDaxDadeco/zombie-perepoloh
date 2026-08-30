@@ -11,6 +11,7 @@ import { Audio } from './audio.js';
 import { Speech } from './speech.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
+import { Achievements } from './achievements.js';
 import { Round } from './round.js';
 // applyCard под псевдонимом: одноимённый метод ниже — обёртка над ней,
 // и без псевдонима вызов читался бы как рекурсия.
@@ -56,6 +57,7 @@ export class Game {
 
     this.storage = new Storage();
     this.album = new Album(this.storage);
+    this.achievements = new Achievements(this.storage);
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
     this.input = new Input();
@@ -444,6 +446,7 @@ export class Game {
     this.state = GameState.PLAYING;
     this.lastOutcome = null;
     this.input.playerCount = this.playersCount;
+    this.rememberHeroes();
 
     this.round = new Round({
       round: roundNumber,
@@ -485,6 +488,17 @@ export class Game {
     return buildUpgrades(this.storage.data, playerIndex);
   }
 
+  // За кого сегодня играли — копится для медали «Все герои». Отмечаем на
+  // старте раунда, а не на экране выбора: выбор можно открыть и передумать,
+  // а вот раунд начат по-настоящему.
+  rememberHeroes() {
+    const played = this.storage.data.heroesPlayed;
+    for (const i of this.eachPlayer()) {
+      const id = this.getCharacter(i).id;
+      if (!played.includes(id)) played.push(id);
+    }
+  }
+
   endRound(outcome, summary) {
     this.state = GameState.ROUND_END;
     this.lastOutcome = outcome;
@@ -496,16 +510,28 @@ export class Game {
     // Единственная запись альбома за раунд — здесь же, где и так сохраняемся.
     const fresh = this.album.discoverAll(summary.discovered);
 
+    // Ветка победы разрезана надвое намеренно: медали должны проверяться уже
+    // по обновлённым round/bestRound и по пополненному альбому, но ДО того,
+    // как экран отрисуется, — иначе новую медаль на нём не показать.
     if (outcome === 'victory') {
       save.round = summary.round + 1;
       save.bestRound = Math.max(save.bestRound, save.round);
+    }
+    const medals = this.achievements.check({
+      save, summary, outcome, playersCount: this.playersCount,
+    });
+
+    if (outcome === 'victory') {
       this.audio.victory();
       this.fireworkTimer = 0;
-      this.screens.end.renderVictory(summary, this.getCharacter().look, fresh);
+      this.screens.end.renderVictory(summary, this.getCharacter().look, fresh, medals);
     } else {
       this.audio.fail();
-      this.screens.end.renderDefeat(summary, fresh);
+      this.screens.end.renderDefeat(summary, fresh, medals);
     }
+    // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Одну, даже
+    // если их несколько: список подряд он не дослушает.
+    if (medals.length) this.speech.speak(`Новая медаль! ${medals[0].name}`);
     this.storage.save();
   }
 
@@ -536,6 +562,9 @@ export class Game {
   // Событие редкое и должно ощущаться крупнее обычного уровня — поэтому три
   // сигнала разом: салют, кольцо и голос.
   celebrateEvolution(weapon, player) {
+    // Медаль за превращение выдаётся ЗДЕСЬ, а не в конце раунда: раунд после
+    // эволюции можно и проиграть, а заслужена она уже сейчас.
+    this.achievements.unlock('evolved');
     this.round.particles.addFirework(player.x, player.y - 40);
     this.round.particles.addRing(player.x, player.y, 90, '#ffd93d');
     this.audio.evolve();

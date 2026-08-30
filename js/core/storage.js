@@ -19,9 +19,13 @@ const DEFAULT_SAVE = {
   weapon2: null,
   shop: { speed: 0, heart: 0, star: 0, magnet: 0, dog: 0, drone: 0 }, // купленные уровни
   album: { zombies: [], bosses: [] },  // открытые наклейки, в порядке встречи
+  achievements: [],   // полученные медали, в порядке получения
+  // За кого уже играли. Плоский массив id, а не флаг на герое: нужен ровно для
+  // медали «Все герои», и заводить ради него объект со статистикой рано.
+  heroesPlayed: [],
 };
 
-const KEEP_ON_RESET = ['soundOn', 'album'];
+const KEEP_ON_RESET = ['soundOn', 'album', 'achievements', 'heroesPlayed'];
 
 function toIdArray(value) {
   return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
@@ -49,6 +53,8 @@ export class Storage {
           zombies: toIdArray(parsed.album?.zombies),
           bosses: toIdArray(parsed.album?.bosses),
         },
+        achievements: toIdArray(parsed.achievements),
+        heroesPlayed: toIdArray(parsed.heroesPlayed),
       };
     } catch {
       return structuredClone(DEFAULT_SAVE);
@@ -66,9 +72,16 @@ export class Storage {
   // Полный сброс: монеты, раунды, покупки и выбранный герой.
   //
   // Что переживает «Новую игру»: soundOn — это настройка, а не прогресс.
-  // album — коллекция ребёнка, а не прохождение: наклейки он собирал сам, и
-  // терять их из-за нажатия на большую кнопку обидно и непонятно. Стереть
-  // всё целиком можно через localStorage.clear() — это операция для взрослого.
+  // album и achievements — коллекция ребёнка, а не прохождение: наклейки и
+  // медали он собирал сам, и терять их из-за нажатия на большую кнопку обидно
+  // и непонятно. heroesPlayed переживает вместе с медалью, которую питает.
+  // Стереть всё целиком можно через localStorage.clear() — это операция для
+  // взрослого.
+  //
+  // Следствие, которое чинить НЕ надо: медали вроде «Далеко зашёл» считаются
+  // от полей, которые сброс обнуляет (bestRound). После «Новой игры» счётчик
+  // начнётся заново, а медаль останется — так и задумано: заслуженное не
+  // отбирают.
   reset() {
     const kept = Object.fromEntries(KEEP_ON_RESET.map((key) => [key, this.data[key]]));
     this.data = { ...structuredClone(DEFAULT_SAVE), ...kept };

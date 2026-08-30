@@ -1,6 +1,12 @@
-// Альбом наклеек: все виды зомби и все боссы из конфига. Неоткрытые —
-// силуэтом. Числа тут намеренно не пишутся: состав растёт, а комментарий
-// с цифрой устаревает молча.
+// Альбом: наклейки зверей и медали за умения. Неоткрытые — силуэтом. Числа
+// тут намеренно не пишутся: состав растёт, а комментарий с цифрой устаревает
+// молча.
+//
+// Медали живут третьей сеткой ЗДЕСЬ, а не отдельным экраном. Пятая кнопка в
+// меню для нечитающего пятилетнего — перебор, а прятать их вкладкой внутри
+// экрана ещё хуже: скрытый режим он не найдёт. Плюс не появляется ни нового
+// состояния в Game, ни нового <div> в index.html, а стрелки листают всё
+// подряд сами — достаточно дописать медали в конец this.stickers.
 //
 // Цель за пределами одного раунда: собрать всех. Карточки рисуются настоящим
 // игровым кодом (drawZombie/drawBoss), поэтому наклейка физически не может
@@ -9,6 +15,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
+import { achievementsProgress } from '../core/achievements.js';
 
 const CARD_SIZE = 110;
 
@@ -32,15 +39,21 @@ export class AlbumScreen extends Overlay {
 
   render(save) {
     const album = save.album;
+    const medalsOwned = save.achievements || [];
     this.stickers = [
-      ...CONFIG.zombieTypes.map((t) => ({ kind: 'zombies', spec: t })),
-      ...CONFIG.bossTypes.map((t) => ({ kind: 'bosses', spec: t })),
-    ].map((s) => ({ ...s, open: album[s.kind].includes(s.spec.id) }));
+      ...CONFIG.zombieTypes.map((t) => ({ kind: 'zombies', spec: t, open: album.zombies.includes(t.id) })),
+      ...CONFIG.bossTypes.map((t) => ({ kind: 'bosses', spec: t, open: album.bosses.includes(t.id) })),
+      ...CONFIG.achievements.map((a) => ({ kind: 'medals', spec: a, open: medalsOwned.includes(a.id) })),
+    ];
     this.selected = 0;
 
     const progress = albumProgress(save);
-    const zombies = this.stickers.filter((s) => s.kind === 'zombies');
-    const bosses = this.stickers.filter((s) => s.kind === 'bosses');
+    const medals = achievementsProgress(save);
+    const zombieCards = this.stickers.filter((s) => s.kind === 'zombies');
+    const bossCards = this.stickers.filter((s) => s.kind === 'bosses');
+    const medalCards = this.stickers.filter((s) => s.kind === 'medals');
+    const bossOffset = zombieCards.length;
+    const medalOffset = bossOffset + bossCards.length;
 
     this.setContent(`
       <div class="panel panel--album">
@@ -48,10 +61,14 @@ export class AlbumScreen extends Overlay {
         <div class="stats-row">
           <span class="stat">🧟 ${progress.zombies.open}/${progress.zombies.total}</span>
           <span class="stat">👑 ${progress.bosses.open}/${progress.bosses.total}</span>
+          <span class="stat">🏅 ${medals.open}/${medals.total}</span>
         </div>
-        <div class="album-grid">${zombies.map((s, i) => this.renderCard(s, i)).join('')}</div>
+        <div class="album-grid">${zombieCards.map((s, i) => this.renderCard(s, i)).join('')}</div>
         <div class="album-grid">
-          ${bosses.map((s, i) => this.renderCard(s, i + zombies.length)).join('')}
+          ${bossCards.map((s, i) => this.renderCard(s, i + bossOffset)).join('')}
+        </div>
+        <div class="album-grid">
+          ${medalCards.map((s, i) => this.renderCard(s, i + medalOffset)).join('')}
         </div>
         <button class="btn btn--big" data-action="close">ГОТОВО ✓</button>
         <p class="hint">Кого встретишь в игре — тот появится в альбоме.
@@ -75,6 +92,22 @@ export class AlbumScreen extends Overlay {
   }
 
   renderCard(sticker, index) {
+    // Медаль — эмодзи, а не спрайт: рисовать «не получил урона» процедурно
+    // нечем, а sprites.js и без того самый большой модуль в проекте. Игра уже
+    // ходит этим путём — магазин, способности, сложности тоже на эмодзи.
+    //
+    // И имя у закрытой медали НЕ прячется, в отличие от наклейки: у зверя под
+    // «???» есть интрига, а медаль без подсказки для нечитающего ребёнка
+    // просто не существует — он не узнает, что её можно получить.
+    if (sticker.kind === 'medals') {
+      return `
+        <div class="album-card ${sticker.open ? '' : 'album-card--locked'}" data-index="${index}">
+          ${Overlay.speakButton(describeSticker(sticker))}
+          <span class="album-card__emoji">${sticker.spec.emoji}</span>
+          <span class="album-card__name">${sticker.spec.name}</span>
+        </div>
+      `;
+    }
     const size = sticker.kind === 'bosses' ? CARD_SIZE + 20 : CARD_SIZE;
     return `
       <div class="album-card ${sticker.open ? '' : 'album-card--locked'}" data-index="${index}">
@@ -87,6 +120,9 @@ export class AlbumScreen extends Overlay {
     `;
   }
 
+  // Идём по canvas'ам и берём индекс из dataset, а НЕ по порядку итерации: у
+  // карточек-медалей canvas'а нет вовсе, и нумерация forEach разъехалась бы
+  // с this.stickers.
   drawStickers() {
     for (const canvas of this.root.querySelectorAll('.album-card__canvas')) {
       const sticker = this.stickers[Number(canvas.dataset.index)];
@@ -114,6 +150,13 @@ export class AlbumScreen extends Overlay {
 }
 
 function describeSticker(sticker) {
+  if (sticker.kind === 'medals') {
+    // Закрытая медаль говорит УСЛОВИЕ, а не «???»: иначе для нечитающего
+    // ребёнка её попросту нет.
+    return sticker.open
+      ? `${sticker.spec.name}. ${sticker.spec.about}`
+      : `${sticker.spec.name}. ${sticker.spec.hint}`;
+  }
   // Закрытая карточка тоже говорит: иначе ребёнок нажимает динамик, и ничего
   // не происходит.
   if (!sticker.open) return 'Этого зомби ты ещё не встречал. Найди его в игре!';

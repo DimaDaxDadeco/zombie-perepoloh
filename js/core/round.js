@@ -91,6 +91,12 @@ export class Round {
     // Открытые в этом раунде наклейки. Round про Storage не знает — отдаёт их
     // в getSummary(), а пишет уже Game, одним вызовом в конце раунда.
     this.discovered = { zombies: new Set(), bosses: new Set() };
+    // Факты для медалей. Round про них тоже не знает: он только считает, а
+    // решает Achievements в конце раунда. Флаги живут ЗДЕСЬ, а не на Game,
+    // потому что «повторить раунд» не двигает номер раунда — новый Round
+    // обязан начать с чистого листа сам.
+    this.damageTaken = 0;
+    this.bossKilledBy = null;   // 'ability' | 'weapon' | 'enemy'
   }
 
   // Герой со всем снаряжением. Двое встают по разные стороны от центра,
@@ -345,6 +351,15 @@ export class Round {
         zombies: [...this.discovered.zombies],
         bosses: [...this.discovered.bosses],
       },
+      // Факты для медалей. Round не знает, какие медали существуют, — он лишь
+      // рассказывает, что случилось; условия проверяет Achievements.
+      damageTaken: this.damageTaken,
+      bossKilledBy: this.bossKilledBy,
+      modifierId: this.modifier?.id || null,
+      level: this.level,
+      weaponsHeld: Math.max(...this.players.map((p) => p.weapons.length)),
+      maxStars: Math.max(...this.players.flatMap((p) => p.weapons.map((w) => w.stars))),
+      playersCount: this.players.length,
     };
   }
 
@@ -394,10 +409,17 @@ export class Round {
       && enemy.y > -margin && enemy.y < this.arena.height + margin;
   }
 
-  damageEnemy(enemy, amount) {
+  // source — чем нанесли урон: 'weapon' (по умолчанию), 'ability' или 'enemy'
+  // (взрыв тыквы, догорание). Это ТЕГ, а не атрибуция убийства: считать, кто
+  // именно добил, в этой игре нечестно и дорого — молния бьёт цепью, помидор
+  // кладёт пятерых, огонь догорает через три секунды после выстрела. Тег нужен
+  // ровно для медали «добил босса суперспособностью», и потому необязателен:
+  // забытый вызов молча получит 'weapon', то есть медаль не выдастся. Ошибка
+  // в безопасную сторону.
+  damageEnemy(enemy, amount, source = 'weapon') {
     if (!enemy.alive) return;
     const killed = enemy.takeDamage(amount);
-    if (killed) this.onEnemyDefeated(enemy);
+    if (killed) this.onEnemyDefeated(enemy, source);
   }
 
   // Урон по площади: помидор и ракета.
@@ -410,13 +432,18 @@ export class Round {
     for (const enemy of [...this.enemies]) {
       if (!enemy.alive) continue;
       if (Math.hypot(enemy.x - x, enemy.y - y) <= radius + enemy.radius) {
-        this.damageEnemy(enemy, damage);
+        // Тыква взрывается сама, когда её убили, — это урон от врага, а не от
+        // оружия ребёнка, и медаль за него давать не за что.
+        this.damageEnemy(enemy, damage, kind === 'pumpkin' ? 'enemy' : 'weapon');
       }
     }
   }
 
-  onEnemyDefeated(enemy) {
+  onEnemyDefeated(enemy, source = 'weapon') {
     this.zombiesDefeated += 1;
+    // ??= а не =: сюда можно зайти рекурсивно (тыква в onDeath зовёт explode,
+    // тот — damageEnemy), и вложенный вызов перезаписал бы источник чужим.
+    if (enemy.isBoss) this.bossKilledBy ??= source;
     // Босс выходит каждый раунд сам — по появлению наклейка досталась бы
     // даром. Это единственное в игре, что надо заслужить.
     if (enemy.isBoss) this.discovered.bosses.add(enemy.type.id);
@@ -493,6 +520,10 @@ export class Round {
   }
 
   onPlayerHurt() {
+    // Единственная точка урона по герою — сюда сходятся и укус зомби, и торт
+    // клоуна, и молния огненного босса. Кому именно прилетело, она не знает,
+    // поэтому медаль «ни царапины» командная: вдвоём её теряют оба.
+    this.damageTaken += 1;
     this.audio.hurt();
     this.particles.addBurst(this.player.x, this.player.y, 8, 0.8);
   }
