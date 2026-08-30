@@ -21,10 +21,11 @@ import { campaignProgress, themeEmoji, themeName, bossOf, goalText } from '../co
 const BOSS_SIZE = 96;
 
 export class MapScreen extends Overlay {
-  constructor(rootId, { onPlay, onShop, onClose, onSpeak }) {
+  constructor(rootId, { onPlay, onShop, onHero, onClose, onSpeak }) {
     super(rootId);
     this.onPlay = onPlay;
     this.onShop = onShop;
+    this.onHero = onHero;
     this.onClose = onClose;
     this.onSpeak = onSpeak;
     this.stops = [];
@@ -62,6 +63,7 @@ export class MapScreen extends Overlay {
         </div>
         <button class="btn btn--big" data-action="play">ИГРАТЬ ▶</button>
         <div class="menu-buttons">
+          <button class="btn btn--secondary" data-action="hero">🦸 Герой</button>
           <button class="btn btn--secondary" data-action="shop">🛒 Магазин 💵 ${save.coins}</button>
           <button class="btn btn--secondary" data-action="close">🏠 В меню</button>
         </div>
@@ -76,6 +78,7 @@ export class MapScreen extends Overlay {
       this.speakCurrent();
     });
     this.on('[data-action="play"]', () => this.enter());
+    this.on('[data-action="hero"]', this.onHero);
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="close"]', this.onClose);
     this.bindSpeakButtons(this.onSpeak);

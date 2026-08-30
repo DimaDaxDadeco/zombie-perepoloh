@@ -103,6 +103,11 @@ const CHECKS = {
 
   allHeroes: ({ save }) => save.heroesPlayed.length >= CONFIG.characters.length,
 
+  // Считается по конфигу, а не по длине списка: если глав станет больше,
+  // старая медаль не должна оставаться выданной за неполное прохождение.
+  pagesBack: ({ save }) => CONFIG.campaign.chapters
+    .every((c) => (save.campaign?.done || []).includes(c.id)),
+
   collector: ({ save }) => {
     const progress = albumProgress(save);
     return progress.zombies.open >= progress.zombies.total

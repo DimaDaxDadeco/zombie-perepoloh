@@ -160,6 +160,10 @@ export class Game {
         // если доллары тратятся, — а дорога «карта → меню → магазин → меню →
         // кампания» для пятилетнего непроходима сама по себе.
         onShop: () => this.openShop(GameState.MAP),
+        // Сменить героя прямо с карты. Иначе кампания — единственный режим, в
+        // котором ребёнок ни разу не выбирает, кем играть: обычная цепочка
+        // выбора живёт только внутри «Новой игры», а она стирает прогресс.
+        onHero: () => this.openCharacters(() => this.openMap()),
         onClose: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
@@ -432,7 +436,12 @@ export class Game {
     return Array.from({ length: this.playersCount }, (_, i) => i);
   }
 
-  openCharacters() {
+  // Выбор героя и оружия — общая цепочка для двух входов: новой игры и карты
+  // кампании. Куда она приведёт, решает вызывающий: держать это флагом «мы
+  // пришли с карты» значило бы завести ещё одно скрытое состояние, которое
+  // забудут сбросить.
+  openCharacters(after = null) {
+    this.afterPicking = after || (() => this.startRound(this.storage.data.round));
     this.state = GameState.CHARACTERS;
     this.hideAllScreens();
     this.screens.characters.render(
@@ -459,7 +468,7 @@ export class Game {
     // бы страницу, на которой нечего нажать.
     const fixed = this.eachPlayer().map((i) => this.getCharacter(i).fixedWeapon || null);
     if (fixed.every(Boolean)) {
-      this.startRound(this.storage.data.round);
+      this.finishPicking();
       return;
     }
 
@@ -484,7 +493,14 @@ export class Game {
     this.audio.click();
     this.speech.stop();
     this.screens.weapons.hide();
-    this.startRound(this.storage.data.round);
+    this.finishPicking();
+  }
+
+  // Конец цепочки выбора. По умолчанию — в бой, с карты — обратно на карту.
+  finishPicking() {
+    const next = this.afterPicking || (() => this.startRound(this.storage.data.round));
+    this.afterPicking = null;
+    next();
   }
 
   startRound(roundNumber) {
