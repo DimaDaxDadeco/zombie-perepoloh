@@ -10,6 +10,7 @@
 import { CONFIG } from '../config.js';
 import { drawPortal } from '../render/sprites.js';
 import { SpiderMinion } from '../entities/projectile.js';
+import { Pickup, PickupType } from '../entities/pickup.js';
 
 export class Ability {
   constructor(id) {
@@ -244,10 +245,56 @@ class Zap extends Ability {
     for (const enemy of visible.slice(0, bolts)) {
       world.particles.addLightning([{ x: owner.x, y: owner.y - owner.radius }, enemy]);
       world.particles.addRing(enemy.x, enemy.y, radius, color);
-      enemy.freeze(stunFactor, stunTime);
+      // Без льда: это оглушение током, а не заморозка.
+      enemy.freeze(stunFactor, stunTime, false);
       world.damageEnemy(enemy, damage);
     }
   }
+}
+
+// 🎁 Подарки-хлопушки: вокруг героя падают подарки, хлопают и оставляют
+// медальки.
+//
+// Делает две вещи разом — бьёт и даёт. Урон и отброс здесь главное, медальки
+// приятная добавка: способность, которая только дарит, оказалась слишком
+// пассивной для ребёнка, который жмёт кнопку, чтобы что-то произошло.
+class Gifts extends Ability {
+  constructor() { super('gifts'); }
+
+  activate(world, owner) {
+    const { gifts, radius, blastRadius, damage, force, color } = this.spec;
+    for (let i = 0; i < gifts; i++) {
+      // Кольцом вокруг героя, а не в точке: кучей подарки слиплись бы в один
+      // хлопок, и вся щедрость перестала бы читаться.
+      const angle = (i / gifts) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = radius * (0.35 + Math.random() * 0.65);
+      const x = clamp(owner.x + Math.cos(angle) * dist, 20, world.arena.width - 20);
+      const y = clamp(owner.y + Math.sin(angle) * dist, 20, world.arena.height - 20);
+      this.pop(world, x, y, blastRadius, damage, force, color);
+      // Медалька остаётся ПОСЛЕ хлопка — подарок, а не приманка.
+      world.pickups.push(new Pickup(x, y, PickupType.MEDAL));
+    }
+    // Звук один на всю очередь: world.explode() здесь не подошёл именно
+    // поэтому — шесть «бабахов» в один кадр невыносимы на слух.
+    world.audio.boom();
+    world.particles.addFirework(owner.x, owner.y - 40);
+  }
+
+  // Один хлопок: урон и отброс всем вокруг точки.
+  pop(world, x, y, blastRadius, damage, force, color) {
+    world.particles.addRing(x, y, blastRadius, color);
+    world.particles.addBurst(x, y, 8, 0.8);
+    for (const enemy of [...world.enemies]) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      if (Math.hypot(enemy.x - x, enemy.y - y) > blastRadius + enemy.radius) continue;
+      enemy.applyKnockback(x, y, force);
+      world.damageEnemy(enemy, damage);
+    }
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 export const ABILITY_CLASSES = {
@@ -259,6 +306,7 @@ export const ABILITY_CLASSES = {
   swarm: Swarm,
   rage: Rage,
   zap: Zap,
+  gifts: Gifts,
 };
 
 // Герой без способности возможен: старое сохранение или автотест. Поэтому

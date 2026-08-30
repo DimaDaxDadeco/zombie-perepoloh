@@ -507,6 +507,8 @@ export class Game {
       // в игре общие.
       coinBonus: perk.coinBonus || 0,
       xpBonus: perk.xpBonus || 0,
+      // Ноль у всех, кроме Хэнки: по нулю проход по врагам не запускается.
+      stinkRadius: perk.stinkRadius || 0,
       look: this.getCharacter(playerIndex).look,
       ability: this.getCharacter(playerIndex).ability,
       // Герой со своим оружием (Паук) выбор игнорирует: у него оно одно.

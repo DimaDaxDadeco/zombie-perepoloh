@@ -436,7 +436,8 @@ export class SpiderMinion extends Bee {
   }
 
   onHit(enemy) {
-    enemy.freeze(this.chillFactor, this.chillTime);
+    // Без льда: паучок кусает и опутывает, а не морозит.
+    enemy.freeze(this.chillFactor, this.chillTime, false);
   }
 
   draw(ctx) {

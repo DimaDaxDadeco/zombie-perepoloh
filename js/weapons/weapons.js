@@ -471,7 +471,8 @@ class WebShooter extends Weapon {
         const dx = (enemy.x - patch.x) / patch.radius;
         const dy = (enemy.y - patch.y) / (patch.radius * 0.55);
         if (dx * dx + dy * dy > 1) continue;
-        enemy.freeze(factor, 0.15);
+        // Без льда: паутина липкая, а не морозная.
+        enemy.freeze(factor, 0.15, false);
       }
     }
   }
