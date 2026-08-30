@@ -83,6 +83,10 @@ export class Game {
     // обычный раунд. Иначе после выхода из главы игра продолжала бы считать,
     // что мы в ней, и «ЕЩЁ РАЗ» увело бы ребёнка не туда.
     this.chapter = null;
+    // Финал ждёт показа. Ставится в момент, когда встала последняя страница,
+    // а не вычисляется на входе в карту: пройденные главы можно переигрывать,
+    // и «все главы пройдены» было бы истиной после каждой такой победы.
+    this.pendingFinale = false;
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
     this.input = new Input();
@@ -622,8 +626,10 @@ export class Game {
     // победа в двенадцатой главе не должна выставить save.round = 13.
     let page = false;
     if (outcome === 'victory') {
-      if (this.chapter) page = this.campaign.complete(this.chapter.id);
-      else {
+      if (this.chapter) {
+        page = this.campaign.complete(this.chapter.id);
+        if (page && this.campaign.isComplete) this.pendingFinale = true;
+      } else {
         save.round = summary.round + 1;
         save.bestRound = Math.max(save.bestRound, save.round);
       }
@@ -673,9 +679,8 @@ export class Game {
   }
 
   openMap() {
-    // Финал показываем один раз — в тот момент, когда собрана последняя
-    // страница, а не при каждом заходе на пройденную карту.
-    if (this.campaign.isComplete && this.chapter) {
+    if (this.pendingFinale) {
+      this.pendingFinale = false;
       this.chapter = null;
       this.state = GameState.STORY;
       this.hideAllScreens();
