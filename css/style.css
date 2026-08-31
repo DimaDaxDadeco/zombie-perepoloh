@@ -8,6 +8,10 @@
   --color-primary: #ff6b35;
   --color-primary-dark: #e0511c;
   --color-secondary: rgba(255, 255, 255, 0.18);
+  /* Путешествие — второй способ играть, и цвет у него свой: две одинаково
+     оранжевые кнопки читались бы как одна кнопка, случайно раздвоившаяся. */
+  --color-journey: #3f9dd4;
+  --color-journey-dark: #2a76a3;
   --radius-lg: 24px;
   --radius-md: 16px;
   --font: 'Trebuchet MS', 'Comic Sans MS', system-ui, sans-serif;
@@ -118,6 +122,15 @@ html, body {
 
 .menu-hero-canvas {
   animation: bounce 1.4s ease-in-out infinite;
+}
+
+/* Два способа играть — столбиком и одинаково крупно. */
+.menu-play {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: min(100%, 420px);
 }
 
 .menu-buttons {
@@ -410,6 +423,34 @@ html, body {
   background: var(--color-primary);
   box-shadow: 0 6px 0 var(--color-primary-dark);
   letter-spacing: 1px;
+}
+
+.btn--journey {
+  background: var(--color-journey);
+  box-shadow: 0 6px 0 var(--color-journey-dark);
+  /* Кегль чуть меньше: «ВЕРНИ АЛЬБОМ» длиннее «ПРОДОЛЖИТЬ», и на одном
+     размере она распирала бы панель на узком экране. */
+  font-size: clamp(20px, 3.2vw, 28px);
+  padding: 14px 32px;
+  line-height: 1.15;
+}
+
+/* Подпись под названием кнопки: сколько страниц уже вернули. Ребёнку она
+   ничего не говорит, но взрослому видно, где ребёнок остановился. */
+.btn__note {
+  display: block;
+  font-size: 14px;
+  font-weight: normal;
+  opacity: 0.85;
+  letter-spacing: 0;
+  margin-top: 2px;
+}
+
+/* Курсор клавиатуры и геймпада. Тем же жёлтым, что выбранная карточка на всех
+   прочих экранах, — ребёнок узнаёт подсветку, а не разгадывает её заново. */
+.btn--focused {
+  outline: 4px solid var(--color-accent);
+  outline-offset: 3px;
 }
 
 .btn--secondary {

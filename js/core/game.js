@@ -241,8 +241,12 @@ export class Game {
 
   feedScreen(screen, sources, playerIndex) {
     for (const source of sources) {
-      if (source.wasPressed('left')) screen.nav.onMove?.(-1, playerIndex);
-      if (source.wasPressed('right')) screen.nav.onMove?.(1, playerIndex);
+      // Вверх-вниз работают наравне с влево-вправо. Экраны у нас всегда
+      // одномерные — список карточек или столбик кнопок, — и требовать от
+      // ребёнка «здесь листают вбок, а здесь вверх» бессмысленно: он жмёт ту
+      // стрелку, куда смотрит. Любая двигает выбор на одну позицию.
+      if (source.wasPressed('left') || source.wasPressed('up')) screen.nav.onMove?.(-1, playerIndex);
+      if (source.wasPressed('right') || source.wasPressed('down')) screen.nav.onMove?.(1, playerIndex);
       // Кнопка способности и подтверждение — одна и та же клавиша у ребёнка
       // (пробел, A на геймпаде). В меню она означает «выбрал это».
       if (source.wasPressed('confirm') || source.wasPressed('ability')) {
