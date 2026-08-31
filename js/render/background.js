@@ -15,8 +15,11 @@ export class Background {
   }
 
   // Пересобирает декорации под новый раунд и размер арены.
-  rebuild(round, arena) {
-    this.theme = getTheme(round);
+  //
+  // theme задаётся явно только сюжетными главами: у них локация своя и от
+  // номера не зависит. Обычный раунд его не передаёт и идёт по getTheme.
+  rebuild(round, arena, theme = null) {
+    this.theme = theme || getTheme(round);
     this.decorations = [];
     const random = makeSeededRandom(round * 7919);
     const count = 26;

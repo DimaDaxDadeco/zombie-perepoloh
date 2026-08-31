@@ -12,6 +12,7 @@ import { Speech } from './speech.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
 import { Achievements } from './achievements.js';
+import { Campaign } from './campaign.js';
 import { Round } from './round.js';
 // applyCard под псевдонимом: одноимённый метод ниже — обёртка над ней,
 // и без псевдонима вызов читался бы как рекурсия.
@@ -24,6 +25,8 @@ import { CharactersScreen } from '../screens/characters.js';
 import { DifficultyScreen } from '../screens/difficulty.js';
 import { PlayersScreen } from '../screens/players.js';
 import { AlbumScreen } from '../screens/album.js';
+import { MapScreen } from '../screens/map.js';
+import { StoryScreen } from '../screens/story.js';
 import { ConfirmScreen } from '../screens/confirm.js';
 import { WeaponsScreen } from '../screens/weapons.js';
 import { PauseScreen } from '../screens/pause.js';
@@ -44,10 +47,26 @@ export const GameState = {
   WEAPONS: 'weapons',
   CONFIRM: 'confirm',
   ALBUM: 'album',
+  MAP: 'map',       // карта сюжетной кампании
+  STORY: 'story',   // кадры истории: завязка и финал
 };
 
 const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» после сворачивания окна
 const FIREWORK_INTERVAL = 0.35;
+
+// Завязка и финал кампании. Одна фраза на кадр — длиннее ребёнок не дослушает,
+// да и Speech всё равно не умеет говорить две подряд.
+const INTRO_FRAMES = [
+  { emoji: '📖', line: 'Зомби утащили твой альбом с наклейками!' },
+  { emoji: '📄', line: 'Они порвали его на двенадцать страниц.' },
+  { emoji: '🗺', line: 'И спрятали страницы по всему свету.' },
+  { emoji: '🦸', line: 'Пойдём забирать! Первая — во дворе.' },
+];
+
+const FINALE_FRAMES = [
+  { emoji: '📖', line: 'Двенадцать страниц! Альбом снова целый!' },
+  { emoji: '🏆', line: 'Ты вернул все наклейки. Ты настоящий герой!' },
+];
 
 export class Game {
   constructor(canvas) {
@@ -58,6 +77,16 @@ export class Game {
     this.storage = new Storage();
     this.album = new Album(this.storage);
     this.achievements = new Achievements(this.storage);
+    this.campaign = new Campaign(this.storage);
+    // Спека текущей главы или null. Единственный признак «мы в кампании», и
+    // снимается он в launch() — то есть при ЛЮБОМ входе в бой, включая
+    // обычный раунд. Иначе после выхода из главы игра продолжала бы считать,
+    // что мы в ней, и «ЕЩЁ РАЗ» увело бы ребёнка не туда.
+    this.chapter = null;
+    // Финал ждёт показа. Ставится в момент, когда встала последняя страница,
+    // а не вычисляется на входе в карту: пройденные главы можно переигрывать,
+    // и «все главы пройдены» было бы истиной после каждой такой победы.
+    this.pendingFinale = false;
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
     this.input = new Input();
@@ -86,6 +115,7 @@ export class Game {
         onNewGame: () => this.askNewGame(),
         onShop: () => this.openShop(GameState.MENU),
         onAlbum: () => this.openAlbum(),
+        onCampaign: () => this.openCampaign(),
       }),
       players: new PlayersScreen('players-overlay', {
         onPick: (count) => this.choosePlayers(count),
@@ -118,9 +148,31 @@ export class Game {
         onSpeak: (text) => this.speech.speak(text),
       }),
       end: new EndScreen('end-overlay', {
-        onNext: () => this.openShop(GameState.ROUND_END),
-        onRetry: () => this.startRound(this.storage.data.round),
+        // «ЕЩЁ РАЗ» обязан перезапускать именно то, что проиграли: после
+        // провала главы обычный раунд увёл бы ребёнка в другой режим, ничего
+        // у него не спросив.
+        onRetry: () => (this.chapter
+          ? this.startChapter(this.chapter.id)
+          : this.startRound(this.storage.data.round)),
         onMenu: () => this.goToMenu(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      map: new MapScreen('map-overlay', {
+        onPlay: (chapterId) => this.startChapter(chapterId),
+        // Магазин прямо с карты. Без него ребёнок упирается в седьмую главу:
+        // замер показал, что кампания проходится с первой попытки, только
+        // если доллары тратятся, — а дорога «карта → меню → магазин → меню →
+        // кампания» для пятилетнего непроходима сама по себе.
+        onShop: () => this.openShop(GameState.MAP),
+        // Сменить героя прямо с карты. Иначе кампания — единственный режим, в
+        // котором ребёнок ни разу не выбирает, кем играть: обычная цепочка
+        // выбора живёт только внутри «Новой игры», а она стирает прогресс.
+        onHero: () => this.openCharacters(() => this.openMap()),
+        onClose: () => this.goToMenu(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      story: new StoryScreen('story-overlay', {
+        onSpeak: (text) => this.speech.speak(text),
       }),
       pause: new PauseScreen('pause-overlay', {
         onResume: () => this.togglePause(),
@@ -189,8 +241,12 @@ export class Game {
 
   feedScreen(screen, sources, playerIndex) {
     for (const source of sources) {
-      if (source.wasPressed('left')) screen.nav.onMove?.(-1, playerIndex);
-      if (source.wasPressed('right')) screen.nav.onMove?.(1, playerIndex);
+      // Вверх-вниз работают наравне с влево-вправо. Экраны у нас всегда
+      // одномерные — список карточек или столбик кнопок, — и требовать от
+      // ребёнка «здесь листают вбок, а здесь вверх» бессмысленно: он жмёт ту
+      // стрелку, куда смотрит. Любая двигает выбор на одну позицию.
+      if (source.wasPressed('left') || source.wasPressed('up')) screen.nav.onMove?.(-1, playerIndex);
+      if (source.wasPressed('right') || source.wasPressed('down')) screen.nav.onMove?.(1, playerIndex);
       // Кнопка способности и подтверждение — одна и та же клавиша у ребёнка
       // (пробел, A на геймпаде). В меню она означает «выбрал это».
       if (source.wasPressed('confirm') || source.wasPressed('ability')) {
@@ -239,6 +295,9 @@ export class Game {
           zombiesDefeated: this.round.zombiesDefeated,
           round: this.round.round,
           bossActive: this.round.bossActive,
+          // Цель отдаёт числа, а не строку: она живёт в systems/ и про HUD
+          // ничего не знает — на этом правиле стоит автотест.
+          goal: this.round.goal.hudLine(this.round),
           modifier: this.round.modifier,
           // На телефоне HUD ужимается: считаем признак здесь, чтобы Hud не
           // лез в размеры окна сам.
@@ -274,6 +333,7 @@ export class Game {
   goToMenu() {
     this.state = GameState.MENU;
     this.round = null;
+    this.chapter = null;
     this.audio.stopMusic();
     this.hideAllScreens();
     this.screens.menu.render(this.storage.data);
@@ -384,7 +444,12 @@ export class Game {
     return Array.from({ length: this.playersCount }, (_, i) => i);
   }
 
-  openCharacters() {
+  // Выбор героя и оружия — общая цепочка для двух входов: новой игры и карты
+  // кампании. Куда она приведёт, решает вызывающий: держать это флагом «мы
+  // пришли с карты» значило бы завести ещё одно скрытое состояние, которое
+  // забудут сбросить.
+  openCharacters(after = null) {
+    this.afterPicking = after || (() => this.startRound(this.storage.data.round));
     this.state = GameState.CHARACTERS;
     this.hideAllScreens();
     this.screens.characters.render(
@@ -411,7 +476,7 @@ export class Game {
     // бы страницу, на которой нечего нажать.
     const fixed = this.eachPlayer().map((i) => this.getCharacter(i).fixedWeapon || null);
     if (fixed.every(Boolean)) {
-      this.startRound(this.storage.data.round);
+      this.finishPicking();
       return;
     }
 
@@ -436,10 +501,42 @@ export class Game {
     this.audio.click();
     this.speech.stop();
     this.screens.weapons.hide();
-    this.startRound(this.storage.data.round);
+    this.finishPicking();
+  }
+
+  // Конец цепочки выбора. По умолчанию — в бой, с карты — обратно на карту.
+  finishPicking() {
+    const next = this.afterPicking || (() => this.startRound(this.storage.data.round));
+    this.afterPicking = null;
+    next();
   }
 
   startRound(roundNumber) {
+    this.chapter = null;
+    this.launch({ round: roundNumber });
+  }
+
+  // Глава кампании. От обычного раунда отличается только тем, что называет
+  // локацию, босса, задачу и длительность явно — вместо того чтобы вычислять
+  // их из номера.
+  startChapter(chapterId) {
+    const chapter = this.campaign.chapter(chapterId);
+    if (!chapter || !this.campaign.isOpen(chapterId)) return;
+    this.chapter = chapter;
+    this.launch({
+      round: chapter.level,
+      theme: CONFIG.themes.find((t) => t.id === chapter.theme) || null,
+      bossType: chapter.boss,
+      goal: chapter.goal,
+      modifier: chapter.modifier,
+      duration: chapter.duration ?? CONFIG.round.duration,
+    });
+  }
+
+  // Общий вход в бой. Обычный раунд и глава кампании отличаются только
+  // содержимым options — колбэки, звук и объявления у них одни и те же, и
+  // держать их в двух местах значило бы разойтись на первой же правке.
+  launch(options) {
     this.hideAllScreens();
     this.speech.stop(); // голос не должен договаривать поверх боя
     this.audio.unlock();
@@ -449,7 +546,6 @@ export class Game {
     this.rememberHeroes();
 
     this.round = new Round({
-      round: roundNumber,
       arena: this.arena,
       audio: this.audio,
       players: Array.from({ length: this.playersCount }, (_, i) => this.getUpgrades(i)),
@@ -461,14 +557,25 @@ export class Game {
         onVictory: (summary) => this.endRound('victory', summary),
         onDefeat: (summary) => this.endRound('defeat', summary),
       },
+      ...options,
     });
     this.audio.startMusic();
+    this.announceRound();
+  }
 
-    // Особый раунд объявляем голосом — попадает ровно в 2.5 секунды тишины
-    // в начале раунда, которые и без того предназначены «осмотреться».
+  // Что объявляется в начале боя. Попадает ровно в 2.5 секунды тишины, которые
+  // и без того предназначены «осмотреться». Голос один: speak прерывает
+  // предыдущую реплику, и две фразы подряд ребёнок услышал бы как одну
+  // оборванную. Поэтому задача главы важнее особого раунда — она объясняет,
+  // что вообще делать.
+  announceRound() {
+    const goalAnnounce = this.chapter ? this.round.goal.announce : null;
     const modifier = this.round.modifier;
-    if (modifier) {
-      this.audio.special();
+    if (modifier) this.audio.special();
+    if (goalAnnounce) {
+      this.round.showBanner(goalAnnounce);
+      this.speech.speak(goalAnnounce);
+    } else if (modifier) {
       this.speech.speak(modifier.announce);
     }
   }
@@ -500,6 +607,12 @@ export class Game {
   }
 
   endRound(outcome, summary) {
+    // Прячем всё, как делает любой другой переход между экранами. В обычной
+    // игре раунд не может кончиться поверх открытого оверлея (при карточках и
+    // паузе он просто не обновляется), но Overlay.activeNav держится на том,
+    // что видимый экран с навигацией ровно один, и оставлять это на честном
+    // слове не стоит.
+    this.hideAllScreens();
     this.state = GameState.ROUND_END;
     this.lastOutcome = outcome;
     this.audio.stopMusic();
@@ -513,26 +626,77 @@ export class Game {
     // Ветка победы разрезана надвое намеренно: медали должны проверяться уже
     // по обновлённым round/bestRound и по пополненному альбому, но ДО того,
     // как экран отрисуется, — иначе новую медаль на нём не показать.
+    // Глава кампании не двигает раунд обычного режима: у неё своя ось, и
+    // победа в двенадцатой главе не должна выставить save.round = 13.
+    let page = false;
     if (outcome === 'victory') {
-      save.round = summary.round + 1;
-      save.bestRound = Math.max(save.bestRound, save.round);
+      if (this.chapter) {
+        page = this.campaign.complete(this.chapter.id);
+        if (page && this.campaign.isComplete) this.pendingFinale = true;
+      } else {
+        save.round = summary.round + 1;
+        save.bestRound = Math.max(save.bestRound, save.round);
+      }
     }
     const medals = this.achievements.check({
       save, summary, outcome, playersCount: this.playersCount,
     });
 
+    // Куда ведёт большая кнопка. Из главы — обратно на карту: там страница и
+    // встанет на место, а магазин между главами не открывается сам.
+    const next = this.chapter
+      ? { label: 'НА КАРТУ 🗺', action: () => this.openMap() }
+      : { label: `РАУНД ${summary.round + 1} ▶`, action: () => this.openShop(GameState.ROUND_END) };
+
     if (outcome === 'victory') {
       this.audio.victory();
       this.fireworkTimer = 0;
-      this.screens.end.renderVictory(summary, this.getCharacter().look, fresh, medals);
+      this.screens.end.renderVictory(summary, this.getCharacter().look, {
+        fresh, medals, next, page: page ? this.chapter : null,
+      });
     } else {
       this.audio.fail();
-      this.screens.end.renderDefeat(summary, fresh, medals);
+      this.screens.end.renderDefeat(summary, {
+        fresh,
+        medals,
+        back: this.chapter ? { label: '🗺 На карту', action: () => this.openMap() } : null,
+      });
     }
     // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Одну, даже
     // если их несколько: список подряд он не дослушает.
     if (medals.length) this.speech.speak(`Новая медаль! ${medals[0].name}`);
     this.storage.save();
+  }
+
+  // --- Кампания ---
+
+  // Вход из меню. Первый раз показываем завязку: без неё карта — просто
+  // двенадцать картинок, и непонятно, зачем по ним идти.
+  openCampaign() {
+    if (this.campaign.done.length === 0) {
+      this.state = GameState.STORY;
+      this.hideAllScreens();
+      this.screens.story.play(INTRO_FRAMES, () => this.openMap());
+      return;
+    }
+    this.openMap();
+  }
+
+  openMap() {
+    if (this.pendingFinale) {
+      this.pendingFinale = false;
+      this.chapter = null;
+      this.state = GameState.STORY;
+      this.hideAllScreens();
+      this.screens.story.play(FINALE_FRAMES, () => this.openMap());
+      return;
+    }
+    this.chapter = null;
+    this.state = GameState.MAP;
+    this.round = null;
+    this.audio.stopMusic();
+    this.hideAllScreens();
+    this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look);
   }
 
   togglePause() {
@@ -617,9 +781,12 @@ export class Game {
   closeShop() {
     this.audio.click();
     this.screens.shop.hide();
-    // Из меню возвращаемся в меню, после победы — сразу в следующий раунд.
+    // Из меню возвращаемся в меню, после победы — сразу в следующий раунд,
+    // с карты — обратно на карту.
     if (this.shopReturnState === GameState.ROUND_END) {
       this.startRound(this.storage.data.round);
+    } else if (this.shopReturnState === GameState.MAP) {
+      this.openMap();
     } else {
       this.goToMenu();
     }

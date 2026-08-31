@@ -5,8 +5,9 @@
   "description": "Зомби-переполох — браузерная игра для ребёнка 5 лет",
   "type": "module",
   "scripts": {
-    "test": "node test/smoke.mjs",
+    "test": "node test/smoke.mjs && node test/campaign.mjs",
     "balance": "node test/balance.mjs",
-    "balance:accept": "node test/balance.mjs --accept"
+    "balance:accept": "node test/balance.mjs --accept",
+    "test:campaign": "node test/campaign.mjs"
   }
 }

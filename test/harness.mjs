@@ -72,6 +72,9 @@ export function playRound({
   weaponId = CONFIG.startingWeapon,
   difficultyId = CONFIG.defaultDifficulty,
   shop = {},
+  // Сквозные поля сюжетной главы. Не переданы — раунд обычный, то есть все
+  // прежние прогоны и эталон остаются валидными.
+  goal, theme, bossType, modifier, duration,
 } = {}) {
   const save = makeSave({ heroId, weaponId, difficultyId, shop });
   const upgrades = buildUpgrades(save, 0);
@@ -87,6 +90,11 @@ export function playRound({
     audio: createSilentAudio(),
     upgrades,
     difficulty: CONFIG.difficulties.find((d) => d.id === difficultyId),
+    ...(goal !== undefined ? { goal } : {}),
+    ...(theme !== undefined ? { theme } : {}),
+    ...(bossType !== undefined ? { bossType } : {}),
+    ...(modifier !== undefined ? { modifier } : {}),
+    ...(duration !== undefined ? { duration } : {}),
     callbacks: {
       // Карточку берём первую из трёх — ровно как браузерный автотест. Выбор
       // «самой сильной» сделал бы замер оптимистичнее, чем игра ребёнка.
@@ -116,7 +124,30 @@ export function playRound({
     level: world.level,
     hp: world.player.hp,
     weapons: world.player.weapons.map((w) => `${w.emoji}${w.stars}`).join(' '),
+    goalId: world.goal.id,
+    // Фаза босса нужна, чтобы отличить «победил босса» от «дожил до конца»:
+    // исход у них один и тот же.
+    bossPhase: world.bossPhase,
+    medalsCollected: world.medalsCollected,
+    // Доллары нужны, чтобы симулировать настоящую игру: ребёнок копит их и
+    // тратит в магазине, и без этого замер меряет вечно голого героя.
+    coinsEarned: world.getSummary().coinsEarned,
   };
+}
+
+// Глава кампании — тот же прогон, только все поля названы явно. Отдельная
+// функция, чтобы тест кампании не повторял разбор спеки главы: он должен
+// брать её ровно так же, как Game.startChapter.
+export function playChapter(chapter, options = {}) {
+  return playRound({
+    ...options,
+    round: chapter.level,
+    theme: CONFIG.themes.find((t) => t.id === chapter.theme) || null,
+    bossType: chapter.boss,
+    goal: chapter.goal,
+    modifier: chapter.modifier,
+    duration: chapter.duration ?? CONFIG.round.duration,
+  });
 }
 
 // Все оружия, которые ребёнок может выбрать: без эволюций (они не выдаются на

@@ -4,15 +4,20 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import { themeEmoji, themeName } from '../core/campaign.js';
 
 const HERO_SIZE = 130;
 
 export class EndScreen extends Overlay {
-  constructor(rootId, { onNext, onRetry, onMenu }) {
+  constructor(rootId, { onRetry, onMenu, onSpeak }) {
     super(rootId);
-    this.onNext = onNext;
     this.onRetry = onRetry;
     this.onMenu = onMenu;
+    this.onSpeak = onSpeak;
+    // Куда ведёт большая кнопка, решает Game: обычный раунд идёт в магазин, а
+    // глава кампании — обратно на карту. Экран об этом не знает и знать не
+    // должен.
+    this.onNext = () => {};
 
     this.bindNavigation({
       onMove: () => {},
@@ -22,27 +27,39 @@ export class EndScreen extends Overlay {
 
   // look — внешность выбранного героя: на победе он и радуется,
   // а не абстрактный смайлик супергероя.
-  renderVictory({ round, zombiesDefeated, coinsEarned }, look, fresh = null, medals = []) {
+  // Хвост собран в объект, а не в пятый позиционный аргумент: их и так было
+  // четыре, и на пятом вызов перестал бы читаться.
+  renderVictory({ round, zombiesDefeated, coinsEarned }, look,
+    { fresh = null, medals = [], page = null, next } = {}) {
+    const button = next || { label: `РАУНД ${round + 1} ▶`, action: () => {} };
+    this.onNext = button.action;
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title">ПОБЕДА! 🎉</h2>
         <canvas class="menu-hero-canvas" width="${HERO_SIZE}" height="${HERO_SIZE}"></canvas>
         <p class="big-line">Ты прогнал <b>${zombiesDefeated}</b> зомби!</p>
         <p class="big-line">Заработано 💵 <b>${coinsEarned}</b></p>
+        ${renderPage(page)}
         ${renderFresh(fresh)}
         ${renderMedals(medals)}
-        <button class="btn btn--big" data-action="next">РАУНД ${round + 1} ▶</button>
+        <button class="btn btn--big" data-action="next">${button.label}</button>
         <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
       </div>
     `);
     Overlay.paintHero(this.root.querySelector('.menu-hero-canvas'), look);
     this.paintFresh(fresh);
-    this.on('[data-action="next"]', this.onNext);
+    this.on('[data-action="next"]', () => this.onNext());
     this.on('[data-action="menu"]', this.onMenu);
+    this.bindSpeakButtons(this.onSpeak);
     this.show();
+    // Вернувшаяся страница — главное событие главы, и ребёнок не читает.
+    if (page) this.onSpeak?.('Ура! Страница вернулась в альбом!');
   }
 
-  renderDefeat({ zombiesDefeated, coinsEarned }, fresh = null, medals = []) {
+  // back — куда ведёт вторая кнопка. Из главы это карта, а не меню: провалив
+  // главу, ребёнок хочет вернуться к путешествию, а не выпасть из него.
+  renderDefeat({ zombiesDefeated, coinsEarned }, { fresh = null, medals = [], back = null } = {}) {
+    this.onBack = back?.action || this.onMenu;
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--soft">ПОЧТИ ПОЛУЧИЛОСЬ!</h2>
@@ -52,12 +69,13 @@ export class EndScreen extends Overlay {
         ${renderFresh(fresh)}
         ${renderMedals(medals)}
         <button class="btn btn--big" data-action="retry">ЕЩЁ РАЗ ▶</button>
-        <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
+        <button class="btn btn--secondary" data-action="back">${back?.label || '🏠 В меню'}</button>
       </div>
     `);
     this.paintFresh(fresh);
     this.on('[data-action="retry"]', this.onRetry);
-    this.on('[data-action="menu"]', this.onMenu);
+    this.on('[data-action="back"]', () => this.onBack());
+    this.bindSpeakButtons(this.onSpeak);
     this.show();
   }
 
@@ -92,6 +110,22 @@ function renderMedals(medals) {
           <span class="fresh-medal__name">${m.name}</span>
         </span>
       `).join('')}
+    </div>
+  `;
+}
+
+// Вернувшаяся страница альбома — награда за главу кампании. Эмодзи локации, а
+// не картинка: страницы как объекта в игре нет, рисовать нечего, и заводить
+// ради неё функцию в sprites.js (он и так самый большой модуль) незачем.
+function renderPage(chapter) {
+  if (!chapter) return '';
+  return `
+    <p class="big-line">📖 СТРАНИЦА ВЕРНУЛАСЬ!</p>
+    <div class="fresh-stickers">
+      <span class="fresh-medal">
+        <span class="fresh-medal__emoji">${themeEmoji(chapter.theme)}</span>
+        <span class="fresh-medal__name">${themeName(chapter.theme)}</span>
+      </span>
     </div>
   `;
 }

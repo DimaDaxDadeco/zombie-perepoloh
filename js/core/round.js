@@ -12,6 +12,7 @@ import { Spawner } from '../systems/spawner.js';
 import { createAbility } from '../systems/ability.js';
 import { createPet } from '../entities/pet.js';
 import { createModifier, modifierForRound } from '../systems/modifier.js';
+import { createGoal } from '../systems/goal.js';
 import { Particles } from '../systems/particles.js';
 import { resolveProjectileHits, resolvePlayerHits, separateEnemies } from '../systems/collisions.js';
 import { createWeapon, evolveWeapon } from '../weapons/weapons.js';
@@ -30,7 +31,17 @@ export class Round {
   // difficultySpec — запись из CONFIG.difficulties. Имя не `difficulty`
   // намеренно: у Spawner так называется кривая по номеру раунда, и два разных
   // смысла под одним именем в одной цепочке вызовов обязательно аукнутся.
-  constructor({ round, arena, audio, upgrades, players, difficulty = CONFIG.difficulties[0], callbacks }) {
+  // theme — локация; не передана, значит считается по номеру раунда.
+  // theme — локация; не передана, значит считается по номеру раунда.
+  // goal — задача раунда; по умолчанию классическая, «убей босса».
+  // duration и victoryCoins сюжетная глава задаёт свои: у главы «продержись 45
+  // секунд» и время своё, и платить за неё как за двенадцатый раунд не за что.
+  constructor({
+    round, arena, audio, upgrades, players, callbacks,
+    difficulty = CONFIG.difficulties[0], theme = null, goal = 'boss',
+    duration = CONFIG.round.duration, victoryCoins = null,
+    bossType = null, modifier,
+  }) {
     this.round = round;
     this.difficultySpec = difficulty;
     this.arena = arena;
@@ -56,11 +67,23 @@ export class Round {
     this.particles = new Particles();
     this.spawner = new Spawner(round, difficulty, this.coopFactor);
     // Модификатор особого раунда правит уже посчитанные числа спавнера.
-    this.modifier = createModifier(modifierForRound(round));
+    // Модификатор трёхзначен намеренно. Не передан — считаем по номеру, как
+    // было всегда. null — «не давать»: сюжетная глава не должна получить ночь
+    // поверх тёмной локации только потому, что её номер делится на четыре.
+    // Строка — дать именно этот.
+    this.modifier = createModifier(
+      modifier === undefined ? modifierForRound(round) : modifier,
+    );
     this.modifier?.tuneSpawner(this.spawner);
-    this.bannerTimer = this.modifier ? CONFIG.specialRounds.bannerTime : 0;
+    // Баннер в начале раунда: имя особого раунда или задача сюжетной главы.
+    // Слот один — двух надписей поверх арены разом ребёнок всё равно не
+    // прочитает, а кто именно его занял, решает Game (см. announceRound).
+    this.bannerText = this.modifier ? this.modifier.spec.name : null;
+    this.bannerTimer = this.bannerText ? CONFIG.specialRounds.bannerTime : 0;
+    // Локация: сюжетная глава задаёт её явно, обычный раунд считает по номеру.
+    this.theme = theme;
     this.background = new Background();
-    this.background.rebuild(round, arena);
+    this.background.rebuild(round, arena, this.theme);
 
     // Опыт и уровень общие на команду. Две полосы ребёнок не читает, а при
     // раздельном опыте активный игрок обгоняет тихого, и тот получает вдвое
@@ -69,14 +92,24 @@ export class Round {
     this.xp = 0;
     this.xpToNext = CONFIG.xp.baseToLevel;
 
-    this.timeLeft = CONFIG.round.duration;
+    this.goal = createGoal(goal);
+    this.goal.tuneSpawner(this.spawner);
+    this.duration = duration;
+    this.victoryCoins = victoryCoins ?? (CONFIG.round.victoryCoinsBase + round);
+    this.timeLeft = duration;
+    this.medalsCollected = 0;
     this.zombiesDefeated = 0;
     this.coinsEarned = 0;
-    this.bossPhase = 'none'; // none -> intro -> fight -> done
+    this.bossPhase = 'none'; // none -> intro -> fight
     // Спрашиваем ОДИН раз за раунд и запоминаем: после двенадцатого раунда
     // выбор случайный, и повторный вызов дал бы другого босса — баннер
     // объявил бы одного, а вышел бы другой.
-    this.bossType = bossTypeForRound(this.round);
+    // Сюжетная глава называет босса сама. Без этого карта могла бы показать
+    // одного, а в бой вышел бы другой: после двенадцатого раунда выбор
+    // случайный (см. ниже).
+    this.bossType = bossType
+      ? CONFIG.bossTypes.find((t) => t.id === bossType) || bossTypeForRound(this.round)
+      : bossTypeForRound(this.round);
     this.bossIntroTimer = 0;
     this.bossSpawnPoint = null; // где именно появится босс (внутри экрана)
     this.freezeTimer = 0;       // пока идёт — обычные зомби стоят
@@ -160,7 +193,9 @@ export class Round {
   // Арена изменилась (окно ресайзнули) — не даём герою остаться за краем.
   onArenaResize(arena) {
     this.arena = arena;
-    this.background.rebuild(this.round, arena);
+    // Тему передаём и здесь: без неё глава при повороте планшета молча
+    // переехала бы с Пляжа во Двор.
+    this.background.rebuild(this.round, arena, this.theme);
     this.player.clampToArena(arena);
   }
 
@@ -169,7 +204,7 @@ export class Round {
   update(dt, directions) {
     if (this.finished) return;
 
-    this.updateBossPhase(dt);
+    this.updatePhase(dt);
     this.freezeTimer = Math.max(0, this.freezeTimer - dt);
     this.shakeTimer = Math.max(0, this.shakeTimer - dt);
     // Принимаем и одиночный вектор: так старые сниппеты автотеста и консоли
@@ -203,28 +238,29 @@ export class Round {
     this.particles.update(dt);
     this.removeDead();
 
+    // Цель проверяется здесь, а не в updatePhase: и убитые, и подобранные
+    // медальки становятся известны только после того, как за кадр отработали
+    // попадания и подборы.
+    if (this.goal.isComplete(this)) this.finish('victory');
     // Раунд проигран, только когда лежат все: падение одного не должно
     // заканчивать игру напарнику.
     if (this.players.every((p) => p.downed)) this.finish('defeat');
   }
 
-  updateBossPhase(dt) {
+  // Фаза раунда. Вся разница между целями — одна строка: что происходит, когда
+  // таймер добежал до нуля. Победу проверяет не этот метод, а конец update():
+  // счётной цели решать нечего до того, как зомби и подборы за кадр обновятся.
+  updatePhase(dt) {
     if (this.bossPhase === 'none') {
       this.timeLeft -= dt;
-      const progress = 1 - this.timeLeft / CONFIG.round.duration;
-      this.spawner.update(dt, this, Math.min(1, progress));
-      if (this.timeLeft <= 0) this.startBossIntro();
+      this.spawner.update(dt, this, clamp01(this.goal.progress(this)));
+      if (this.timeLeft <= 0) this.goal.onTimeUp(this);
       return;
     }
 
     if (this.bossPhase === 'intro') {
       this.bossIntroTimer -= dt;
       if (this.bossIntroTimer <= 0) this.spawnBoss();
-      return;
-    }
-
-    if (this.bossPhase === 'fight' && this.boss && !this.boss.alive) {
-      this.finish('victory');
     }
   }
 
@@ -321,6 +357,14 @@ export class Round {
 
   // Тряска мира при появлении босса. HUD рисуется отдельно в game.js и
   // не трясётся — интерфейс должен оставаться на месте.
+  // Показать надпись поверх арены. Тем же слотом, что и особый раунд: если
+  // глава объявляет задачу, она вытесняет имя модификатора, а не рисуется
+  // поверх него.
+  showBanner(text) {
+    this.bannerText = text;
+    this.bannerTimer = CONFIG.specialRounds.bannerTime;
+  }
+
   shake(strength, time) {
     this.shakeStrength = strength;
     this.shakeTimer = time;
@@ -332,7 +376,7 @@ export class Round {
     this.finished = true;
     this.audio.setBossMode(false);
     if (outcome === 'victory') {
-      this.coinsEarned += CONFIG.round.victoryCoinsBase + this.round;
+      this.coinsEarned += this.victoryCoins;
       this.callbacks.onVictory(this.getSummary());
     } else {
       this.callbacks.onDefeat(this.getSummary());
@@ -347,6 +391,8 @@ export class Round {
       // так он накрывает и медальки, и добычу с босса, и бонус за победу,
       // и не копится ошибка округления.
       coinsEarned: Math.round(this.coinsEarned * this.difficultySpec.money * this.coinFactor),
+      goalId: this.goal.id,
+      medalsCollected: this.medalsCollected,
       discovered: {
         zombies: [...this.discovered.zombies],
         bosses: [...this.discovered.bosses],
@@ -498,6 +544,7 @@ export class Round {
       return;
     }
     this.audio.medal();
+    this.medalsCollected += 1;
     if (this.addXp(CONFIG.pickups.medalXp * this.coopFactor.xpFactor * this.xpFactor)) {
       this.audio.levelUp();
       this.callbacks.onLevelUp();
@@ -550,7 +597,7 @@ export class Round {
     this.modifier?.drawWorld(ctx, this);
     this.particles.draw(ctx);
     if (this.bossPhase === 'intro') this.drawBanner(ctx, this.bossType.name);
-    else if (this.bannerTimer > 0) this.drawBanner(ctx, this.modifier.spec.name, this.bannerTimer);
+    else if (this.bannerTimer > 0) this.drawBanner(ctx, this.bannerText, this.bannerTimer);
 
     ctx.restore();
   }
@@ -587,4 +634,8 @@ export class Round {
     ctx.fillText(name, 0, 0);
     ctx.restore();
   }
+}
+
+function clamp01(value) {
+  return Math.min(1, Math.max(0, value));
 }

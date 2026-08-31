@@ -1,25 +1,38 @@
-// Главное меню. Две главные кнопки: «Продолжить» (если есть сохранение) и
-// «Новая игра». Выбор героя и оружия сюда не вынесен намеренно — он идёт
-// сразу после «Новой игры», чтобы у ребёнка был один понятный путь.
+// Главное меню. Две большие кнопки: обычная игра («Продолжить» или «Новая
+// игра») и путешествие. Обе — способы играть, и выглядеть они должны одинаково
+// весомо: путешествие в виде маленькой кнопки рядом с магазином и альбомом
+// читалось как служебный раздел, а не как «нажми и играй».
+//
+// Раньше вторая .btn--big в меню была запрещена: геймпад жал первую в разметке
+// вслепую, и новая кнопка молча перехватила бы управление. Теперь меню умеет
+// навигацию, как все прочие экраны, и запрет снят — но выбор по умолчанию
+// стоит на обычной игре, чтобы «нажал пробел не глядя» по-прежнему означало
+// «играем дальше».
+//
+// Выбор героя и оружия сюда не вынесен намеренно — он идёт сразу после «Новой
+// игры», чтобы у ребёнка был один понятный путь.
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
+import { campaignProgress } from '../core/campaign.js';
+
 const HERO_PREVIEW_SIZE = 130;
 
 export class MenuScreen extends Overlay {
-  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum }) {
+  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum, onCampaign }) {
     super(rootId);
     this.onContinue = onContinue;
     this.onNewGame = onNewGame;
     this.onShop = onShop;
     this.onAlbum = onAlbum;
+    this.onCampaign = onCampaign;
+    this.buttons = [];
+    this.selected = 0;
 
-    // С геймпада главная кнопка нажимается сама собой: она в меню одна
-    // большая и всегда означает «играем дальше».
     this.bindNavigation({
-      onMove: () => {},
-      onConfirm: () => this.root.querySelector('.btn--big')?.click(),
+      onMove: (d) => this.move(d),
+      onConfirm: () => this.activate(),
     });
   }
 
@@ -30,9 +43,10 @@ export class MenuScreen extends Overlay {
     // видно, в каком режиме идёт игра.
     const difficulty = CONFIG.difficulties.find((d) => d.id === save.difficulty)
       || CONFIG.difficulties[0];
-    // Продолжать нечего, пока герой не выбран — то есть при самом первом запуске
-    // и сразу после «Новой игры». Тогда в меню остаётся одна кнопка.
+    // Продолжать нечего, пока герой не выбран — то есть при самом первом
+    // запуске и сразу после «Новой игры».
     const canContinue = Boolean(character);
+    const campaign = campaignProgress(save);
 
     this.setContent(`
       <div class="panel panel--menu">
@@ -45,25 +59,54 @@ export class MenuScreen extends Overlay {
             <span class="stat">🏁 Раунд ${save.round}</span>
             <span class="stat" title="${difficulty.name}">${difficulty.emoji}</span>
           </div>
-          <button class="btn btn--big" data-action="continue">ПРОДОЛЖИТЬ ▶</button>
-          <div class="menu-buttons">
-            <button class="btn btn--secondary" data-action="new">✨ Новая игра</button>
-            <button class="btn btn--secondary" data-action="shop">🛒 Магазин</button>
-            <button class="btn btn--secondary" data-action="album">📖 Альбом ${albumOpen(save)}</button>
-          </div>
-        ` : `
-          <button class="btn btn--big" data-action="new">НОВАЯ ИГРА ▶</button>
-        `}
-        <p class="hint">Бегай стрелками ← ↑ → ↓ — оружие стреляет само!</p>
+        ` : ''}
+        <div class="menu-play">
+          ${canContinue
+            ? '<button class="btn btn--big" data-action="continue">ПРОДОЛЖИТЬ ▶</button>'
+            : '<button class="btn btn--big" data-action="new">НОВАЯ ИГРА ▶</button>'}
+          <button class="btn btn--big btn--journey" data-action="campaign">
+            ${CONFIG.campaign.emoji} ${CONFIG.campaign.title.toUpperCase()} ▶
+            <span class="btn__note">${campaign.open}/${campaign.total} страниц</span>
+          </button>
+        </div>
+        <div class="menu-buttons">
+          ${canContinue ? '<button class="btn btn--secondary" data-action="new">✨ Новая игра</button>' : ''}
+          <button class="btn btn--secondary" data-action="shop">🛒 Магазин</button>
+          <button class="btn btn--secondary" data-action="album">📖 Альбом ${albumOpen(save)}</button>
+        </div>
+        <p class="hint">Выбирай стрелками, нажимай пробел. В бою бегай стрелками —
+           оружие стреляет само!</p>
       </div>
     `);
 
     this.drawHeroPreview(character);
     this.on('[data-action="continue"]', this.onContinue);
-    this.on('[data-action="new"]', this.onNewGame);
+    this.onAll('[data-action="new"]', this.onNewGame);
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="album"]', this.onAlbum);
+    this.on('[data-action="campaign"]', this.onCampaign);
+
+    // Курсор стоит на обычной игре: это по-прежнему главное действие меню, и
+    // «нажал не глядя» обязано остаться безопасным.
+    this.buttons = [...this.root.querySelectorAll('.btn')];
+    this.selected = 0;
+    this.highlight();
     this.show();
+  }
+
+  move(delta) {
+    const count = this.buttons.length;
+    if (!count) return;
+    this.selected = (this.selected + delta + count) % count;
+    this.highlight();
+  }
+
+  activate() {
+    this.buttons[this.selected]?.click();
+  }
+
+  highlight() {
+    this.buttons.forEach((el, i) => el.classList.toggle('btn--focused', i === this.selected));
   }
 
   // Показываем в меню именно того героя, которым будем играть.

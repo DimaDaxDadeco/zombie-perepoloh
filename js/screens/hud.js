@@ -26,7 +26,7 @@ export class Hud {
   // колонку направо, а счётчики уезжают в центр.
   draw(ctx, {
     players, level, xp, xpToNext, arena, timeLeft, zombiesDefeated, round, bossActive, modifier,
-    compact = false,
+    goal = null, compact = false,
   }) {
     const coop = players.length > 1;
     players.forEach((player, i) => {
@@ -37,7 +37,7 @@ export class Hud {
     });
     this.drawXpBar(ctx, { level, xp, xpToNext }, arena, compact);
     this.drawCounters(ctx, arena,
-      { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, compact });
+      { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, goal, compact });
   }
 
   drawHearts(ctx, player, arena, right) {
@@ -123,7 +123,7 @@ export class Hud {
   }
 
   drawCounters(ctx, arena,
-    { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, compact = false }) {
+    { timeLeft, zombiesDefeated, round, bossActive, coop, modifier, goal = null, compact = false }) {
     ctx.save();
     ctx.font = 'bold 20px system-ui, sans-serif';
     // Вдвоём справа сидят сердечки второго игрока — счётчики уезжают в центр.
@@ -133,7 +133,10 @@ export class Hud {
     ctx.strokeStyle = 'rgba(0,0,0,0.45)';
     ctx.lineWidth = 4;
 
-    const label = bossActive ? '👑 БОСС!' : `⏱ ${formatTime(timeLeft)}`;
+    // Что стоит первой строкой. У сюжетной цели без таймера часы застыли бы
+    // на 0:00 — там вместо них счёт «сделано из нужного», и это единственное,
+    // по чему ребёнок понимает, сколько осталось.
+    const label = bossActive ? '👑 БОСС!' : goalLabel(goal, timeLeft);
     // Особый раунд — только эмодзи: имя ребёнок не прочитает, а место справа
     // и без того дефицитное.
     // На телефоне — только таймер (и значок особого раунда). Счётчик убитых и
@@ -195,6 +198,13 @@ function weaponAlign(coop, right, compact) {
   if (compact) return 'right';
   if (!coop) return 'center';
   return right ? 'right' : 'left';
+}
+
+// goal — { emoji, done, target } от цели раунда либо null у обычного.
+function goalLabel(goal, timeLeft) {
+  if (!goal) return `⏱ ${formatTime(timeLeft)}`;
+  if (goal.target === null) return `${goal.emoji} ${goal.done}`;
+  return `${goal.emoji} ${goal.done}/${goal.target}`;
 }
 
 function formatTime(seconds) {

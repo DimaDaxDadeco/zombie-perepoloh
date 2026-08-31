@@ -23,9 +23,12 @@ const DEFAULT_SAVE = {
   // За кого уже играли. Плоский массив id, а не флаг на герое: нужен ровно для
   // медали «Все герои», и заводить ради него объект со статистикой рано.
   heroesPlayed: [],
+  // Сюжетная кампания. Только пройденные главы: «текущая» — это та, что
+  // следующая за ними, и второе поле было бы вторым источником правды.
+  campaign: { done: [] },
 };
 
-const KEEP_ON_RESET = ['soundOn', 'album', 'achievements', 'heroesPlayed'];
+const KEEP_ON_RESET = ['soundOn', 'album', 'achievements', 'heroesPlayed', 'campaign'];
 
 function toIdArray(value) {
   return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
@@ -55,6 +58,9 @@ export class Storage {
         },
         achievements: toIdArray(parsed.achievements),
         heroesPlayed: toIdArray(parsed.heroesPlayed),
+        // Вложенный объект верхнеуровневый мерж не спасает — чиним поимённо,
+        // как shop и album.
+        campaign: { done: toIdArray(parsed.campaign?.done) },
       };
     } catch {
       return structuredClone(DEFAULT_SAVE);
@@ -81,7 +87,8 @@ export class Storage {
   // Следствие, которое чинить НЕ надо: медали вроде «Далеко зашёл» считаются
   // от полей, которые сброс обнуляет (bestRound). После «Новой игры» счётчик
   // начнётся заново, а медаль останется — так и задумано: заслуженное не
-  // отбирают.
+  // отбирают. campaign — там же и по той же причине: по завязке это буквально
+  // коллекция, двенадцать возвращённых страниц альбома.
   reset() {
     const kept = Object.fromEntries(KEEP_ON_RESET.map((key) => [key, this.data[key]]));
     this.data = { ...structuredClone(DEFAULT_SAVE), ...kept };
