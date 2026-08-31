@@ -42,7 +42,7 @@
 import { CONFIG } from './js/config.js';
 import {
   drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect, drawBeast, drawDrone,
-  drawPortal, drawMedalPickup, drawStinkCloud, circle,
+  drawPortal, drawMedalPickup, drawStinkCloud, drawBatmobile, circle,
 } from './js/render/sprites.js';
 import { SpiderMinion } from './js/entities/projectile.js';
 
@@ -192,6 +192,30 @@ const WORLD_FX = {
       drawMedalPickup(ctx, { radius: RADIUS * 0.22, phase: w.phase + i });
       ctx.restore();
     }
+  },
+
+  // 🚗 Бэтмобиль: та же машина, что и в бою, — рисуется настоящей функцией,
+  // поэтому разъехаться со стендом физически не может.
+  batmobile(w, spec) {
+    // Машина крупная и едет МИМО героя, а не стоит у него под ногами: в бою
+    // она проносится через всю арену, и стенд должен показывать это, а не
+    // игрушку на подставке.
+    ctx.save();
+    ctx.translate(-RADIUS * 1.7, RADIUS * 0.8);
+    ctx.scale(RADIUS / 30, RADIUS / 30);
+    drawBatmobile(ctx, 0, 0, 1, w.phase * 6);
+    ctx.restore();
+    // След от колёс — намёк, что она приехала издалека, а не стоит.
+    ctx.strokeStyle = spec.color;
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = RADIUS * 0.08;
+    ctx.setLineDash([RADIUS * 0.3, RADIUS * 0.25]);
+    ctx.beginPath();
+    ctx.moveTo(-RADIUS * 3.4, RADIUS * 1.45);
+    ctx.lineTo(-RADIUS * 2.4, RADIUS * 1.45);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
   },
 };
 

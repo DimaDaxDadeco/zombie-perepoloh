@@ -173,6 +173,12 @@ export class Audio {
     this.noise({ duration: 0.2, volume: 0.12 });
   }
 
+  clank() { // броня Бэтмена приняла удар — металлический щелчок
+    // Нарочно НЕ hurt(): тот звук означает «минус сердечко», и если броня
+    // будет звучать так же, ребёнок не поймёт, что она сработала.
+    this.tone({ freq: 900, endFreq: 380, duration: 0.09, type: 'square', volume: 0.24 });
+  }
+
   hurt() { // герою досталось — не страшно, а смешно
     this.tone({ freq: 300, endFreq: 120, duration: 0.28, type: 'sawtooth', volume: 0.22 });
   }

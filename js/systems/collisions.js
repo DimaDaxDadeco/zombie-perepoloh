@@ -61,6 +61,12 @@ function resolveHitsFor(world, player) {
     if (player.takeDamage()) {
       world.onPlayerHurt();
       pushEnemiesAway(world, player.x, player.y);
+    } else if (player.blocked) {
+      world.onPlayerBlocked(player);
+      // Расталкиваем и на блоке: иначе броня спасает сердечко, но герой
+      // остаётся в кольце и получает настоящий укус следующим же. Перк тогда
+      // ощущается отсрочкой, а не защитой.
+      pushEnemiesAway(world, player.x, player.y);
     }
     return; // одного удара за кадр достаточно
   }

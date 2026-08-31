@@ -3,7 +3,7 @@
 import { CONFIG } from '../config.js';
 import {
   drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect,
-  drawPlayerMarker, drawDownedTimer, drawStinkCloud,
+  drawPlayerMarker, drawDownedTimer, drawStinkCloud, drawArmorShield,
 } from '../render/sprites.js';
 
 // Реже стреляет — значит выстрел заметнее, и показать его важнее.
@@ -13,7 +13,9 @@ function isRarer(weapon, other) {
 }
 
 export class Player {
-  constructor(x, y, { speed, maxHp, magnetRadius, look, regenInterval, stinkRadius }) {
+  constructor(x, y, {
+    speed, maxHp, magnetRadius, look, regenInterval, stinkRadius, armorEvery,
+  }) {
     this.x = x;
     this.y = y;
     // Радиус — геттер, потому что Ярость Халка временно раздувает героя, а
@@ -27,6 +29,12 @@ export class Player {
     // Перк Мистера Хэнки: зомби в этом радиусе ползут медленнее. У прочих
     // героев ноль, и проход по врагам не запускается вовсе.
     this.stinkRadius = stinkRadius || 0;
+    // Перк Бэтмена: каждый armorEvery-й укус костюм держит. Ноль у прочих
+    // героев — тогда броня не считается вовсе.
+    this.armorEvery = armorEvery || 0;
+    this.bitesTaken = 0;
+    this.armorFlash = 0;   // пока идёт — на герое видна вспышка щита
+    this.blocked = false;  // последний укус приняла броня — читается сразу после takeDamage
     // Интервал регенерации зависит от уровня сложности, поэтому приходит
     // снаружи. Фолбэк — для автотеста и неполных upgrades.
     this.regenInterval = regenInterval ?? CONFIG.player.regenInterval;
@@ -88,6 +96,10 @@ export class Player {
   }
 
   revive() {
+    // Костюм после подъёма чинится, причём так, что СЛЕДУЮЩИЙ укус он примет.
+    // Это милость, а не арифметика: встаёшь с одним сердечком, и настоящий
+    // укус в этот момент читался бы как «игра меня добила».
+    this.bitesTaken = this.armorEvery ? this.armorEvery - 1 : 0;
     this.downed = false;
     this.hp = 1;
     this.invulnTimer = CONFIG.coop.reviveInvuln;
@@ -163,6 +175,7 @@ export class Player {
   takeHit(world) {
     if (this.isInvulnerable) return;
     if (this.takeDamage()) world.onPlayerHurt();
+    else if (this.blocked) world.onPlayerBlocked(this);
   }
 
   update(dt, world, direction) {
@@ -171,6 +184,7 @@ export class Player {
       return;
     }
     this.invulnTimer = Math.max(0, this.invulnTimer - dt);
+    this.armorFlash = Math.max(0, this.armorFlash - dt);
     this.chillTimer = Math.max(0, this.chillTimer - dt);
     this.turboTimer = Math.max(0, this.turboTimer - dt);
     this.rollTimer = Math.max(0, this.rollTimer - dt);
@@ -272,9 +286,34 @@ export class Player {
     this.y = Math.min(Math.max(this.y, r), height - r);
   }
 
-  // Возвращает true, если урон действительно прошёл (не было неуязвимости).
+  // Возвращает true, если сердечко действительно отнялось.
+  //
+  // Возвращаемое значение трогать нельзя: по нему вызывающие решают, звать ли
+  // onPlayerHurt и расталкивать ли толпу. Но у false стало два разных смысла —
+  // «неуязвим, ничего не было» и «броня приняла удар», — и различает их флаг
+  // blocked. Он живёт ровно до следующего вызова: оба места читают его сразу
+  // же, следующей строкой.
   takeDamage() {
+    this.blocked = false;
     if (this.isInvulnerable || this.downed) return false;
+
+    // Счётчик растёт ПОСЛЕ проверок: удар, пришедшийся в неуязвимость, брони
+    // не тратит.
+    this.bitesTaken += 1;
+    if (this.armorEvery && this.bitesTaken % this.armorEvery === 0) {
+      // Неуязвимость после блока короче обычной. Замер показал неочевидное:
+      // от укусов в упор она не защищает вовсе — там паузу в 3–5 секунд
+      // держит pushEnemiesAway, которая расталкивает толпу и на блоке тоже, и
+      // окно просто не успевает пригодиться. Зато она заметно решает на уроне,
+      // приходящем МИМО столкновений (takeHit: огоньки, торт, молния) — там
+      // расталкивания нет, и без неё герой теряет десять побед из ста
+      // шестидесяти пяти. Долю же блоков держит сам счётчик, а не окно.
+      this.invulnTimer = CONFIG.player.armorInvulnTime;
+      this.armorFlash = CONFIG.player.armorFlashTime;
+      this.blocked = true;
+      return false;
+    }
+
     this.hp -= 1;
     this.invulnTimer = CONFIG.player.invulnTime;
     if (this.hp <= 0) this.down();
@@ -321,6 +360,13 @@ export class Player {
     // Кольцо цвета игрока. Дети оба захотят Котика, и без маркера отличить
     // своего героя на экране будет нельзя.
     if (this.color) drawPlayerMarker(ctx, this.radius, this.color);
+
+    // Броня приняла удар — щит вспыхивает вокруг героя. Без картинки перк
+    // для нечитающего ребёнка неотличим от «зомби промахнулся»: сердечко-то
+    // на месте.
+    if (this.armorFlash > 0) {
+      drawArmorShield(ctx, this.radius, 1 - this.armorFlash / CONFIG.player.armorFlashTime);
+    }
 
     // Способность рисуется двумя слоями — до героя и после, чтобы эффект
     // обнимал персонажа, а не лежал на нём плашкой. Готовность и работа
