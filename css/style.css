@@ -360,7 +360,8 @@ html, body {
   }
 
   /* Заголовок не должен подлезать под кнопку звука в правом верхнем углу */
-  .panel--menu {
+  .panel--menu,
+  .panel--map {
     padding-top: 28px;
   }
 
@@ -811,50 +812,207 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
 
 /* --- Карта кампании --- */
 
-.panel--map { width: min(94vw, 900px); }
+.panel--map { width: min(94vw, 760px); }
 
-/* Дорожка, а не сетка: остановки идут по порядку глав, и стрелки листают их
-   тем же порядком. Двумерной навигации в проекте нет — Game.feedScreen шлёт
-   экранам только влево-вправо. */
-.map-road {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: 12px;
-  width: 100%;
+/* Полоска страниц: сколько альбома уже собрано. */
+.map-pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.map-stop { position: relative; }
+.map-page {
+  font-size: 17px;
+  filter: grayscale(1);
+  opacity: 0.35;
+}
+
+.map-page--back {
+  filter: none;
+  opacity: 1;
+}
+
+.map-pages__count {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-left: 6px;
+}
+
+/* Дорожка змейкой. Колонку каждой остановки считает map.js — в CSS правило
+   «пятая карточка в четвёртую колонку» пришлось бы переписывать при каждом
+   изменении числа глав, причём молча. */
+.map-road {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px 12px;
+  /* Ширину ограничиваем у дорожки, а не у остановки: отрезки дороги
+     отмеряются от её ширины плюс зазор, и стоит сузить саму остановку — они
+     перестают доставать до соседней. */
+  width: 100%;
+  max-width: 480px;
+  padding: 4px 0;
+}
+
+.map-stop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+/* Кружок-медальон: остановка на пути, а не карточка в таблице. Цвет — земля
+   той локации, поэтому семь разных мест видно, не читая подписей. */
+.map-stop__disc {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%,
+    var(--stop-ground) 0%, var(--stop-accent) 78%);
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease;
+}
+
+.map-stop:hover .map-stop__disc { transform: scale(1.06); }
+
+.map-stop__canvas {
+  width: 78%;
+  height: 78%;
+}
 
 .map-stop__number {
   position: absolute;
-  top: 6px;
-  left: 8px;
-  font-size: 13px;
+  top: -4px;
+  left: -4px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(20, 24, 48, 0.85);
+  color: #fff;
+  font-size: 12px;
   font-weight: bold;
-  opacity: 0.75;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Пройденная остановка — тёплая, со страницей в углу. Ребёнок не читает, и
-   «сделано» обязано читаться цветом, а не подписью. */
-.map-stop--done { background: rgba(255, 217, 61, 0.16); }
-.map-stop--open { background: rgba(127, 216, 255, 0.14); }
-
-/* Значок состояния — снизу справа: сверху справа уже сидит кнопка 🔈, и на
-   пройденных остановках они налезали друг на друга. */
-.map-stop__page,
-.map-stop__here {
+.map-stop__badge {
   position: absolute;
-  bottom: 4px;
-  right: 6px;
+  bottom: -4px;
+  right: -2px;
   font-size: 20px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Кадр истории: картинка крупно, фраза под ней. Кнопка 🔈 живёт в углу самой
-   панели, а не внутри строки: .speak позиционируется абсолютно и налезала бы
-   на конец фразы — на длинных репликах прямо поверх слов. */
-.panel--story { position: relative; width: min(92vw, 520px); }
-.story-art { font-size: 76px; line-height: 1.1; }
-.story-line { max-width: 440px; }
+/* Корона на последней главе: видно, где кончается путь. */
+.map-stop__crown {
+  position: absolute;
+  top: -14px;
+  right: -2px;
+  font-size: 18px;
+}
+
+.map-stop__place { font-size: 15px; }
+
+/* Пройдено — золотое кольцо. */
+.map-stop--done .map-stop__disc {
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 0 0 3px var(--color-accent);
+}
+
+/* Здесь мы сейчас — кольцо пульсирует, чтобы взгляд сам находил, куда идти. */
+.map-stop--open .map-stop__disc {
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 0 0 3px #7fd8ff;
+  animation: stop-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes stop-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 0 0 3px #7fd8ff; }
+  50% { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 0 0 8px rgba(127, 216, 255, 0.25); }
+}
+
+/* Закрытая — под туманом. Босс внутри уже нарисован силуэтом (paintBoss с
+   locked), туман добавляет «туда ещё нельзя», а не прячет второй раз. */
+/* Закрытая — приглушённая, но НЕ обесцвеченная. Полностью серые кружки
+   превращали ещё не пройденную карту в стену грязных пятен, а ведь именно она
+   и должна звать идти дальше: цвет локации показывает, что впереди семь разных
+   мест. В тумане остаётся только босс — он и так нарисован силуэтом
+   (paintBoss с locked), и разгадывать его — часть интереса. */
+.map-stop--locked .map-stop__disc {
+  filter: brightness(0.72) saturate(0.65);
+}
+
+.map-stop--locked .map-stop__place { opacity: 0.4; }
+
+/* Курсор — белый, а не жёлтый: жёлтым отмечено «пройдено», и на выбранной
+   пройденной остановке два жёлтых кольца сливались в одно. */
+.map-stop--selected .map-stop__disc {
+  outline: 4px solid #fff;
+  outline-offset: 4px;
+}
+
+/* Дорога между остановками. Каждая рисует отрезок, уходящий к следующей:
+   вбок внутри ряда и вниз на повороте. Пунктир — чтобы читалось как путь, а
+   не как рамка таблицы. */
+.map-stop::after {
+  content: '';
+  position: absolute;
+  /* Точками, а не штрихами: круглые следы читаются как тропинка, а штрихи —
+     как рамка таблицы, от которой мы и уходили. */
+  border-color: rgba(255, 255, 255, 0.45);
+  border-style: dotted;
+  pointer-events: none;
+}
+
+.map-stop--right::after,
+.map-stop--left::after {
+  /* Отрезок идёт от центра этой остановки к центру следующей: половина
+     кружка плюс зазор плюс половина соседнего — ровно ширина колонки с
+     зазором. По вертикали целимся в середину кружка, а не карточки: под ним
+     ещё строка со значком локации. */
+  top: calc(50% - 11px);
+  width: calc(100% + 12px);
+  border-top-width: 5px;
+}
+
+.map-stop--right::after { left: 50%; }
+.map-stop--left::after { right: 50%; }
+
+/* Поворот: от нижнего края вниз, к первой остановке следующего ряда. */
+.map-stop--down::after {
+  left: 50%;
+  /* Начинаем от нижнего края кружка и перекрываем строку со значком локации
+     плюс межрядный зазор — иначе дорога рвётся посередине поворота. */
+  top: calc(100% - 20px);
+  height: 42px;
+  border-left-width: 5px;
+}
+
+.map-stop--end::after { display: none; }
+
+/* Подпись выбранной остановки: где мы и что делать. Голос говорит то же, но
+   голос легко пропустить, а надпись стоит, пока смотришь. */
+.map-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 46px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.07);
+  text-align: center;
+}
+
+.map-info--locked { opacity: 0.6; }
+.map-info__place { font-size: 17px; font-weight: bold; }
+.map-info__task { font-size: 15px; opacity: 0.9; }
 
 /* Свежие наклейки на экране конца раунда */
 .fresh-stickers {
@@ -879,6 +1037,10 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
   .album-card__name { font-size: 10px; }
   .album-card__emoji { width: 72px; height: 72px; font-size: 34px; }
-  .map-road { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .map-road { gap: 16px 6px; }
+  .map-stop__number { min-width: 18px; height: 18px; font-size: 10px; }
+  .map-stop__badge { font-size: 16px; }
+  .map-info__place { font-size: 15px; }
+  .map-info__task { font-size: 13px; }
   .story-art { font-size: 58px; }
 }

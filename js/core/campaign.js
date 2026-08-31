@@ -82,6 +82,13 @@ export function themeEmoji(themeId) {
   return THEME_EMOJI[themeId] || '📄';
 }
 
+// Цвета локации — карта красит ими остановки, и семь разных мест читаются с
+// одного взгляда, без чтения подписей.
+export function themeColors(themeId) {
+  const theme = CONFIG.themes.find((t) => t.id === themeId);
+  return { ground: theme?.ground || '#5a5468', accent: theme?.accent || '#4a4459' };
+}
+
 export function themeName(themeId) {
   return CONFIG.themes.find((t) => t.id === themeId)?.name || '';
 }
