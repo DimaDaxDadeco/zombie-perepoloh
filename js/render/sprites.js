@@ -10,6 +10,18 @@ const DARK = '#243b12';
 // Пара несимметрична намеренно — так лицо выглядит живее.
 const HERO_EYES = [{ x: -0.18, y: -0.85 }, { x: 0.2, y: -0.85 }];
 
+// У Хэнки своя форма целиком, и лицо у него не там, где у всех: не на голове
+// сверху, а на среднем витке. Общие HERO_EYES приходятся ему ровно на колпак —
+// и лазер бил из шапки. Числа тут те же, что и в drawHankey, по той же причине,
+// что и выше: два набора разъедутся при первой правке лица.
+const HANKEY_EYES = [{ x: -0.18, y: -0.16 }, { x: 0.2, y: -0.16 }];
+
+// Хэнки не шагает, а переваливается: витки ведёт вбок, а не подкидывает вверх.
+// Нужно и отрисовке, и прицелу лазера — иначе луч отстаёт от лица на ходу.
+function hankeySway(radius, walkPhase) {
+  return Math.sin(walkPhase) * radius * 0.06;
+}
+
 // Покачивание героя при беге. Нужно и drawHero, и тем, кто рисует поверх него
 // в МИРОВЫХ координатах: без него луч отрывается от лица на каждом шаге.
 function heroBob(radius, walkPhase) {
@@ -19,8 +31,18 @@ function heroBob(radius, walkPhase) {
 // Где сейчас глаза героя — в его локальных координатах, с уже применённым
 // зеркалом и покачиванием. drawHero делает то же самое трансформациями
 // холста, но weapons.js рисует вне их, поэтому считает точки честно.
-export function heroEyePoints({ radius, walkPhase = 0, facing = 1 }) {
+export function heroEyePoints({ radius, walkPhase = 0, facing = 1, look }) {
   const bob = heroBob(radius, walkPhase);
+  // Своя форма — свои глаза. drawHero и Хэнки, и всем прочим одинаково
+  // применяет bob и зеркало, поэтому отличается только сам набор точек и
+  // боковое покачивание витков.
+  if (look?.shape === 'hankey') {
+    const sway = hankeySway(radius, walkPhase);
+    return HANKEY_EYES.map((eye) => ({
+      x: (eye.x * radius + sway) * facing,
+      y: eye.y * radius + bob,
+    }));
+  }
   return HERO_EYES.map((eye) => ({
     x: eye.x * radius * facing,
     y: eye.y * radius + bob,
@@ -151,7 +173,7 @@ function drawHankey(ctx, r, walkPhase, look) {
   const dark = shade(look.skin, -0.22);
   const lite = shade(look.skin, 0.16);
   // Лёгкое покачивание витков в такт шагу — он не идёт, а переваливается.
-  const sway = Math.sin(walkPhase) * r * 0.06;
+  const sway = hankeySway(r, walkPhase);
 
   // Ручки — за горкой, чтобы не заслоняли витки.
   ctx.fillStyle = look.skin;
@@ -180,11 +202,12 @@ function drawHankey(ctx, r, walkPhase, look) {
   ctx.ellipse(sway * 1.2 - r * 0.06, -r * 0.6, r * 0.12, r * 0.07, -0.3, 0, Math.PI * 2);
   ctx.fill();
 
-  // Глаза и улыбка — на среднем витке, там же, где у прочих героев лицо.
+  // Глаза и улыбка — на среднем витке. Координаты берём из HANKEY_EYES, а не
+  // числами на месте: по ним же целится лазер, и разъехаться им нельзя.
   ctx.fillStyle = EYE_WHITE;
-  [-0.2, 0.18].forEach((x0) => circle(ctx, r * x0 + sway, -r * 0.16, r * 0.15));
+  for (const eye of HANKEY_EYES) circle(ctx, eye.x * r + sway, eye.y * r, r * 0.15);
   ctx.fillStyle = DARK;
-  [-0.18, 0.2].forEach((x0) => circle(ctx, r * x0 + sway, -r * 0.16, r * 0.07));
+  for (const eye of HANKEY_EYES) circle(ctx, eye.x * r + sway, eye.y * r, r * 0.07);
   ctx.strokeStyle = DARK;
   ctx.lineWidth = Math.max(1.5, r * 0.06);
   ctx.beginPath();
