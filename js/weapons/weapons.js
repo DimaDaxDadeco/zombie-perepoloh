@@ -3,9 +3,11 @@
 import { CONFIG } from '../config.js';
 import { Weapon } from './weapon.js';
 import {
-  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee, WebGlob,
+  Bullet, Lob, Rocket, FlameBolt, IceShard, PiercingBullet, Boomerang, Bee, WebGlob, Bubble,
 } from '../entities/projectile.js';
-import { circle, heroEyePoints, drawWeb } from '../render/sprites.js';
+import {
+  circle, heroEyePoints, drawWeb, drawFirePatch, drawCatchBubble, drawTornado,
+} from '../render/sprites.js';
 
 // 💧 Водяной пистолет — базовое оружие, стреляет каплями в ближайшего зомби.
 class WaterGun extends Weapon {
@@ -450,6 +452,238 @@ class BeeSwarm extends Weapon {
 // duration) уже делает ровно «медленнее во столько на столько секунд», и мы
 // зовём её коротким импульсом каждый кадр, пока зомби в пятне. Вышел —
 // импульс не продлевается, и он разгоняется сам.
+// 🔥 Огненный след: горит там, где герой пробежал.
+//
+// Единственное оружие, которое вообще не целится — ни цели, ни выстрела у него
+// нет. Поэтому у него свой update(): базовый ничего бы не делал, пока на
+// экране нет зомби, а след обязан тянуться всегда.
+//
+// setActiveWeapon не зовём намеренно: ствола в руке нет, и перехват руки
+// показал бы ребёнку пустые ладони вместо его пистолета. Тем же живут лазер и
+// вертушка.
+class FireTrail extends Weapon {
+  constructor(id = 'firetrail') {
+    super(id);
+    this.patches = [];   // пятна живут в оружии, как у паутины
+  }
+
+  update(dt, world, owner) {
+    this.cooldownTimer -= dt;
+    // Пятна тикают всегда, даже когда герой упал: физичнее, чем гасить их
+    // разом, и заодно снимает грабли «упавший герой не гасит свой эффект».
+    this.updatePatches(dt, world);
+    if (this.cooldownTimer > 0 || owner.downed) return;
+    this.drop(owner);
+    this.cooldownTimer = this.stat('cooldown');
+  }
+
+  drop(owner) {
+    this.patches.push({
+      x: owner.x,
+      y: owner.y,
+      radius: this.stat('radius'),
+      life: this.spec.patchLife,
+      seed: this.patches.length,
+    });
+  }
+
+  updatePatches(dt, world) {
+    const dps = this.stat('burnDps');
+    const burnTime = this.spec.burnTime;
+    for (const patch of this.patches) patch.life -= dt;
+    this.patches = this.patches.filter((patch) => patch.life > 0);
+
+    for (const patch of this.patches) {
+      for (const enemy of world.enemies) {
+        if (!enemy.alive || enemy.isHidden) continue;
+        // Эллипс, а не круг: пятно лежит на земле и нарисовано приплюснутым,
+        // и зона обязана совпадать с картинкой.
+        const dx = (enemy.x - patch.x) / patch.radius;
+        const dy = (enemy.y - patch.y) / (patch.radius * this.spec.squash);
+        if (dx * dx + dy * dy > 1) continue;
+        // Поджигаем коротким импульсом, а не бьём напрямую: горение — уже
+        // готовый статус, оно само тикает уроном через damageEnemy и само
+        // рисует пламя на зомби. Прямой урон каждый кадр был бы и вдесятеро
+        // сильнее, и невидим.
+        enemy.ignite(dps, burnTime);
+      }
+    }
+  }
+
+  // drawGround, а не draw: след лежит на земле и обязан рисоваться ПОД
+  // персонажами. Обычный draw вызывается после героя, и пламя накрывало бы
+  // его самого — а он по своему следу бежит не переставая.
+  drawGround(ctx) {
+    for (const patch of this.patches) {
+      drawFirePatch(ctx, patch, patch.radius, this.spec.patchLife, this.spec.squash);
+    }
+  }
+}
+
+// 🫧 Мыльные пузыри: ловят зомби и уносят вверх, пока тот не лопнет.
+//
+// Зомби выбывает не от урона, а от того, что его поймали, — но добивает его
+// всё равно world.damageEnemy, иначе не засчитаются ни счётчик убитых, ни
+// наклейка, ни заряд способности, ни медальки.
+//
+// Пойманный держится замораживанием с фактором 0 — тем же, чем «Мяу!» Котика
+// останавливает толпу. Заводить зомби новое состояние ради этого не нужно.
+class BubbleGun extends Weapon {
+  constructor(id = 'bubbles') {
+    super(id);
+    this.caught = [];
+  }
+
+  update(dt, world, owner) {
+    this.updateCaught(dt, world);
+    super.update(dt, world, owner);
+  }
+
+  updateCaught(dt, world) {
+    for (const held of this.caught) {
+      held.life -= dt;
+      if (!held.enemy.alive) { held.life = 0; continue; }
+      // Пока держим — зомби стоит. Импульсом каждый кадр, как липкие пятна:
+      // отпустили, и он поехал сам, продлевать нечего.
+      held.enemy.freeze(0, 0.15, false);
+    }
+    for (const held of this.caught) {
+      if (held.life > 0 || !held.enemy.alive) continue;
+      world.particles.addBurst(held.enemy.x, held.enemy.y, 12, 1);
+      world.damageEnemy(held.enemy, held.damage);
+    }
+    this.caught = this.caught.filter((held) => held.life > 0 && held.enemy.alive);
+  }
+
+  fire(world, target, owner) {
+    const count = this.stat('count');
+    const damage = this.stat('damage');
+    const holdTime = this.stat('holdTime');
+    const base = Math.atan2(target.y - owner.y, target.x - owner.x);
+    for (let i = 0; i < count; i++) {
+      const angle = base + (i - (count - 1) / 2) * 0.26;
+      const bubble = new Bubble(owner.x, owner.y, angle, {
+        speed: this.spec.speed,
+        radius: this.spec.radius,
+        onCatch: (enemy) => this.catchEnemy(enemy, damage, holdTime),
+      });
+      world.addProjectile(bubble);
+    }
+    world.audio.shoot();
+  }
+
+  catchEnemy(enemy, damage, holdTime) {
+    // Уже в пузыре — второй на него не тратим: иначе залп из пяти уходит в
+    // одного и того же, а толпа стоит нетронутой.
+    if (this.caught.some((held) => held.enemy === enemy)) return false;
+    this.caught.push({ enemy, damage, life: holdTime });
+    return true;
+  }
+
+  draw(ctx, player) {
+    for (const held of this.caught) {
+      if (!held.enemy.alive) continue;
+      // Пузырь обнимает зомби НА МЕСТЕ, а не всплывает над ним: поднимать
+      // картинку, не поднимая самого зомби, выглядело как пустой пузырь рядом
+      // с ним. Поднимать же зомби по-настоящему значит трогать столкновения и
+      // порядок отрисовки ради одной анимации.
+      drawCatchBubble(ctx, held.enemy.x, held.enemy.y - held.enemy.radius * 0.4,
+        this.spec.radius, held.life);
+    }
+    super.draw(ctx, player);
+  }
+}
+
+// 🌪 Торнадо: вихрь бродит по арене сам и тащит за собой зомби.
+//
+// От Портала Супер-Егора отличается тем, что ХОДИТ. Портал — точка на земле,
+// от которой можно отойти; торнадо идёт за толпой, и отстать от него нельзя.
+class TornadoGun extends Weapon {
+  constructor(id = 'tornado') {
+    super(id);
+    this.vortex = null;
+  }
+
+  update(dt, world, owner) {
+    this.updateVortex(dt, world);
+    super.update(dt, world, owner);
+  }
+
+  updateVortex(dt, world) {
+    const v = this.vortex;
+    if (!v) return;
+    v.life -= dt;
+    if (v.life <= 0) { this.vortex = null; return; }
+    v.spin += dt * 7;
+
+    // Вихрь идёт к самой гуще. Цель пересматриваем не каждый кадр, а раз в
+    // полсекунды: иначе он дёргается между двумя соседними зомби на месте.
+    v.retarget -= dt;
+    if (v.retarget <= 0) {
+      v.retarget = 0.5;
+      v.goal = crowdCenter(world) || { x: v.x, y: v.y };
+    }
+    const dx = v.goal.x - v.x;
+    const dy = v.goal.y - v.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    v.x += (dx / dist) * this.spec.speed * dt;
+    v.y += (dy / dist) * this.spec.speed * dt;
+
+    v.tick -= dt;
+    const hits = v.tick <= 0;
+    if (hits) v.tick = this.spec.tickTime;
+
+    for (const enemy of [...world.enemies]) {
+      if (!enemy.alive || enemy.isHidden) continue;
+      const ex = v.x - enemy.x;
+      const ey = v.y - enemy.y;
+      const d = Math.hypot(ex, ey);
+      if (d > v.radius) continue;
+      // Тянем к центру. Босса не тянем — то же правило, что у Бэтмобиля и
+      // расталкивания: он тяжёлый и важный.
+      if (!enemy.isBoss) {
+        enemy.x += (ex / (d || 1)) * this.spec.pull * dt;
+        enemy.y += (ey / (d || 1)) * this.spec.pull * dt;
+      }
+      if (hits) world.damageEnemy(enemy, v.damage);
+    }
+  }
+
+  fire(world, target, owner) {
+    this.vortex = {
+      x: owner.x, y: owner.y,
+      radius: this.stat('radius'),
+      damage: this.stat('damage'),
+      life: this.spec.life,
+      spin: 0, tick: 0, retarget: 0,
+      goal: { x: target.x, y: target.y },
+    };
+    world.audio.whistle();
+  }
+
+  draw(ctx, player) {
+    if (this.vortex) drawTornado(ctx, this.vortex, this.vortex.spin);
+    super.draw(ctx, player);
+  }
+}
+
+// Центр толпы. Медиана, а не среднее: среднее уводит вихрь в пустоту между
+// двумя кучками. Пусто — null, и вихрь просто идёт дальше своим курсом.
+function crowdCenter(world) {
+  const xs = [];
+  const ys = [];
+  for (const enemy of world.enemies) {
+    if (!enemy.alive || enemy.isHidden) continue;
+    xs.push(enemy.x);
+    ys.push(enemy.y);
+  }
+  if (!xs.length) return null;
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const mid = Math.floor(xs.length / 2);
+  return { x: xs[mid], y: ys[mid] };
+}
+
 class WebShooter extends Weapon {
   constructor(id = 'web') {
     super(id);
@@ -517,6 +751,12 @@ class WebShooter extends Weapon {
 
 const WEAPON_CLASSES = {
   water: WaterGun,
+  firetrail: FireTrail,
+  lavatrail: FireTrail,
+  bubbles: BubbleGun,
+  bubblestorm: BubbleGun,
+  tornado: TornadoGun,
+  hurricane: TornadoGun,
   tomato: TomatoLauncher,
   // Эволюции, у которых меняется только арифметика, переиспользуют класс
   // родителя: id приходит параметром, а не зашит в super().

@@ -4,7 +4,7 @@
 //   Rocket — доворачивает к цели, взрывается при попадании (ракета-морковка)
 // Урон по контакту считает systems/collisions.js (у кого damagesOnContact = true).
 
-import { circle, roundRect, drawBatmobile } from '../render/sprites.js';
+import { circle, roundRect, drawBatmobile, drawSoapBubble } from '../render/sprites.js';
 
 const OFFSCREEN_MARGIN = 60;
 
@@ -359,6 +359,44 @@ export class Boomerang extends Projectile {
 
 // Насколько машина кренится на повороте змейки, в радианах.
 const MAX_TILT = 0.32;
+
+// --- Мыльный пузырь: летит медленно и ловит первого встречного ---
+//
+// Урона сам не наносит: он ловушка, а не пуля. Добивает пойманного оружие,
+// когда пузырь лопается, — и добивает через world.damageEnemy, иначе не
+// засчитаются ни счётчик убитых, ни наклейка, ни заряд способности.
+export class Bubble extends Projectile {
+  constructor(x, y, angle, { speed, radius, onCatch }) {
+    super(x, y, 0);
+    this.angle = angle;
+    this.speed = speed;
+    this.radius = radius;
+    this.onCatch = onCatch;
+    this.damagesOnContact = true;
+    this.wobble = Math.random() * Math.PI * 2;
+  }
+
+  // Пробивающий — но не ради пробития, а чтобы НЕ лопнуть о зомби, который
+  // уже сидит в другом пузыре: без этого залп из пяти уходит в одного и того
+  // же, а толпа стоит нетронутой. Лопается пузырь сам, в onHit, и только
+  // когда поймал.
+  get piercing() { return true; }
+
+  onHit(enemy) {
+    if (this.onCatch(enemy)) this.alive = false;
+  }
+
+  update(dt, world) {
+    this.wobble += dt * 3;
+    this.x += Math.cos(this.angle) * this.speed * dt;
+    this.y += Math.sin(this.angle) * this.speed * dt - dt * 14;   // чуть всплывает
+    if (this.isOffscreen(world.arena)) this.alive = false;
+  }
+
+  draw(ctx) {
+    drawSoapBubble(ctx, this.x, this.y, this.radius, this.wobble);
+  }
+}
 
 // --- Бэтмобиль: едет через всю арену и раскидывает всех по дороге ---
 //

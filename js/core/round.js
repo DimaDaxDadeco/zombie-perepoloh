@@ -600,6 +600,12 @@ export class Round {
     // Способности, живущие в мире, а не на герое (портал), — в слое земли:
     // они лежат под персонажами, иначе воронка накрывает того, кто в неё падает.
     for (const player of this.players) player.ability?.drawWorld(ctx);
+    // Оружие, которое кладёт что-то НА ЗЕМЛЮ (огненный след), рисуется здесь
+    // же, а не вместе с героем: иначе пламя накрывает того, кто по нему бежит,
+    // а он по нему бежит постоянно.
+    for (const player of this.players) {
+      for (const weapon of player.weapons) weapon.drawGround?.(ctx);
+    }
 
     for (const pickup of this.pickups) pickup.draw(ctx);
     // Сортировка по Y: кто ниже — тот ближе к зрителю.
