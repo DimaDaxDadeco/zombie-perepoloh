@@ -9,7 +9,7 @@
 
 import { CONFIG } from '../config.js';
 import { drawPortal } from '../render/sprites.js';
-import { SpiderMinion, GiftLob } from '../entities/projectile.js';
+import { SpiderMinion, GiftLob, Batmobile } from '../entities/projectile.js';
 import { Pickup, PickupType } from '../entities/pickup.js';
 
 export class Ability {
@@ -257,6 +257,65 @@ class Zap extends Ability {
   }
 }
 
+// 🚗 Бэтмобиль: машина проносится через всю арену и раскидывает всех по дороге.
+//
+// Единственная способность, которая гоняет по миру крупный объект. Сама она
+// почти ничего не делает — только решает, ГДЕ проехать, а урон, пробитие и
+// отброс уносит с собой снаряд.
+//
+// Целиться ребёнку не надо: машина сама едет туда, где зомби гуще. Это то же
+// решение, что у разряда, который сам выбирает цели, — кнопка одна, и
+// требовать от пятилетнего прицела было бы нечестно.
+class BatmobileRun extends Ability {
+  constructor() { super('batmobile'); }
+
+  activate(world, owner) {
+    const { speed, damage, force, life, waveAmp, waveLength, color, shake } = this.spec;
+    const y = crowdLine(world, owner);
+    // Въезжаем с того края, который дальше от героя: так машина едет НА толпу
+    // мимо него, а не выныривает у него из-за спины.
+    const dir = owner.x > world.arena.width / 2 ? -1 : 1;
+    const x = dir > 0 ? -MARGIN : world.arena.width + MARGIN;
+
+    const car = new Batmobile(x, y, dir, { speed, damage, force, life, waveAmp, waveLength });
+    // Тег источника: без него не засчитается медаль «добил босса способностью».
+    car.source = 'ability';
+    world.addProjectile(car);
+
+    world.particles.addRing(owner.x, owner.y, owner.radius * 2, color);
+    world.shake(shake.strength, shake.time);
+    world.audio.boom();
+  }
+}
+
+// Откуда машина въезжает — за краем арены, чтобы было видно, как она
+// подъезжает, а не появляется из воздуха.
+const MARGIN = 90;
+// Насколько далеко от героя машине разрешено проехать. Без ограничения она в
+// редкий момент уедет к дальней кучке, и связь «я нажал → вот что случилось»
+// для ребёнка порвётся.
+const MAX_OFFSET = 150;
+
+// На какой высоте ехать.
+//
+// Берём медиану, а не среднее: среднее уводит машину в пустоту между двумя
+// кучками, а медиана всегда попадает в одну из них. Считаем только видимых:
+// спавнер сыплет зомби за краем, и «самое плотное скопление» иначе окажется
+// там, где ребёнок ничего не увидит.
+//
+// Зомби нет вовсе (первые секунды раунда, все под землёй, все за экраном) —
+// едем на высоте героя. Пустой список тут обязателен к обработке: Math.max по
+// нему даёт -Infinity, а дальше NaN в координатах и зависший раунд.
+function crowdLine(world, owner) {
+  const ys = world.enemies
+    .filter((e) => e.alive && !e.isHidden && world.isOnScreen(e))
+    .map((e) => e.y);
+  if (!ys.length) return owner.y;
+  ys.sort((a, b) => a - b);
+  const median = ys[Math.floor(ys.length / 2)];
+  return Math.min(Math.max(median, owner.y - MAX_OFFSET), owner.y + MAX_OFFSET);
+}
+
 // 🎁 Подарки-хлопушки: вокруг героя падают подарки, хлопают и оставляют
 // медальки.
 //
@@ -318,6 +377,7 @@ export const ABILITY_CLASSES = {
   rage: Rage,
   zap: Zap,
   gifts: Gifts,
+  batmobile: BatmobileRun,
 };
 
 // Герой без способности возможен: старое сохранение или автотест. Поэтому

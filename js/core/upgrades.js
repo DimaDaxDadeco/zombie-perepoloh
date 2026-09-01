@@ -59,6 +59,8 @@ export function buildUpgrades(save, playerIndex = 0) {
     xpBonus: perk.xpBonus || 0,
     // Ноль у всех, кроме Хэнки: по нулю проход по врагам не запускается.
     stinkRadius: perk.stinkRadius || 0,
+    // Ноль у всех, кроме Бэтмена: по нулю броня не считается.
+    armorEvery: perk.armorEvery || 0,
     look: character.look,
     ability: character.ability,
     // Герой со своим оружием (Паук) выбор игнорирует: у него оно одно.

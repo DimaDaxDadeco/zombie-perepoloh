@@ -287,6 +287,20 @@ function drawHairStyle(ctx, r, look) {
       ctx.fillStyle = '#ff4d6d';
       circle(ctx, 0, -r * 1.62, r * 0.12);
       break;
+    // Уши летучей мыши — отдельный вид, а не кошачьи с другим цветом. Причин
+    // две, и обе в коде: кошачьим ушам drawFace дорисовывает усы и носик (и
+    // делает это ДО проверки маски, то есть усы легли бы поверх маски), а
+    // серединка у них жёстко розовая. Мыши не нужно ни то, ни другое.
+    case 'batears': // уши летучей мыши: выше и острее кошачьих
+      [-1, 1].forEach((side) => {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.16, -r * 1.22);
+        ctx.lineTo(side * r * 0.34, -r * 1.78);
+        ctx.lineTo(side * r * 0.5, -r * 1.08);
+        ctx.closePath();
+        ctx.fill();
+      });
+      break;
     case 'ears': // кошачьи ушки
       [-1, 1].forEach((side) => {
         ctx.beginPath();
@@ -471,6 +485,98 @@ function drawHeroMask(ctx, r, color) {
     ctx.fill();
     ctx.stroke();
   }
+}
+
+// Щит сработавшей брони: кольцо, которое расходится и гаснет.
+//
+// Принимает долю прошедшего (0 — только что, 1 — погасло), а не таймер: этот
+// модуль намеренно ничего не знает про CONFIG, и тащить сюда длительность
+// значило бы завести у него первую настройку.
+export function drawArmorShield(ctx, radius, progress) {
+  const t = progress;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - t) * 0.8;
+  ctx.strokeStyle = '#7fd8ff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, -radius * 0.4, radius * (1.1 + t * 0.7), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Бэтмобиль — вид сбоку. Рисуется в мировых координатах, потому что едет по
+// арене сам по себе, а не вокруг героя.
+//
+// dir задаёт, куда он смотрит: зеркалим масштабом, а не рисуем второй набор
+// координат. Колёса крутятся спицей — без неё на скорости машина выглядит
+// скользящей коробкой, а не едущей.
+export function drawBatmobile(ctx, x, y, dir, spin, tilt = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  // Наклон — ДО зеркалки: scale(-1) переворачивает и знак угла, и при езде
+  // влево кузов задирался бы в обратную сторону.
+  ctx.rotate(tilt);
+  ctx.scale(dir, 1);
+
+  drawShadow(ctx, 30);
+
+  // Корпус: длинный клин, нос ниже кормы.
+  ctx.fillStyle = '#1b1e26';
+  ctx.beginPath();
+  ctx.moveTo(-34, 6);
+  ctx.lineTo(-26, -8);
+  ctx.lineTo(2, -12);
+  ctx.lineTo(24, -2);
+  ctx.lineTo(34, 4);
+  ctx.lineTo(34, 12);
+  ctx.lineTo(-34, 12);
+  ctx.closePath();
+  ctx.fill();
+
+  // Плавник на корме — то, по чему машина и узнаётся.
+  ctx.beginPath();
+  ctx.moveTo(-30, -8);
+  ctx.lineTo(-22, -26);
+  ctx.lineTo(-14, -7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Стекло кабины.
+  ctx.fillStyle = '#5fa8d6';
+  ctx.beginPath();
+  ctx.moveTo(-14, -9);
+  ctx.lineTo(-4, -20);
+  ctx.lineTo(10, -6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Фара и её луч: по ней видно, куда машина едет.
+  ctx.fillStyle = '#ffe14d';
+  circle(ctx, 29, 2, 4);
+  ctx.globalAlpha = 0.28;
+  ctx.beginPath();
+  ctx.moveTo(31, 2);
+  ctx.lineTo(52, -6);
+  ctx.lineTo(52, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Колёса со спицей.
+  for (const wx of [-20, 18]) {
+    ctx.fillStyle = '#0d0f14';
+    circle(ctx, wx, 12, 9);
+    ctx.fillStyle = '#3a3f4a';
+    circle(ctx, wx, 12, 4);
+    ctx.strokeStyle = '#0d0f14';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(wx + Math.cos(spin) * 4, 12 + Math.sin(spin) * 4);
+    ctx.lineTo(wx - Math.cos(spin) * 4, 12 - Math.sin(spin) * 4);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 // Усы и носик — без них котик читается как человек с ушами.

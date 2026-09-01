@@ -4,7 +4,7 @@
 //   Rocket — доворачивает к цели, взрывается при попадании (ракета-морковка)
 // Урон по контакту считает systems/collisions.js (у кого damagesOnContact = true).
 
-import { circle, roundRect } from '../render/sprites.js';
+import { circle, roundRect, drawBatmobile } from '../render/sprites.js';
 
 const OFFSCREEN_MARGIN = 60;
 
@@ -354,6 +354,106 @@ export class Boomerang extends Projectile {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
+  }
+}
+
+// Насколько машина кренится на повороте змейки, в радианах.
+const MAX_TILT = 0.32;
+
+// --- Бэтмобиль: едет через всю арену и раскидывает всех по дороге ---
+//
+// Снаряд, а не собственный цикл по врагам в способности: попадания тогда
+// разбирает общий resolveProjectileHits, а тег источника, пробитие и отброс
+// работают ровно как у всего остального в игре.
+//
+// Пробитие с памятью — дословно приём бумеранга: каждого задеваем один раз,
+// иначе машина за кадр наносит урон одному и тому же зомби столько раз,
+// сколько кадров он пробыл под колёсами.
+//
+// Едет строго горизонтально, angle тут нет вовсе. Причина в отрисовке: машина
+// нарисована сбоку, и под углом вид сбоку читается как перевёрнутая коробка.
+export class Batmobile extends Projectile {
+  constructor(x, y, dir, { speed, damage, force, life, waveAmp, waveLength }) {
+    super(x, y, damage);
+    this.dir = dir;          // +1 едет вправо, -1 влево
+    this.speed = speed;
+    this.force = force;
+    // Зигзаг. Считается от ПРОЙДЕННОГО пути, а не от времени: тогда форма
+    // змейки не зависит от скорости, и «сделать машину быстрее» не превращает
+    // её в вибрирующую точку.
+    this.baseY = y;
+    this.waveAmp = waveAmp;
+    this.waveLength = waveLength;
+    this.travelled = 0;
+    this.tilt = 0;
+    // Предохранитель, а не механика: обычный проезд занимает секунду с
+    // небольшим, и до этого таймера дело доходит только если что-то пошло не
+    // так.
+    this.life = life;
+    // Радиус захвата. Скорость и радиус связаны: за кадр машина проходит
+    // speed/60 пикселей, и если это больше радиуса вместе с радиусом зомби
+    // (~21), она начнёт пролетать сквозь них между кадрами. При 900 это 15
+    // против 55 — запас почти четырёхкратный, но выше ~3000 способность
+    // начнёт работать через раз.
+    this.radius = 34;
+    this.damagesOnContact = true;
+    this.hitEnemies = new Set();
+    this.wheelSpin = 0;
+  }
+
+  get piercing() { return true; }
+  alreadyHit(enemy) { return this.hitEnemies.has(enemy); }
+
+  onHit(enemy, world) {
+    this.hitEnemies.add(enemy);
+    // Босса не двигаем — то же правило, что у separateEnemies: он тяжёлый и
+    // важный. Таранный отброс через всю арену вынес бы его за экран, и ребёнок
+    // пару секунд смотрел бы на пустое поле, не понимая, куда делся босс.
+    if (!enemy.isBoss) {
+      // Отброс от машины, а не от точки удара: зомби должно снести по ходу
+      // движения, а не отбить назад под колёса.
+      enemy.applyKnockback(this.x - this.dir * 60, this.y, this.force);
+    }
+    world.particles.addBurst(enemy.x, enemy.y, 8, 0.9);
+  }
+
+  update(dt, world) {
+    this.wheelSpin += dt * 22;
+    const step = this.speed * dt;
+    this.x += this.dir * step;
+    this.travelled += step;
+    this.life -= dt;
+
+    // Змейка. Размах ужимаем так, чтобы машина не выехала за верх или низ
+    // арены: иначе половину проезда она проводит там, где ребёнок её не видит,
+    // и зомби у края не задевает.
+    const amp = Math.min(this.waveAmp, this.baseY, world.arena.height - this.baseY);
+    const phase = (this.travelled / this.waveLength) * Math.PI * 2;
+    this.y = this.baseY + Math.sin(phase) * amp;
+
+    // Наклон кузова считаем от ФАЗЫ, а не от настоящего угла движения. Угол
+    // тут доходит до шестидесяти градусов, и машина, нарисованная сбоку,
+    // читалась бы на нём как перевёрнутая коробка; обрезать же угол по
+    // максимуму нельзя — тогда она почти весь путь едет накренённой на предел
+    // и «закладывает поворот» только в двух точках. Косинус — это производная
+    // синуса, поэтому крен плавно ходит от края к краю ровно в такт змейке.
+    this.tilt = Math.cos(phase) * MAX_TILT * this.dir;
+
+    world.particles.addBurst(this.x - this.dir * 30, this.y + 14, 1, 0.5);
+
+    // isOffscreen() звать НЕЛЬЗЯ: машина рождается за краем и умерла бы в
+    // первом же кадре. Смотрим только на противоположный край — тот, к
+    // которому едем. Ширину берём каждый кадр: при повороте планшета арена
+    // меняется, и снятое на старте значение оставило бы машину недоехавшей.
+    const finish = this.dir > 0
+      ? world.arena.width + OFFSCREEN_MARGIN
+      : -OFFSCREEN_MARGIN;
+    const arrived = this.dir > 0 ? this.x > finish : this.x < finish;
+    if (arrived || this.life <= 0) this.alive = false;
+  }
+
+  draw(ctx) {
+    drawBatmobile(ctx, this.x, this.y, this.dir, this.wheelSpin, this.tilt);
   }
 }
 
