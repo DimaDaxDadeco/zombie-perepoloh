@@ -452,7 +452,7 @@ class BeeSwarm extends Weapon {
 // duration) уже делает ровно «медленнее во столько на столько секунд», и мы
 // зовём её коротким импульсом каждый кадр, пока зомби в пятне. Вышел —
 // импульс не продлевается, и он разгоняется сам.
-// 🔥 Огненный след: горит там, где герой пробежал.
+// 🔥 Огненная дорожка: горит там, где герой пробежал.
 //
 // Единственное оружие, которое вообще не целится — ни цели, ни выстрела у него
 // нет. Поэтому у него свой update(): базовый ничего бы не делал, пока на
@@ -478,27 +478,22 @@ class FireTrail extends Weapon {
   }
 
   drop(owner) {
-    // Куда смотрит след. Берём направление от прошлого отпечатка к этому:
-    // герой мог прийти откуда угодно, а owner.facing знает только «влево или
-    // вправо» и для наклона следа не годится. Стоит на месте или это первый
-    // отпечаток — оставляем прежний угол, иначе след крутнётся сам собой.
-    const last = this.patches[this.patches.length - 1];
-    const dx = last ? owner.x - last.x : 0;
-    const dy = last ? owner.y - last.y : 0;
-    const moved = Math.hypot(dx, dy) > 2;
-    this.angle = moved ? Math.atan2(dy, dx) : (this.angle || 0);
-    // Ноги чередуются — без этого выходит не пара следов, а дорожка из
-    // одинаковых пятен.
-    this.foot = -(this.foot || 1);
-
     this.patches.push({
       x: owner.x,
       y: owner.y,
       radius: this.stat('radius'),
       life: this.spec.patchLife,
-      angle: this.angle,
-      foot: this.foot,
     });
+  }
+
+  // Звено разгорается: рождается тонким под ногами героя и за свою жизнь
+  // расходится в лужу. Ширина в спеке — та, что рисуется в момент броска, и
+  // ровно её видит ребёнок, когда ведёт дорожку. Без разгорания дорожка
+  // бесполезна убегающему: замер показал пять поджогов за раунд на четыреста
+  // брошенных звеньев — толпа идёт следом и в тонкую ленту просто не попадает.
+  patchRadius(patch) {
+    const age = 1 - patch.life / this.spec.patchLife;
+    return patch.radius * (1 + (this.spec.grow || 0) * age);
   }
 
   updatePatches(dt, world) {
@@ -508,18 +503,47 @@ class FireTrail extends Weapon {
     this.patches = this.patches.filter((patch) => patch.life > 0);
 
     for (const patch of this.patches) {
+      const grown = this.patchRadius(patch);
       for (const enemy of world.enemies) {
         if (!enemy.alive || enemy.isHidden) continue;
         // Эллипс, а не круг: пятно лежит на земле и нарисовано приплюснутым,
         // и зона обязана совпадать с картинкой.
-        const dx = (enemy.x - patch.x) / patch.radius;
-        const dy = (enemy.y - patch.y) / (patch.radius * this.spec.squash);
+        // Радиус зомби в проверке ОБЯЗАТЕЛЕН: горит тот, кто стоит в огне
+        // ногами, а не тот, у кого в огне центр. Без него крупные враги
+        // безнаказанно топчут дорожку — босс радиусом 58 «касается» её,
+        // оставаясь центром в семидесяти пикселях от пламени.
+        const reach = grown + enemy.radius;
+        const dx = (enemy.x - patch.x) / reach;
+        const dy = (enemy.y - patch.y) / (reach * this.spec.squash);
         if (dx * dx + dy * dy > 1) continue;
         // Поджигаем коротким импульсом, а не бьём напрямую: горение — уже
         // готовый статус, оно само тикает уроном через damageEnemy и само
         // рисует пламя на зомби. Прямой урон каждый кадр был бы и вдесятеро
         // сильнее, и невидим.
         enemy.ignite(dps, burnTime);
+      }
+    }
+    this.spreadFire(world, dps, burnTime);
+  }
+
+  // Огонь перекидывается с горящего зомби на соседа. Без этого дорожка
+  // наказывает только того, кто на неё наступил, и убегающий герой не получает
+  // с неё ничего: толпа идёт следом по остывшим звеньям. С переброской
+  // достаточно поджечь край толпы — дальше горит вся.
+  //
+  // Соседский огонь слабее (spreadFactor) и дальше не идёт: пожар считается
+  // одним проходом по кадру, поэтому цепочка не может разогнаться сама в себя.
+  spreadFire(world, dps, burnTime) {
+    const range = this.spec.spreadRange;
+    if (!range) return;
+    const weaker = dps * this.spec.spreadFactor;
+    const burning = world.enemies.filter((e) => e.alive && e.isBurning);
+    for (const source of burning) {
+      for (const enemy of world.enemies) {
+        if (enemy === source || !enemy.alive || enemy.isHidden || enemy.isBurning) continue;
+        const reach = range + enemy.radius;
+        if (Math.hypot(enemy.x - source.x, enemy.y - source.y) > reach) continue;
+        enemy.ignite(weaker, burnTime);
       }
     }
   }
@@ -529,7 +553,7 @@ class FireTrail extends Weapon {
   // его самого — а он по своему следу бежит не переставая.
   drawGround(ctx) {
     for (const patch of this.patches) {
-      drawFirePatch(ctx, patch, patch.radius, this.spec.patchLife, this.spec.squash);
+      drawFirePatch(ctx, patch, this.patchRadius(patch), this.spec.patchLife, this.spec.squash);
     }
   }
 }
@@ -709,12 +733,23 @@ class WebShooter extends Weapon {
     super.update(dt, world, owner);
   }
 
+  // Звено разгорается: рождается тонким под ногами героя и за свою жизнь
+  // расходится в лужу. Ширина в спеке — та, что рисуется в момент броска, и
+  // ровно её видит ребёнок, когда ведёт дорожку. Без разгорания дорожка
+  // бесполезна убегающему: замер показал пять поджогов за раунд на четыреста
+  // брошенных звеньев — толпа идёт следом и в тонкую ленту просто не попадает.
+  patchRadius(patch) {
+    const age = 1 - patch.life / this.spec.patchLife;
+    return patch.radius * (1 + (this.spec.grow || 0) * age);
+  }
+
   updatePatches(dt, world) {
     const factor = this.spec.chillFactor;
     for (const patch of this.patches) patch.life -= dt;
     this.patches = this.patches.filter((patch) => patch.life > 0);
 
     for (const patch of this.patches) {
+      const grown = this.patchRadius(patch);
       for (const enemy of world.enemies) {
         if (!enemy.alive || enemy.isHidden) continue;
         // Эллипс, а не круг: пятно лежит на земле и нарисовано приплюснутым,

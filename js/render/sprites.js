@@ -530,50 +530,32 @@ export function drawArmorShield(ctx, radius, progress) {
 // Огненное пятно на земле. Форма та же, что у липкой паутины, — приплюснутый
 // эллипс, — потому что зона поражения считается эллипсом, и картинка обязана
 // с ней совпадать.
+// Звено огненной дорожки. Их роняют часто и внахлёст, поэтому каждое —
+// просто маленький круглый огонёк: сплошная лента получается из перекрытия, а
+// не из хитрой формы.
+//
+// Отпечатков ступней тут больше нет. Они читались как следы, но дорожкой не
+// были: заказчику нужна линия, которой можно обвести толпу, а пара отпечатков
+// на каждый шаг оставляла между собой дыры.
 export function drawFirePatch(ctx, patch, radius, maxLife, squash) {
   const t = Math.max(0, patch.life / maxLife);
   ctx.save();
   ctx.translate(patch.x, patch.y);
-
-  // Тлеющая земля — это и есть зона поражения, и рисуется она первой и тускло:
-  // ребёнок должен видеть, докуда достаёт огонь, а не гадать по отпечаткам.
-  ctx.globalAlpha = Math.min(1, t * 2) * 0.35;
-  ctx.fillStyle = 'rgba(120,45,20,1)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, radius, radius * squash, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // А поверх — сам след: пара отпечатков, развёрнутых по ходу движения.
-  // Размер идёт за радиусом, поэтому отпечатки заполняют зону, а не теряются
-  // в ней крошками: горит именно там, где отпечаталась нога.
-  ctx.rotate(patch.angle || 0);
-  ctx.scale(1, squash);          // тот же прижим к земле, что у зоны
-  const side = (patch.foot || 1) * radius * 0.34;
-  for (const [k, color, alpha] of [[1, '#ff7a1a', t], [0.62, '#ffd93d', t * 0.95]]) {
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = color;
-    footprint(ctx, 0, side, radius * 0.62 * k, radius * 0.34 * k);
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-// Отпечаток ступни: вытянутая подошва, отдельная пятка и три пальца. Носок
-// смотрит по +X, потому что вызывающий уже повернул холст по ходу движения.
-function footprint(ctx, x, y, length, width) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  ctx.ellipse(length * 0.12, 0, length * 0.46, width * 0.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(-length * 0.42, 0, length * 0.2, width * 0.34, 0, 0, Math.PI * 2);
-  ctx.fill();
-  for (let i = -1; i <= 1; i++) {
+  // Три слоя: гарь по краю, пламя, светлая сердцевина. Гарь держится дольше
+  // самого огня — по ней видно, где дорожка вот-вот погаснет.
+  const layers = [
+    { k: 1, color: 'rgba(120,45,20,0.55)', a: Math.min(1, t * 3) },
+    { k: 0.82, color: '#ff7a1a', a: Math.min(1, t * 1.6) },
+    { k: 0.46, color: '#ffe14d', a: Math.min(1, t * 1.4) },
+  ];
+  for (const layer of layers) {
+    ctx.globalAlpha = layer.a;
+    ctx.fillStyle = layer.color;
     ctx.beginPath();
-    ctx.ellipse(length * 0.62, i * width * 0.28, length * 0.1, width * 0.13, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, radius * layer.k, radius * layer.k * squash, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
