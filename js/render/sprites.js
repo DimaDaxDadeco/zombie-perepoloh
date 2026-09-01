@@ -527,6 +527,107 @@ export function drawArmorShield(ctx, radius, progress) {
   ctx.restore();
 }
 
+// Огненное пятно на земле. Форма та же, что у липкой паутины, — приплюснутый
+// эллипс, — потому что зона поражения считается эллипсом, и картинка обязана
+// с ней совпадать.
+// Звено огненной дорожки. Их роняют часто и внахлёст, поэтому каждое —
+// просто маленький круглый огонёк: сплошная лента получается из перекрытия, а
+// не из хитрой формы.
+//
+// Отпечатков ступней тут больше нет. Они читались как следы, но дорожкой не
+// были: заказчику нужна линия, которой можно обвести толпу, а пара отпечатков
+// на каждый шаг оставляла между собой дыры.
+export function drawFirePatch(ctx, patch, radius, maxLife, squash) {
+  const t = Math.max(0, patch.life / maxLife);
+  ctx.save();
+  ctx.translate(patch.x, patch.y);
+  // Три слоя: гарь по краю, пламя, светлая сердцевина. Гарь держится дольше
+  // самого огня — по ней видно, где дорожка вот-вот погаснет.
+  const layers = [
+    { k: 1, color: 'rgba(120,45,20,0.55)', a: Math.min(1, t * 3) },
+    { k: 0.82, color: '#ff7a1a', a: Math.min(1, t * 1.6) },
+    { k: 0.46, color: '#ffe14d', a: Math.min(1, t * 1.4) },
+  ];
+  for (const layer of layers) {
+    ctx.globalAlpha = layer.a;
+    ctx.fillStyle = layer.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * layer.k, radius * layer.k * squash, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// Летящий мыльный пузырь: прозрачный шар с бликом и радужной каймой.
+export function drawSoapBubble(ctx, x, y, radius, wobble) {
+  ctx.save();
+  ctx.translate(x, y);
+  // Лёгкое подрагивание формы — пузырь мягкий, а не стеклянный шарик.
+  const rx = radius * (1 + Math.sin(wobble) * 0.08);
+  const ry = radius * (1 - Math.sin(wobble) * 0.08);
+  ctx.fillStyle = 'rgba(180,230,255,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  circle(ctx, -rx * 0.32, -ry * 0.36, radius * 0.16);
+  ctx.restore();
+}
+
+// Пузырь с пойманным зомби. Рисуется поверх него, поэтому только оболочка:
+// сам зомби виден насквозь.
+export function drawCatchBubble(ctx, x, y, radius, life) {
+  ctx.save();
+  ctx.translate(x, y);
+  const r = radius * 1.35;
+  ctx.fillStyle = 'rgba(180,230,255,0.22)';
+  circle(ctx, 0, 0, r);
+  // Кайма мигает быстрее к концу — видно, что вот-вот лопнет.
+  ctx.globalAlpha = life < 0.5 ? 0.4 + Math.abs(Math.sin(life * 22)) * 0.6 : 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  circle(ctx, -r * 0.34, -r * 0.38, radius * 0.18);
+  ctx.restore();
+}
+
+// Торнадо: воронка из витков, расширяющаяся кверху.
+export function drawTornado(ctx, vortex, spin) {
+  ctx.save();
+  ctx.translate(vortex.x, vortex.y);
+  const r = vortex.radius;
+  // Зона поражения — круг, поэтому подошву рисуем кругом: ребёнок должен
+  // видеть, докуда достаёт.
+  ctx.fillStyle = 'rgba(200,220,240,0.16)';
+  circle(ctx, 0, 0, r);
+
+  ctx.strokeStyle = 'rgba(235,245,255,0.75)';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 5; i++) {
+    const k = i / 4;                       // 0 у земли, 1 у вершины
+    const width = r * (0.28 + k * 0.78);
+    // Высота воронки — от радиуса, но скромнее прежнего: на 1.5 она уходила
+    // выше половины экрана и накрывала собой всё вокруг.
+    const y = -k * r * 1.05;
+    ctx.globalAlpha = 0.8 - k * 0.35;
+    ctx.lineWidth = r * 0.09;
+    ctx.beginPath();
+    ctx.ellipse(Math.sin(spin + i) * r * 0.08, y, width, width * 0.3,
+      0, Math.PI * 0.15, Math.PI * 1.85);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // Бэтмобиль — вид сбоку. Рисуется в мировых координатах, потому что едет по
 // арене сам по себе, а не вокруг героя.
 //
@@ -2069,7 +2170,45 @@ export function drawWeaponInHand(ctx, { id, stars, angle, recoil, x, y, radius }
 
 const WEAPON_IN_HAND = {
   // Ветки для laser здесь нет намеренно: у лазера, как у вертушки, в руке
-  // ничего не держат — глаза светятся на лице, а луч рисует сам класс.
+  // ничего не держат — глаза светятся на лице, а луч рисует сам класс. По той
+  // же причине нет огненного следа: он вообще не оружие в руке, он под ногами.
+
+  // 🫧 Мыльные пузыри: баночка с палочкой-колечком.
+  bubbles(ctx, recoil) {
+    ctx.fillStyle = '#8fd8ef';
+    roundRect(ctx, 2, -3, 8, 10, 2);
+    ctx.fill();
+    ctx.strokeStyle = '#e8f6ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(10, 1);
+    ctx.lineTo(15 + recoil * 3, -2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(18 + recoil * 3, -3, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+  },
+
+  // 🌪 Торнадо: короткий жезл с завитком.
+  tornado(ctx, recoil) {
+    ctx.strokeStyle = '#c9d8e8';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(2, 4);
+    ctx.lineTo(12 + recoil * 2, -4);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(14 + recoil * 2, -6, 4, 0.4, Math.PI * 1.7);
+    ctx.stroke();
+  },
+
+  // Эволюции держат в руке то же, что и родители: превращение видно по
+  // размаху эффекта в мире, а не по новой палочке в ладони. Ссылаемся на ту
+  // же функцию, чтобы не разъехалось при первой правке.
+  bubblestorm(ctx, recoil) { WEAPON_IN_HAND.bubbles(ctx, recoil); },
+  hurricane(ctx, recoil) { WEAPON_IN_HAND.tornado(ctx, recoil); },
 
   // 🪃 Бумеранг: галка из двух плеч. Раньше это была одна дуга, и на игровом
   // размере она читалась как банан — у бумеранга обязан быть угол.

@@ -1,5 +1,5 @@
 {
-  "label": "2026-08-30",
+  "label": "2026-09-01",
   "hero": "superS",
   "rounds": [
     1,
@@ -10,19 +10,22 @@
   ],
   "repeats": 3,
   "firstSeed": 1000,
-  "total": 138,
-  "runs": 165,
+  "total": 172,
+  "runs": 210,
   "weapons": {
     "water": 13,
     "tomato": 13,
-    "lightning": 11,
-    "spinner": 13,
-    "rocket": 9,
+    "lightning": 13,
+    "spinner": 15,
+    "rocket": 8,
     "fire": 13,
-    "ice": 12,
-    "saber": 15,
+    "ice": 11,
+    "saber": 13,
     "laser": 13,
     "boomerang": 14,
-    "bees": 12
+    "bees": 13,
+    "firetrail": 11,
+    "bubbles": 11,
+    "tornado": 11
   }
 }
