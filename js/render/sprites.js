@@ -510,9 +510,12 @@ export function drawArmorShield(ctx, radius, progress) {
 // dir задаёт, куда он смотрит: зеркалим масштабом, а не рисуем второй набор
 // координат. Колёса крутятся спицей — без неё на скорости машина выглядит
 // скользящей коробкой, а не едущей.
-export function drawBatmobile(ctx, x, y, dir, spin) {
+export function drawBatmobile(ctx, x, y, dir, spin, tilt = 0) {
   ctx.save();
   ctx.translate(x, y);
+  // Наклон — ДО зеркалки: scale(-1) переворачивает и знак угла, и при езде
+  // влево кузов задирался бы в обратную сторону.
+  ctx.rotate(tilt);
   ctx.scale(dir, 1);
 
   drawShadow(ctx, 30);

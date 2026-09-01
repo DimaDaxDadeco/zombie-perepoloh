@@ -270,14 +270,14 @@ class BatmobileRun extends Ability {
   constructor() { super('batmobile'); }
 
   activate(world, owner) {
-    const { speed, damage, force, life, color, shake } = this.spec;
+    const { speed, damage, force, life, waveAmp, waveLength, color, shake } = this.spec;
     const y = crowdLine(world, owner);
     // Въезжаем с того края, который дальше от героя: так машина едет НА толпу
     // мимо него, а не выныривает у него из-за спины.
     const dir = owner.x > world.arena.width / 2 ? -1 : 1;
     const x = dir > 0 ? -MARGIN : world.arena.width + MARGIN;
 
-    const car = new Batmobile(x, y, dir, { speed, damage, force, life });
+    const car = new Batmobile(x, y, dir, { speed, damage, force, life, waveAmp, waveLength });
     // Тег источника: без него не засчитается медаль «добил босса способностью».
     car.source = 'ability';
     world.addProjectile(car);

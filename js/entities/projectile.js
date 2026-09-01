@@ -357,6 +357,9 @@ export class Boomerang extends Projectile {
   }
 }
 
+// Насколько машина кренится на повороте змейки, в радианах.
+const MAX_TILT = 0.32;
+
 // --- Бэтмобиль: едет через всю арену и раскидывает всех по дороге ---
 //
 // Снаряд, а не собственный цикл по врагам в способности: попадания тогда
@@ -370,11 +373,19 @@ export class Boomerang extends Projectile {
 // Едет строго горизонтально, angle тут нет вовсе. Причина в отрисовке: машина
 // нарисована сбоку, и под углом вид сбоку читается как перевёрнутая коробка.
 export class Batmobile extends Projectile {
-  constructor(x, y, dir, { speed, damage, force, life }) {
+  constructor(x, y, dir, { speed, damage, force, life, waveAmp, waveLength }) {
     super(x, y, damage);
     this.dir = dir;          // +1 едет вправо, -1 влево
     this.speed = speed;
     this.force = force;
+    // Зигзаг. Считается от ПРОЙДЕННОГО пути, а не от времени: тогда форма
+    // змейки не зависит от скорости, и «сделать машину быстрее» не превращает
+    // её в вибрирующую точку.
+    this.baseY = y;
+    this.waveAmp = waveAmp;
+    this.waveLength = waveLength;
+    this.travelled = 0;
+    this.tilt = 0;
     // Предохранитель, а не механика: обычный проезд занимает секунду с
     // небольшим, и до этого таймера дело доходит только если что-то пошло не
     // так.
@@ -408,8 +419,26 @@ export class Batmobile extends Projectile {
 
   update(dt, world) {
     this.wheelSpin += dt * 22;
-    this.x += this.dir * this.speed * dt;
+    const step = this.speed * dt;
+    this.x += this.dir * step;
+    this.travelled += step;
     this.life -= dt;
+
+    // Змейка. Размах ужимаем так, чтобы машина не выехала за верх или низ
+    // арены: иначе половину проезда она проводит там, где ребёнок её не видит,
+    // и зомби у края не задевает.
+    const amp = Math.min(this.waveAmp, this.baseY, world.arena.height - this.baseY);
+    const phase = (this.travelled / this.waveLength) * Math.PI * 2;
+    this.y = this.baseY + Math.sin(phase) * amp;
+
+    // Наклон кузова считаем от ФАЗЫ, а не от настоящего угла движения. Угол
+    // тут доходит до шестидесяти градусов, и машина, нарисованная сбоку,
+    // читалась бы на нём как перевёрнутая коробка; обрезать же угол по
+    // максимуму нельзя — тогда она почти весь путь едет накренённой на предел
+    // и «закладывает поворот» только в двух точках. Косинус — это производная
+    // синуса, поэтому крен плавно ходит от края к краю ровно в такт змейке.
+    this.tilt = Math.cos(phase) * MAX_TILT * this.dir;
+
     world.particles.addBurst(this.x - this.dir * 30, this.y + 14, 1, 0.5);
 
     // isOffscreen() звать НЕЛЬЗЯ: машина рождается за краем и умерла бы в
@@ -424,7 +453,7 @@ export class Batmobile extends Projectile {
   }
 
   draw(ctx) {
-    drawBatmobile(ctx, this.x, this.y, this.dir, this.wheelSpin);
+    drawBatmobile(ctx, this.x, this.y, this.dir, this.wheelSpin, this.tilt);
   }
 }
 
