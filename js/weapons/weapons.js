@@ -478,12 +478,26 @@ class FireTrail extends Weapon {
   }
 
   drop(owner) {
+    // Куда смотрит след. Берём направление от прошлого отпечатка к этому:
+    // герой мог прийти откуда угодно, а owner.facing знает только «влево или
+    // вправо» и для наклона следа не годится. Стоит на месте или это первый
+    // отпечаток — оставляем прежний угол, иначе след крутнётся сам собой.
+    const last = this.patches[this.patches.length - 1];
+    const dx = last ? owner.x - last.x : 0;
+    const dy = last ? owner.y - last.y : 0;
+    const moved = Math.hypot(dx, dy) > 2;
+    this.angle = moved ? Math.atan2(dy, dx) : (this.angle || 0);
+    // Ноги чередуются — без этого выходит не пара следов, а дорожка из
+    // одинаковых пятен.
+    this.foot = -(this.foot || 1);
+
     this.patches.push({
       x: owner.x,
       y: owner.y,
       radius: this.stat('radius'),
       life: this.spec.patchLife,
-      seed: this.patches.length,
+      angle: this.angle,
+      foot: this.foot,
     });
   }
 

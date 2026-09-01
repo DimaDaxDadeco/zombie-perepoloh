@@ -534,21 +534,46 @@ export function drawFirePatch(ctx, patch, radius, maxLife, squash) {
   const t = Math.max(0, patch.life / maxLife);
   ctx.save();
   ctx.translate(patch.x, patch.y);
-  // Три слоя: тёмная гарь, оранжевое пламя, светлая сердцевина. Гарь остаётся
-  // дольше — так видно, где след уже догорает.
-  const layers = [
-    { k: 1, color: 'rgba(90,40,20,0.5)', a: Math.min(1, t * 2) },
-    { k: 0.78, color: '#ff7a1a', a: t },
-    { k: 0.44, color: '#ffd93d', a: t * 0.9 },
-  ];
-  for (const layer of layers) {
-    ctx.globalAlpha = layer.a;
-    ctx.fillStyle = layer.color;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * layer.k, radius * layer.k * squash, 0, 0, Math.PI * 2);
-    ctx.fill();
+
+  // Тлеющая земля — это и есть зона поражения, и рисуется она первой и тускло:
+  // ребёнок должен видеть, докуда достаёт огонь, а не гадать по отпечаткам.
+  ctx.globalAlpha = Math.min(1, t * 2) * 0.35;
+  ctx.fillStyle = 'rgba(120,45,20,1)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius, radius * squash, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // А поверх — сам след: пара отпечатков, развёрнутых по ходу движения.
+  // Размер идёт за радиусом, поэтому отпечатки заполняют зону, а не теряются
+  // в ней крошками: горит именно там, где отпечаталась нога.
+  ctx.rotate(patch.angle || 0);
+  ctx.scale(1, squash);          // тот же прижим к земле, что у зоны
+  const side = (patch.foot || 1) * radius * 0.34;
+  for (const [k, color, alpha] of [[1, '#ff7a1a', t], [0.62, '#ffd93d', t * 0.95]]) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    footprint(ctx, 0, side, radius * 0.62 * k, radius * 0.34 * k);
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// Отпечаток ступни: вытянутая подошва, отдельная пятка и три пальца. Носок
+// смотрит по +X, потому что вызывающий уже повернул холст по ходу движения.
+function footprint(ctx, x, y, length, width) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.ellipse(length * 0.12, 0, length * 0.46, width * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(-length * 0.42, 0, length * 0.2, width * 0.34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath();
+    ctx.ellipse(length * 0.62, i * width * 0.28, length * 0.1, width * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -606,8 +631,10 @@ export function drawTornado(ctx, vortex, spin) {
   ctx.lineCap = 'round';
   for (let i = 0; i < 5; i++) {
     const k = i / 4;                       // 0 у земли, 1 у вершины
-    const width = r * (0.28 + k * 0.9);
-    const y = -k * r * 1.5;
+    const width = r * (0.28 + k * 0.78);
+    // Высота воронки — от радиуса, но скромнее прежнего: на 1.5 она уходила
+    // выше половины экрана и накрывала собой всё вокруг.
+    const y = -k * r * 1.05;
     ctx.globalAlpha = 0.8 - k * 0.35;
     ctx.lineWidth = r * 0.09;
     ctx.beginPath();
