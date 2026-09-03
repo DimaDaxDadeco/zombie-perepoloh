@@ -64,6 +64,16 @@ export class Round {
     this.enemies = [];
     this.projectiles = [];
     this.pickups = [];
+    // Объекты мира, которые ставит ЦЕЛЬ раунда: клетка с другом, костёр,
+    // ноша, место доставки. Своим списком, а не среди enemies: они не враги —
+    // их не считает счётчик убитых, они не роняют лут, не заряжают
+    // способность и не занимают место в лимите спавнера.
+    //
+    // И не через хук у цели: drawWorld модификатора вызывается ПОСЛЕ
+    // сортированного по Y слоя персонажей, то есть костёр всегда рисовался бы
+    // поверх героя, стоящего ниже него. Пропу нужна та же сортировка, что
+    // всем, а значит и место в общем списке.
+    this.props = [];
     this.particles = new Particles();
     this.spawner = new Spawner(round, difficulty, this.coopFactor);
     // Модификатор особого раунда правит уже посчитанные числа спавнера.
@@ -130,6 +140,16 @@ export class Round {
     // обязан начать с чистого листа сам.
     this.damageTaken = 0;
     this.bossKilledBy = null;   // 'ability' | 'weapon' | 'enemy'
+
+    // Цель расставит свои объекты на ПЕРВОМ КАДРЕ, а не здесь.
+    //
+    // Соблазн сделать это последней строкой конструктора велик, и я так и
+    // сделал сначала. Но arena приходит из Game одним и тем же объектом,
+    // который заполняется в resize(), и до первого resize он нулевой: клетки
+    // разъезжались по отрицательным координатам, а герой стоял в углу.
+    // В обычной игре это не всплывает — ребёнок сначала ходит по меню, — и
+    // именно поэтому ловушка опасная.
+    this.goalReady = false;
   }
 
   // Герой со всем снаряжением. Двое встают по разные стороны от центра,
@@ -197,11 +217,19 @@ export class Round {
     // переехала бы с Пляжа во Двор.
     this.background.rebuild(this.round, arena, this.theme);
     this.player.clampToArena(arena);
+    // Объекты цели тоже: планшет повернули — клетка, которая стояла у правого
+    // края, оказалась бы за экраном, и глава стала бы непроходимой. Игрока
+    // здесь подтягивают ровно по этой же причине.
+    for (const prop of this.props) prop.clampToArena(arena);
   }
 
   // directions — по вектору на игрока. Одиночная игра передаёт массив из
   // одного элемента.
   update(dt, directions) {
+    if (!this.goalReady) {
+      this.goalReady = true;
+      this.goal.setup?.(this);
+    }
     if (this.finished) return;
 
     this.updatePhase(dt);
@@ -214,6 +242,10 @@ export class Round {
     // Питомцы — после героев (идут в их новую позицию) и до попаданий:
     // укус должен успеть убить зомби вместе со всеми остальными.
     for (const pet of this.pets) pet.update(dt, this);
+    // Пропы тикают ВНЕ проверки заморозки, которая ниже пропускает всех
+    // зомби целиком: костёр не должен тухнуть, пока замерший мир ждёт выхода
+    // босса, а клетка — открываться быстрее оттого, что никто не мешает.
+    for (const prop of this.props) prop.update(dt, this);
 
     // Пока появляется босс, зомби замирают: ребёнок должен успеть посмотреть
     // на выход, а не получить удар в спину, пока любуется. Герой при этом
@@ -413,12 +445,25 @@ export class Round {
     this.enemies = this.enemies.filter((e) => e.alive);
     this.projectiles = this.projectiles.filter((p) => p.alive);
     this.pickups = this.pickups.filter((p) => p.alive);
+    this.props = this.props.filter((p) => p.alive);
   }
 
   // --- API мира: этим пользуются оружие, снаряды и сущности ---
 
   addProjectile(projectile) {
     this.projectiles.push(projectile);
+  }
+
+  addProp(prop) {
+    this.props.push(prop);
+    return prop;
+  }
+
+  // Куда на самом деле идёт этот зомби. По умолчанию — к ближайшему игроку;
+  // цель раунда вправе увести его в другое место (зомби тушат костёр, а не
+  // кусают героя). Спрашивает Zombie.retarget, и только он.
+  lureFor(enemy) {
+    return this.goal.lureFor?.(enemy, this) ?? null;
   }
 
   addEnemy(enemy) {
@@ -607,9 +652,13 @@ export class Round {
       for (const weapon of player.weapons) weapon.drawGround?.(ctx);
     }
 
+    // Наземные пропы — вместе с добычей, под персонажами: светящееся место
+    // доставки герой должен пробегать НАСКВОЗЬ, а не огибать.
+    for (const prop of this.props) if (prop.layer === 'ground') prop.draw(ctx);
     for (const pickup of this.pickups) pickup.draw(ctx);
     // Сортировка по Y: кто ниже — тот ближе к зрителю.
-    const characters = [...this.enemies, ...this.players, ...this.pets]
+    const characters = [...this.enemies, ...this.players, ...this.pets,
+      ...this.props.filter((prop) => prop.layer !== 'ground')]
       .sort((a, b) => a.y - b.y);
     for (const character of characters) character.draw(ctx);
     for (const projectile of this.projectiles) projectile.draw(ctx);

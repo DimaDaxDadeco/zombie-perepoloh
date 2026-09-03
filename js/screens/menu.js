@@ -15,7 +15,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
-import { campaignProgress } from '../core/campaign.js';
+import { openJourneys, journeyProgress } from '../core/campaign.js';
 import { icon } from '../render/icons.js';
 
 const HERO_PREVIEW_SIZE = 130;
@@ -37,7 +37,7 @@ export class MenuScreen extends Overlay {
     });
   }
 
-  render(save) {
+  render(save, storage) {
     const character = CONFIG.characters.find((c) => c.id === save.character);
     // Уровень сложности в HUD намеренно не показывается (он не меняется по
     // ходу боя), но в строке фактов о сохранении он на месте — взрослому
@@ -47,7 +47,18 @@ export class MenuScreen extends Overlay {
     // Продолжать нечего, пока герой не выбран — то есть при самом первом
     // запуске и сразу после «Новой игры».
     const canContinue = Boolean(character);
-    const campaign = campaignProgress(save);
+    // Одна кнопка на все путешествия: она ведёт к выбору, а не в конкретную
+    // историю. Так их может стать три и четыре, а меню не вырастет — больших
+    // кнопок в нём разрешено ровно две, и вторую пришлось выгрызать
+    // навигацией.
+    //
+    // Счёт сквозной по всем путешествиям: он для взрослого, ребёнок смотрит
+    // на картинку. Внутри, на выборе, у каждого путешествия свой счёт.
+    const open = openJourneys(storage);
+    const campaign = open.reduce((sum, journey) => {
+      const p = journeyProgress(journey);
+      return { open: sum.open + p.open, total: sum.total + p.total };
+    }, { open: 0, total: 0 });
 
     this.setContent(`
       <div class="panel panel--menu">
@@ -66,8 +77,8 @@ export class MenuScreen extends Overlay {
             ? `<button class="btn btn--big" data-action="continue">ПРОДОЛЖИТЬ ${icon('ui-play')}</button>`
             : `<button class="btn btn--big" data-action="new">НОВАЯ ИГРА ${icon('ui-play')}</button>`}
           <button class="btn btn--big btn--journey" data-action="campaign">
-            ${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()} ${icon('ui-play')}
-            <span class="btn__note">${campaign.open}/${campaign.total} страниц</span>
+            ${icon('ui-map')} КАМПАНИЯ ${icon('ui-play')}
+            <span class="btn__note">${campaign.open}/${campaign.total} глав</span>
           </button>
         </div>
         <div class="menu-buttons">

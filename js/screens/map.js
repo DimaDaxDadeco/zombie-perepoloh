@@ -21,18 +21,65 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import {
+  drawCage, drawCampfire, drawGiftBox, drawLoot, drawThiefMask,
+  drawMedalPickup, drawZombie,
+} from '../render/sprites.js';
 import { icon } from '../render/icons.js';
 import {
-  campaignProgress, themeIcon, themeName, themeColors, bossOf, goalText,
+  journeyProgress, themeIcon, themeName, themeColors, bossOf, goalText,
 } from '../core/campaign.js';
 
 const BOSS_SIZE = 72;
+
+// Что нарисовано в медальоне остановки.
+//
+// НЕ босс, если его в главе нет. Раньше рисовался он всегда — а из двадцати
+// четырёх глав босс выходит только в пятнадцати: в остальных задача другая, и
+// нарисованный босс был прямой неправдой. Ребёнок шёл драться, а его ждали
+// клетки.
+//
+// Настоящими игровыми спрайтами, а не значками: медальон — картинка места, и
+// клетка в нём должна быть той же клеткой, к которой он побежит.
+const ZOMBIE_LOOK = CONFIG.zombieTypes[0].look;
+const FRIEND_LOOK = CONFIG.pets.friend.look;
+
+function zombieAt(ctx, x, y, radius, look = ZOMBIE_LOOK) {
+  ctx.save();
+  ctx.translate(x, y);
+  drawZombie(ctx, { radius, walkPhase: 0, facing: 1, hurtFlash: 0, look, burning: false, frozen: false });
+  ctx.restore();
+}
+
+const GOAL_PICTURE = {
+  rescue: (ctx, r) => drawCage(ctx, { radius: r * 0.85, progress: 0, look: FRIEND_LOOK }),
+  campfire: (ctx, r) => drawCampfire(ctx, { radius: r * 0.9, heat: 1, phase: 0 }),
+  delivery: (ctx, r) => drawGiftBox(ctx, { radius: r * 0.75, shake: false }),
+  medals: (ctx, r) => drawMedalPickup(ctx, { radius: r * 1.1, phase: 0 }),
+  zombies: (ctx, r) => zombieAt(ctx, 0, 0, r * 0.95),
+  thief: (ctx, r) => {
+    const rr = r * 0.9;
+    ctx.save();
+    ctx.translate(-rr * 0.75, -rr * 0.55);
+    drawLoot(ctx, { radius: rr * 0.5, phase: 0 });
+    ctx.restore();
+    zombieAt(ctx, 0, 0, rr, { ...ZOMBIE_LOOK, clothes: '#6d4c41', skin: '#9ccc65' });
+    drawThiefMask(ctx, rr);
+  },
+  // «Продержись» — это толпа, а не один зомби: тем и отличается от «прогони
+  // столько-то», где важен счёт, а не давка.
+  survive: (ctx, r) => {
+    zombieAt(ctx, -r * 0.7, -r * 0.25, r * 0.6);
+    zombieAt(ctx, r * 0.7, -r * 0.2, r * 0.6);
+    zombieAt(ctx, 0, 0, r * 0.8);
+  },
+};
 // Ширина ряда. Четыре — компромисс: змейка из трёх рядов помещается на
 // телефоне целиком и не превращается в длинную ленту на мониторе.
 const PER_ROW = 4;
 
 export class MapScreen extends Overlay {
-  constructor(rootId, { onPlay, onShop, onHero, onPlayers, onClose, onSpeak }) {
+  constructor(rootId, { onPlay, onShop, onHero, onPlayers, onJourney, onClose, onSpeak }) {
     super(rootId);
     this.onPlay = onPlay;
     this.onShop = onShop;
@@ -65,16 +112,16 @@ export class MapScreen extends Overlay {
     // Курсор встаёт на первую непройденную — туда, куда ребёнку идти.
     this.selected = campaign.currentIndex;
 
-    const progress = campaignProgress(save);
+    const progress = journeyProgress(campaign);
     // Кнопка показывает нынешний выбор, а не приглашение его сменить:
     // ребёнок читать не умеет, и «Вдвоём» рядом с двумя фигурками говорит
     // ему, что сейчас играют двое, — а нажатие это меняет.
     const duo = (save.playersCount || 1) > 1;
     this.setContent(`
       <div class="panel panel--map">
-        <h2 class="title title--small">${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()}</h2>
+        <h2 class="title title--small">${icon(campaign.spec.icon)} ${campaign.spec.title.toUpperCase()}</h2>
         <div class="map-pages">
-          ${renderPageStrip(progress)}
+          ${renderPageStrip(progress, campaign.spec.reward.icon)}
           <span class="map-pages__count">${progress.open}/${progress.total}</span>
         </div>
         <div class="map-road">
@@ -143,8 +190,14 @@ export class MapScreen extends Overlay {
   paintStops() {
     for (const canvas of this.root.querySelectorAll('.map-stop__canvas')) {
       const stop = this.stops[Number(canvas.dataset.index)];
-      if (!stop?.boss) continue;
-      Overlay.paintBoss(canvas, stop.boss.look, { locked: !stop.open });
+      if (!stop) continue;
+      const kind = goalKind(stop.chapter);
+      const picture = GOAL_PICTURE[kind];
+      if (picture) {
+        Overlay.paintPicture(canvas, picture, { locked: !stop.open });
+      } else if (stop.boss) {
+        Overlay.paintBoss(canvas, stop.boss.look, { locked: !stop.open });
+      }
     }
   }
 
@@ -183,7 +236,7 @@ export class MapScreen extends Overlay {
       <span class="map-info__task">
         ${open
           ? `${done ? `${icon('ui-done')} ` : ''}${goalText(chapter)}`
-          : `${icon('ui-lock')} Сюда ещё рано — ${boss?.name || ''} ждёт`}
+          : `${icon('ui-lock')} ${lockedHint(chapter, boss)}`}
       </span>
     `;
   }
@@ -194,7 +247,7 @@ export class MapScreen extends Overlay {
     // Закрытая глава не запускается, но и молчать нельзя: ребёнок нажал и
     // должен понять, почему ничего не произошло.
     if (!stop.open) {
-      this.onSpeak('Сюда ещё рано. Пройди предыдущую страницу!');
+      this.onSpeak('Сюда ещё рано. Пройди предыдущую главу!');
       return;
     }
     this.onPlay(stop.chapter.id);
@@ -224,10 +277,22 @@ function placeOnRoad(index, total) {
 
 // Полоска страниц вверху: наглядно, сколько альбома уже собрано. Для
 // нечитающего ребёнка это единственный способ увидеть прогресс числом.
-function renderPageStrip(progress) {
+function renderPageStrip(progress, rewardIcon) {
   return Array.from({ length: progress.total }, (_, i) => `
-    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">${icon('ui-page')}</span>
+    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">${icon(rewardIcon)}</span>
   `).join('');
+}
+
+// Что написано под закрытой остановкой. Имя босса — только если он в главе
+// действительно выходит: «Толстяк ждёт» в главе про клетки обещало бы драку,
+// которой не будет.
+function lockedHint(chapter, boss) {
+  if (goalKind(chapter) === 'boss' && boss) return `Сюда ещё рано — ${boss.name} ждёт`;
+  return 'Сюда ещё рано — пройди предыдущую главу';
+}
+
+function goalKind(chapter) {
+  return typeof chapter.goal === 'string' ? chapter.goal : chapter.goal.kind;
 }
 
 function describeStop(stop) {

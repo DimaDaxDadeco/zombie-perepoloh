@@ -161,6 +161,16 @@ export const MEDAL_ICONS = {
     { d: line([[21, 8], [21, 28]]), stroke: 'paperEdge', width: 1.6 },
     { d: star(16, 16, 7), fill: 'gold' },
   ],
+  // Все дома — домик, а в нём двое. Медаль второго путешествия.
+  'medal-friendsHome': [
+    { d: poly([[16, 3], [30, 15], [26, 15], [26, 29], [6, 29], [6, 15], [2, 15]]), fill: 'fire' },
+    { d: rect(6, 15, 20, 14), fill: 'paper' },
+    { d: disc(12, 21, 3.4), fill: 'sky' },
+    { d: disc(20, 21, 3.4), fill: 'leaf' },
+    { d: `M7 29a5 5 0 0 1 10 0z`, fill: 'sky' },
+    { d: `M15 29a5 5 0 0 1 10 0z`, fill: 'leaf' },
+  ],
+
   // Полный альбом — книга со звездой.
   'medal-collector': [
     { d: rect(5, 4, 22, 25, 3), fill: 'blood' },

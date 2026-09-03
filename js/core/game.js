@@ -12,7 +12,7 @@ import { Speech } from './speech.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
 import { Achievements } from './achievements.js';
-import { Campaign } from './campaign.js';
+import { currentJourney, openJourneys, allJourneys } from './campaign.js';
 import { Round } from './round.js';
 // applyCard под псевдонимом: одноимённый метод ниже — обёртка над ней,
 // и без псевдонима вызов читался бы как рекурсия.
@@ -26,6 +26,7 @@ import { DifficultyScreen } from '../screens/difficulty.js';
 import { PlayersScreen } from '../screens/players.js';
 import { AlbumScreen } from '../screens/album.js';
 import { MapScreen } from '../screens/map.js';
+import { JourneysScreen } from '../screens/journeys.js';
 import { StoryScreen } from '../screens/story.js';
 import { ConfirmScreen } from '../screens/confirm.js';
 import { WeaponsScreen } from '../screens/weapons.js';
@@ -48,26 +49,13 @@ export const GameState = {
   WEAPONS: 'weapons',
   CONFIRM: 'confirm',
   ALBUM: 'album',
+  JOURNEYS: 'journeys', // выбор путешествия
   MAP: 'map',       // карта сюжетной кампании
   STORY: 'story',   // кадры истории: завязка и финал
 };
 
 const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» после сворачивания окна
 const FIREWORK_INTERVAL = 0.35;
-
-// Завязка и финал кампании. Одна фраза на кадр — длиннее ребёнок не дослушает,
-// да и Speech всё равно не умеет говорить две подряд.
-const INTRO_FRAMES = [
-  { icon: 'ui-album', line: 'Зомби утащили твой альбом с наклейками!' },
-  { icon: 'ui-page', line: 'Они порвали его на двенадцать страниц.' },
-  { icon: 'ui-map', line: 'И спрятали страницы по всему свету.' },
-  { icon: 'ui-hero', line: 'Пойдём забирать! Первая — во дворе.' },
-];
-
-const FINALE_FRAMES = [
-  { icon: 'ui-album', line: 'Двенадцать страниц! Альбом снова целый!' },
-  { icon: 'ui-trophy', line: 'Ты вернул все наклейки. Ты настоящий герой!' },
-];
 
 export class Game {
   constructor(canvas) {
@@ -78,7 +66,9 @@ export class Game {
     this.storage = new Storage();
     this.album = new Album(this.storage);
     this.achievements = new Achievements(this.storage);
-    this.campaign = new Campaign(this.storage);
+    // Текущее путешествие. Пересчитывается при каждом входе на карту:
+    // пройденное первое само уступает место второму.
+    this.campaign = currentJourney(this.storage);
     // Спека текущей главы или null. Единственный признак «мы в кампании», и
     // снимается он в launch() — то есть при ЛЮБОМ входе в бой, включая
     // обычный раунд. Иначе после выхода из главы игра продолжала бы считать,
@@ -87,7 +77,10 @@ export class Game {
     // Финал ждёт показа. Ставится в момент, когда встала последняя страница,
     // а не вычисляется на входе в карту: пройденные главы можно переигрывать,
     // и «все главы пройдены» было бы истиной после каждой такой победы.
-    this.pendingFinale = false;
+    // Чей финал ещё не показан: id путешествия либо null. Именно id, а не
+    // булев флаг — с двумя путешествиями флаг не скажет, чью концовку играть,
+    // и ребёнок увидел бы финал первого, закончив второе.
+    this.pendingFinale = null;
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
     this.input = new Input();
@@ -159,6 +152,11 @@ export class Game {
         onMenu: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
+      journeys: new JourneysScreen('journeys-overlay', {
+        onPick: (id) => this.enterJourney(id),
+        onClose: () => this.goToMenu(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
       map: new MapScreen('map-overlay', {
         onPlay: (chapterId) => this.startChapter(chapterId),
         // Магазин прямо с карты. Без него ребёнок упирается в седьмую главу:
@@ -175,6 +173,8 @@ export class Game {
         // спрашивали «кто играет» только внутри «Новой игры», и позвать
         // второго на одну главу было нельзя.
         onPlayers: () => this.openPlayers(() => this.openMap()),
+        // Переключить путешествие. Кнопки нет, пока открыто одно: мёртвый
+        // контрол для нечитающего ребёнка хуже, чем его отсутствие.
         onClose: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
@@ -343,7 +343,7 @@ export class Game {
     this.chapter = null;
     this.audio.stopMusic();
     this.hideAllScreens();
-    this.screens.menu.render(this.storage.data);
+    this.screens.menu.render(this.storage.data, this.storage);
   }
 
   // «Продолжить» — сразу в бой с сохранённым героем, оружием и раундом.
@@ -657,7 +657,7 @@ export class Game {
     if (outcome === 'victory') {
       if (this.chapter) {
         page = this.campaign.complete(this.chapter.id);
-        if (page && this.campaign.isComplete) this.pendingFinale = true;
+        if (page && this.campaign.isComplete) this.pendingFinale = this.campaign.id;
       } else {
         save.round = summary.round + 1;
         save.bestRound = Math.max(save.bestRound, save.round);
@@ -677,7 +677,8 @@ export class Game {
       this.audio.victory();
       this.fireworkTimer = 0;
       this.screens.end.renderVictory(summary, this.getCharacter().look, {
-        fresh, medals, next, page: page ? this.chapter : null,
+        fresh, medals, next,
+        page: page ? { chapter: this.chapter, reward: this.campaign.spec.reward } : null,
       });
     } else {
       this.audio.fail();
@@ -699,25 +700,58 @@ export class Game {
 
   // Вход из меню. Первый раз показываем завязку: без неё карта — просто
   // двенадцать картинок, и непонятно, зачем по ним идти.
+  //
+  // Считаем пройденные главы ЭТОГО путешествия, а не длину общего списка:
+  // список общий на все путешествия, и после первого он никогда не пуст —
+  // завязка второго не показалась бы никогда. Молча.
+  // Вход из меню. Путешествий больше одного — сначала спрашиваем, куда идти:
+  // выбор из двух историй ребёнок должен увидеть ДО того, как окажется внутри
+  // одной из них. Путешествие одно — экран выбора не показываем вовсе, это
+  // было бы лишнее нажатие.
   openCampaign() {
-    if (this.campaign.done.length === 0) {
-      this.state = GameState.STORY;
-      this.hideAllScreens();
-      this.screens.story.play(INTRO_FRAMES, () => this.openMap());
-      return;
-    }
-    this.openMap();
+    const open = openJourneys(this.storage);
+    if (open.length < 2) return this.enterJourney(open[0]?.id);
+
+    this.state = GameState.JOURNEYS;
+    this.hideAllScreens();
+    this.screens.journeys.render(open, currentJourney(this.storage).id);
   }
 
-  openMap() {
-    if (this.pendingFinale) {
-      this.pendingFinale = false;
-      this.chapter = null;
-      this.state = GameState.STORY;
-      this.hideAllScreens();
-      this.screens.story.play(FINALE_FRAMES, () => this.openMap());
-      return;
+  // Заходим в выбранное путешествие. Завязка играется один раз — когда
+  // ребёнок попадает сюда впервые.
+  //
+  // Считаем главы ЭТОГО путешествия, а не длину общего списка: список общий на
+  // все, и после первого он никогда не пуст — завязка второго не показалась бы
+  // никогда. Молча.
+  enterJourney(journeyId) {
+    this.campaign = openJourneys(this.storage).find((c) => c.id === journeyId)
+      || currentJourney(this.storage);
+    this.audio.click();
+    if (this.campaign.doneCount === 0 && this.campaign.spec.intro) {
+      return this.playStory(this.campaign.spec.intro, () => this.openMap(this.campaign.id));
     }
+    this.openMap(this.campaign.id);
+  }
+
+  playStory(frames, next) {
+    this.state = GameState.STORY;
+    this.hideAllScreens();
+    this.screens.story.play(frames, next);
+  }
+
+  openMap(journeyId = null) {
+    if (this.pendingFinale) {
+      const finished = allJourneys(this.storage).find((c) => c.id === this.pendingFinale);
+      this.pendingFinale = null;
+      this.chapter = null;
+      return this.playStory(finished.spec.finale, () => this.openMap(finished.id));
+    }
+
+    const open = openJourneys(this.storage);
+    this.campaign = open.find((c) => c.id === journeyId) || currentJourney(this.storage);
+    this.storage.data.campaign.at = this.campaign.id;
+    this.storage.save();
+
     this.chapter = null;
     this.state = GameState.MAP;
     this.round = null;

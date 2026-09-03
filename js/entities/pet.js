@@ -15,7 +15,7 @@
 // снаряды, а оружие героя выберет его целью.
 
 import { CONFIG } from '../config.js';
-import { drawShadow, drawBeast, drawDrone } from '../render/sprites.js';
+import { drawShadow, drawBeast, drawDrone, drawHero } from '../render/sprites.js';
 import { Bullet } from './projectile.js';
 
 export class Pet {
@@ -175,7 +175,39 @@ class DronePet extends Pet {
   }
 }
 
-export const PET_CLASSES = { dog: DogPet, drone: DronePet };
+// Спасённый из клетки. Не кусает — отпихивает: «друг дерётся» и «друг
+// помогает» для пятилетнего разные вещи, и вторая правильнее.
+//
+// Питомцем, а не сущностью, он сделан намеренно: питомцы уже обновляются
+// раундом, участвуют в сортировке по Y, никогда не попадают в world.enemies —
+// и НЕ МОГУТ ПОГИБНУТЬ. Гибель друга — ровно та эмоция, которой игра избегает.
+class FriendPet extends Pet {
+  constructor(x, y, owner) { super('friend', x, y, owner); }
+
+  attack(dt, world, target) {
+    if (!target || this.attackTimer > 0) return;
+    const reach = target.radius + this.radius + this.spec.biteRange;
+    if (Math.hypot(target.x - this.x, target.y - this.y) > reach) return;
+
+    world.damageEnemy(target, this.spec.damage);
+    target.applyKnockback(this.x, this.y, this.spec.force);
+    world.particles.addBurst(target.x, target.y, 5, 0.5);
+    this.attackTimer = this.spec.cooldown;
+    this.attackAnim = 0.18;
+  }
+
+  drawBody(ctx) {
+    drawHero(ctx, {
+      radius: this.radius,
+      walkPhase: this.walkPhase,
+      facing: this.facing,
+      blinking: false,
+      look: this.spec.look,
+    });
+  }
+}
+
+export const PET_CLASSES = { dog: DogPet, drone: DronePet, friend: FriendPet };
 
 // Неизвестный id — null, а не исключение: игра должна запускаться в любом
 // случае, как и со способностями.

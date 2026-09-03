@@ -361,6 +361,12 @@ html, body {
   .panel--characters .hero-card__name { font-size: 12px; }
   .panel--characters .hero-card__perk,
   .panel--characters .hero-card__ability { display: none; }
+  /* На выборе путешествия карточек две, а не десять: счёт пройденного там
+     помещается и нужен — по нему видно, что уже начато. Правило выше прячет
+     подписи ради десяти героев в три ряда. */
+  .panel--journeys .hero-card { width: 140px; }
+  .panel--journeys .hero-card__perk { display: flex; font-size: 13px; }
+
   .panel--characters .heroes { gap: 8px; }
 
   .hero-card__name {
