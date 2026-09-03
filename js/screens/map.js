@@ -32,11 +32,12 @@ const BOSS_SIZE = 72;
 const PER_ROW = 4;
 
 export class MapScreen extends Overlay {
-  constructor(rootId, { onPlay, onShop, onHero, onClose, onSpeak }) {
+  constructor(rootId, { onPlay, onShop, onHero, onPlayers, onClose, onSpeak }) {
     super(rootId);
     this.onPlay = onPlay;
     this.onShop = onShop;
     this.onHero = onHero;
+    this.onPlayers = onPlayers;
     this.onClose = onClose;
     this.onSpeak = onSpeak;
     this.stops = [];
@@ -65,6 +66,10 @@ export class MapScreen extends Overlay {
     this.selected = campaign.currentIndex;
 
     const progress = campaignProgress(save);
+    // Кнопка показывает нынешний выбор, а не приглашение его сменить:
+    // ребёнок читать не умеет, и «Вдвоём» рядом с двумя фигурками говорит
+    // ему, что сейчас играют двое, — а нажатие это меняет.
+    const duo = (save.playersCount || 1) > 1;
     this.setContent(`
       <div class="panel panel--map">
         <h2 class="title title--small">${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()}</h2>
@@ -79,6 +84,9 @@ export class MapScreen extends Overlay {
         <button class="btn btn--big" data-action="play">ИГРАТЬ ${icon('ui-play')}</button>
         <div class="menu-buttons">
           <button class="btn btn--secondary" data-action="hero">${icon('ui-hero')} Герой</button>
+          <button class="btn btn--secondary" data-action="players">
+            ${icon(duo ? 'ui-heroes' : 'ui-hero')} ${duo ? 'Вдвоём' : 'Один'}
+          </button>
           <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин ${icon('ui-money')} ${save.coins}</button>
           <button class="btn btn--secondary" data-action="close">${icon('ui-home')} В меню</button>
         </div>
@@ -92,6 +100,7 @@ export class MapScreen extends Overlay {
     });
     this.on('[data-action="play"]', () => this.enter());
     this.on('[data-action="hero"]', this.onHero);
+    this.on('[data-action="players"]', this.onPlayers);
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="close"]', this.onClose);
     this.bindSpeakButtons(this.onSpeak);
