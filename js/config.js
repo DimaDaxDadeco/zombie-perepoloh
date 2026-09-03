@@ -1209,6 +1209,9 @@ export const CONFIG = {
     { id: 'pagesBack', icon: 'medal-pagesBack', name: 'Всё вернул',
       about: 'Прошёл всё путешествие и вернул альбом!',
       hint: 'Пройди все главы путешествия' },
+    { id: 'friendsHome', icon: 'medal-friendsHome', name: 'Все дома',
+      about: 'Спас всех друзей и привёл их домой!',
+      hint: 'Пройди все главы второго путешествия' },
     { id: 'collector', icon: 'medal-collector', name: 'Полный альбом',
       about: 'Собрал все наклейки!',
       hint: 'Открой все наклейки в альбоме' },
@@ -1300,6 +1303,77 @@ export const CONFIG = {
           goal: 'boss', about: 'Последняя страница у Каменного голема' },
       ],
     },
+
+    // Второе путешествие. Открывается финалом первого — раньше его не видно
+    // нигде: карта с замком это обещание, на которое нельзя нажать.
+    //
+    // Ставка тут не на боссов, а на ЗАДАЧИ: боссов двенадцать, и все они
+    // заняты в первом путешествии. Здесь их три, знаками препинания, а
+    // остальные девять глав — четыре новые задачи. Оси уровней это тоже на
+    // руку: она кончается на двенадцатом, и «сложнее» приходится делать
+    // содержанием, а не номером.
+    {
+      id: 'friends',
+      title: 'Спаси друзей',
+      icon: 'ui-heroes',
+      needs: 'album',
+      medal: 'friendsHome',
+      reward: {
+        icon: 'ui-hero',
+        word: 'друзей',
+        line: 'ДРУГ СПАСЁН!',
+        voice: 'Ура! Друг снова с тобой!',
+      },
+      // Кадры показываются сразу после финала первого путешествия: новая
+      // карта должна быть событием, а не дверью, которую ребёнок видел всё
+      // время и не мог открыть.
+      unlock: [
+        { icon: 'ui-cage', line: 'Смотри! Зомби заперли твоих друзей в клетках.' },
+        { icon: 'ui-map', line: 'Они спрятали их по всему свету. Пойдём выручать!' },
+      ],
+      finale: [
+        { icon: 'ui-heroes', line: 'Все двенадцать друзей дома!' },
+        { icon: 'ui-trophy', line: 'Ты никого не бросил. Вот это настоящий герой!' },
+      ],
+      chapters: [
+        { id: 'fr1',  level: 1,  theme: 'yard',  boss: 'tophat',
+          goal: { kind: 'rescue', count: 5 }, modifier: null,
+          about: 'Первый друг сидит в клетке во дворе' },
+        { id: 'fr2',  level: 2,  theme: 'park',  boss: 'mother',
+          goal: { kind: 'thief', count: 5 }, modifier: null,
+          about: 'Воришка утащил ключи от клеток' },
+        { id: 'fr3',  level: 3,  theme: 'farm',  boss: 'runner',
+          goal: { kind: 'delivery', count: 5 }, modifier: null,
+          about: 'Отнеси друзьям еду на ферме' },
+        { id: 'fr4',  level: 4,  theme: 'beach', boss: 'clown',
+          goal: 'boss', modifier: 'medalRain',
+          about: 'Клоун стережёт клетку на пляже' },
+        { id: 'fr5',  level: 5,  theme: 'cave',  boss: 'bones',
+          goal: { kind: 'campfire', count: 35 }, modifier: null,
+          about: 'В пещере темно — береги костёр' },
+        { id: 'fr6',  level: 6,  theme: 'rink',  boss: 'ice',
+          goal: { kind: 'rescue', count: 7 }, modifier: null,
+          about: 'Клетки вмёрзли в лёд на катке' },
+        { id: 'fr7',  level: 7,  theme: 'park',  boss: 'spider',
+          goal: { kind: 'thief', count: 7 }, modifier: null,
+          about: 'Целая шайка воришек в парке' },
+        { id: 'fr8',  level: 8,  theme: 'space', boss: 'volt',
+          goal: { kind: 'delivery', count: 7 }, modifier: null,
+          about: 'В космосе всё разлетелось — собери и отнеси' },
+        { id: 'fr9',  level: 9,  theme: 'farm',  boss: 'guard',
+          goal: { kind: 'campfire', count: 45 }, modifier: null,
+          about: 'Охранник хочет потушить костёр на ферме' },
+        { id: 'fr10', level: 10, theme: 'cave',  boss: 'healer',
+          goal: 'boss', modifier: null,
+          about: 'Знахарь спрятал друга в глубине пещеры' },
+        { id: 'fr11', level: 11, theme: 'yard',  boss: 'fire',
+          goal: { kind: 'rescue', count: 9 }, modifier: null,
+          about: 'Последние клетки — прямо у дома' },
+        { id: 'fr12', level: 12, theme: 'space', boss: 'stonegolem',
+          goal: 'boss', modifier: null,
+          about: 'Каменный голем не отдаёт последнего друга' },
+      ],
+    },
   ],
 
   // Цели раунда. Умолчания видов; конкретная глава добавляет к ним count и
@@ -1323,7 +1397,10 @@ export const CONFIG = {
       icon: 'ui-cage', count: 7,
       holdTime: 2,          // телеграф честный, не короче секунды
       radius: 26, reach: 14,
-      minSpacing: 220,      // между клетками; вдвоём их пять, и это уже впритык
+      // Между клетками. Больше не ставим: девять клеток с разносом в двести
+      // на арену 900×600 не влезают, отбор сваливается в запасной вариант и
+      // клетки слипаются.
+      minSpacing: 150,
       friendPet: 'friend',
       intervalFactor: 0.9, batchBonus: 1,
     },
@@ -1379,6 +1456,10 @@ export const CONFIG = {
       // вперёд, решая, не пора ли сворачивать.
       wallMargin: 55, lookAhead: 130, centerPull: 0,
       startMargin: 200,   // воришка не появляется прижатым к стене
+      // Сколько бегает разом. Больше двух на арену не расставить, и куча
+      // ловится залпом: глава на семь воришек проходилась за то же время, что
+      // на пять. Остальные выходят по мере поимки.
+      atOnce: 2, minSpacing: 260,
       dropEvery: 1.2,      // не чаще одной монетки в секунду с небольшим
       reward: 6,            // медалек за поимку
       // Фон слабее прочих задач: главное здесь — бег, а не отстрел.

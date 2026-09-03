@@ -117,9 +117,14 @@ export function openJourneys(storage) {
 // открытое и незавершённое.
 export function currentJourney(storage) {
   const open = openJourneys(storage);
-  const at = storage.data.campaign.at;
-  return open.find((c) => c.id === at)
-    || open.find((c) => !c.isComplete)
+  const stood = open.find((c) => c.id === storage.data.campaign.at);
+  // «Где стоял» держит курсор, только пока путешествие НЕ пройдено. Иначе
+  // ребёнок, заглянувший на старую карту, обнаруживал бы в меню кнопку
+  // «Верни альбом 12/12» вместо новой цели — то есть игра предлагала бы ему
+  // сделанное вместо предстоящего.
+  if (stood && !stood.isComplete) return stood;
+  return open.find((c) => !c.isComplete)
+    || stood
     || open[open.length - 1]
     || allJourneys(storage)[0];
 }

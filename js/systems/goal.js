@@ -347,13 +347,33 @@ class ThiefGoal extends CountGoal {
     this.thieves = [];
   }
 
+  // Воришки выходят ВОЛНАМИ, по atOnce разом, а не все сразу.
+  //
+  // Иначе не влезают: семь штук с приличным разносом на арене 900×600 не
+  // расставить, отбор точек сваливается в запасной вариант и ставит их кучей
+  // — а куча ловится залпом. Глава на семь воришек проходилась за те же
+  // одиннадцать секунд, что и на пять.
   setup(world) {
-    for (let i = 0; i < this.target(world); i++) {
-      const at = placeAway(world, this.thieves, { minSpacing: 200, margin: this.spec.startMargin });
-      const thief = new Thief(at.x, at.y, this.spec, world, () => { this.caught += 1; });
+    this.released = 0;
+    this.refill(world);
+  }
+
+  refill(world) {
+    while (this.thieves.filter((t) => t.alive).length < this.spec.atOnce
+      && this.released < this.target(world)) {
+      this.released += 1;
+      const at = placeAway(world, this.thieves.filter((t) => t.alive), {
+        minSpacing: this.spec.minSpacing, margin: this.spec.startMargin,
+      });
+      const thief = new Thief(at.x, at.y, this.spec, world, (t, w) => this.onCatch(t, w));
       this.thieves.push(thief);
       world.addEnemy(thief);
     }
+  }
+
+  onCatch(thief, world) {
+    this.caught += 1;
+    this.refill(world);
   }
 
   done() {
