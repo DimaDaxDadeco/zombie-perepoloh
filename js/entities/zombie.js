@@ -135,11 +135,15 @@ export class Zombie {
   // Кого догоняем. Цель держим CONFIG.coop.retargetTime секунд, а не
   // пересматриваем каждый кадр: ровно между двумя игроками ближайший
   // меняется по тридцать раз в секунду, и зомби вместо ходьбы вибрирует.
+  //
+  // Приманка от цели раунда идёт первой: в главе с костром часть толпы бежит
+  // тушить огонь, а не кусать героя. Обычный раунд приманок не заводит, и
+  // тогда это ровно прежний код.
   retarget(dt, world) {
     this.targetTimer -= dt;
     if (this.target && this.targetTimer > 0) return this.target;
     this.targetTimer = CONFIG.coop.retargetTime;
-    this.target = world.nearestPlayer(this.x, this.y);
+    this.target = world.lureFor?.(this) || world.nearestPlayer(this.x, this.y);
     return this.target;
   }
 
