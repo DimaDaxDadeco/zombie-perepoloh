@@ -67,7 +67,7 @@ export class MapScreen extends Overlay {
     const progress = campaignProgress(save);
     this.setContent(`
       <div class="panel panel--map">
-        <h2 class="title title--small">${CONFIG.campaign.emoji} ${CONFIG.campaign.title.toUpperCase()}</h2>
+        <h2 class="title title--small">${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()}</h2>
         <div class="map-pages">
           ${renderPageStrip(progress)}
           <span class="map-pages__count">${progress.open}/${progress.total}</span>

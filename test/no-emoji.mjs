@@ -86,6 +86,21 @@ for (const path of targets) {
   });
 }
 
+// Третья проверка: обращений к полю `emoji` не осталось. Поле переименовано в
+// `icon`, но забытое `spec.emoji` даёт undefined, а не ошибку — на экране
+// появляется слово «undefined», и ни первая проверка, ни глаз этого не ловят.
+// Ровно так уцелел заголовок карты кампании.
+const stale = [];
+for (const path of targets) {
+  if (extname(path) !== '.js') continue;
+  const code = stripComments(readFileSync(path, 'utf8'), '.js');
+  code.split('\n').forEach((line, i) => {
+    if (/\.emoji\b|\bemoji:/.test(line)) {
+      stale.push(`${path.replace(ROOT, '')}:${i + 1}  ${line.trim()}`);
+    }
+  });
+}
+
 // Вторая проверка: имя иконки из конфига обязано существовать в реестре.
 // Опечатку иначе заметит только ребёнок, увидев красный квадрат.
 const names = [];
@@ -102,7 +117,7 @@ add('кампания', [CONFIG.campaign.icon]);
 const known = new Set(ICON_NAMES);
 const missing = names.filter(([, name]) => !known.has(name));
 
-if (found.length || missing.length) {
+if (found.length || missing.length || stale.length) {
   if (found.length) {
     console.error(`\nЭмодзи в выводимом коде — ${found.length}:`);
     console.error(found.map((f) => `  ${f}`).join('\n'));
@@ -112,8 +127,13 @@ if (found.length || missing.length) {
     console.error(`\nНет таких иконок в реестре — ${missing.length}:`);
     console.error(missing.map(([w, n]) => `  ${w}: ${n}`).join('\n'));
   }
+  if (stale.length) {
+    console.error(`\nОсталось поле emoji — ${stale.length}:`);
+    console.error(stale.map((f) => `  ${f}`).join('\n'));
+    console.error('\nОно переименовано в icon и хранит имя значка.');
+  }
   process.exit(1);
 }
 
-console.log(`Значки: эмодзи в коде нет, все ${names.length} имён из конфига найдены `
-  + `(в реестре ${ICON_NAMES.length}).`);
+console.log(`Значки: эмодзи в коде нет, поля emoji не осталось, `
+  + `все ${names.length} имён из конфига найдены (в реестре ${ICON_NAMES.length}).`);
