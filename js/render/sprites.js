@@ -3544,13 +3544,17 @@ export function drawLoot(ctx, { radius, phase = 0 }) {
 // вопрос ребёнка «где эта штука вообще».
 export function drawGiftBox(ctx, { radius, phase = 0, glow = true }) {
   const pulse = 1 + Math.sin(phase * 3) * 0.1;
+  // Сияние — КРАСНОЕ, в цвет самой коробки. Золотое было первым вариантом и
+  // спорило с подарком: получалась медалька в обёртке, а не подарок. Заодно
+  // жёлтым в этой игре светится всё остальное — медальки, место доставки,
+  // заряженная способность.
   if (glow) {
     ctx.save();
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#ffd93d';
+    ctx.globalAlpha = 0.34;
+    ctx.fillStyle = '#ff5a48';
     circle(ctx, 0, 0, radius * 1.9 * pulse);
     ctx.fill();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.2;
     circle(ctx, 0, 0, radius * 2.6 * pulse);
     ctx.fill();
     ctx.restore();
