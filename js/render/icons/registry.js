@@ -9,7 +9,9 @@
 // который сверяет имена иконок из конфига с этим реестром.
 
 import { UI_ICONS } from './ui.js';
+import { WEAPON_ICONS } from './weapons.js';
 
 export const ICONS = {
   ...UI_ICONS,
+  ...WEAPON_ICONS,
 };
