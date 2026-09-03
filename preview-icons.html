@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Стенд иконок</title>
+<style>
+  body { margin: 0; background: #1c1a38; color: #fff;
+         font: 13px/1.5 'Trebuchet MS', system-ui, sans-serif; }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap;
+         gap: 8px; align-items: center; padding: 10px 16px;
+         background: #14122c; border-bottom: 1px solid #322e5c; }
+  .bar a, .bar button { color: #fff; background: #322e5c; border: 0; padding: 6px 12px;
+         border-radius: 8px; text-decoration: none; cursor: pointer; font: inherit; }
+  .bar button.on { background: #ff6b35; }
+  h2 { margin: 22px 16px 6px; font-size: 15px; opacity: .8; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+          gap: 10px; padding: 0 16px; }
+  .cell { background: var(--bg); border-radius: 12px; padding: 10px; text-align: center;
+          border: 1px solid #ffffff22; }
+  .row { display: flex; align-items: flex-end; justify-content: center; gap: 10px;
+         min-height: 92px; overflow: hidden; color: var(--ink); }
+  .s16 { font-size: 16px } .s24 { font-size: 24px }
+  .s48 { font-size: 44px } .s96 { font-size: 72px }
+  .name { margin-top: 6px; font-family: ui-monospace, monospace; font-size: 11px;
+          opacity: .65; cursor: copy; word-break: break-all; }
+  .pair { display: flex; gap: 12px; align-items: center; justify-content: center;
+          margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ffffff33; }
+  .pair span { font-size: 10px; opacity: .5 }
+  /* Иконка занимает 1.15em — примерно столько же места, сколько занимал
+     эмодзи при том же font-size. Благодаря этому ВСЕ прежние правила вида
+     `.card__emoji { font-size: 60px }` продолжают работать без единой
+     правки, включая оба медиазапроса и посчитанную вручную раскладку выбора
+     героя под 375 пикселей. Меняете коэффициент — меняете размер всех
+     значков сразу, поэтому он один на проект, а не по классам. */
+  .icon { width: 1.15em; height: 1.15em; display: inline-block;
+          vertical-align: -0.16em; flex: none; }
+  .miss { padding: 8px 16px; color: #ff8a9b; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Иконки</strong>
+  <a href="preview-heroes.html">герои</a>
+  <a href="preview-zombies.html">зомби</a>
+  <a href="preview-bosses.html">боссы</a>
+  <a href="preview-locations.html">локации</a>
+  <a href="preview-firetrail.html">дорожка</a>
+  <span style="margin-left:12px">фон:</span>
+  <span id="bgs"></span>
+</div>
+<div id="report" class="miss"></div>
+<div id="out"></div>
+
+<script type="module">
+import { icon, drawIcon, ICON_NAMES, hasIcon } from './js/render/icons.js';
+import { CONFIG } from './js/config.js';
+
+// Фоны: панель меню, светлый лист и все грунты тем — контраст значка на
+// космосе и на катке разный, а проверять надо оба.
+const BACKGROUNDS = [
+  { name: 'панель', bg: '#242145', ink: '#ffffff' },
+  { name: 'светлый', bg: '#f2ecdd', ink: '#2a2750' },
+  ...CONFIG.themes.map((t) => ({ name: t.name, bg: t.ground, ink: '#ffffff' })),
+];
+let current = 0;
+
+const bgs = document.getElementById('bgs');
+BACKGROUNDS.forEach((b, i) => {
+  const btn = document.createElement('button');
+  btn.textContent = b.name;
+  btn.onclick = () => { current = i; render(); };
+  bgs.appendChild(btn);
+});
+
+// Группировка по префиксу имени: ui-, weapon-, ability-… Так стенд сам
+// раскладывается по доменам и не требует ручного списка — забытая иконка
+// не может тихо выпасть из просмотра.
+// Постраничный показ: ?page=2 или ?only=weapon. Иконок под сотню, и одним
+// полотном их не разглядеть — а разглядывать надо каждую.
+const params = new URLSearchParams(location.search);
+const ONLY = params.get('only');
+const PER_PAGE = Number(params.get('per') || 12);
+const PAGE = Number(params.get('page') || 1);
+
+function visibleNames() {
+  const all = ONLY ? ICON_NAMES.filter((n) => n.startsWith(ONLY)) : ICON_NAMES;
+  return all.slice((PAGE - 1) * PER_PAGE, PAGE * PER_PAGE);
+}
+
+function groups() {
+  const map = new Map();
+  for (const name of visibleNames()) {
+    const key = name.split('-')[0];
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(name);
+  }
+  return map;
+}
+
+function render() {
+  const theme = BACKGROUNDS[current];
+  document.querySelectorAll('#bgs button').forEach((b, i) =>
+    b.classList.toggle('on', i === current));
+
+  const out = document.getElementById('out');
+  out.innerHTML = [...groups()].map(([key, names]) => `
+    <h2>${key} — ${names.length}</h2>
+    <div class="grid">
+      ${names.map((n) => `
+        <div class="cell" style="--bg:${theme.bg};--ink:${theme.ink}">
+          <div class="row">
+            <span class="s16">${icon(n)}</span>
+            <span class="s24">${icon(n)}</span>
+            <span class="s48">${icon(n)}</span>
+            <span class="s96">${icon(n)}</span>
+          </div>
+          <div class="pair">
+            <span>canvas&nbsp;→</span>
+            <canvas data-icon="${n}" width="48" height="48"></canvas>
+            <canvas data-icon="${n}" width="16" height="16"></canvas>
+          </div>
+          <div class="name" data-copy="${n}">${n}</div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  // Правая половина карточки — та же иконка, нарисованная на canvas. Два
+  // рендерера из одного определения разъезжаются молча, и увидеть это можно
+  // только рядом.
+  for (const canvas of out.querySelectorAll('canvas[data-icon]')) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawIcon(ctx, canvas.dataset.icon, canvas.width / 2, canvas.height / 2,
+      canvas.width, { color: theme.ink });
+  }
+
+  out.querySelectorAll('.name').forEach((el) => {
+    el.onclick = () => navigator.clipboard?.writeText(el.dataset.copy);
+  });
+}
+
+// Покрытие: что в конфиге уже переведено на иконки, а чего в реестре нет.
+function checkCoverage() {
+  const wanted = [];
+  const add = (where, list) => list.forEach((v) => v && wanted.push([where, v]));
+  add('оружия', Object.values(CONFIG.weapons).map((w) => w.icon));
+  add('способности', Object.values(CONFIG.abilities || {}).map((a) => a && a.icon));
+  add('магазин', Object.values(CONFIG.shop).map((s) => s.icon));
+  add('медали', CONFIG.achievements.map((a) => a.icon));
+  add('сложности', CONFIG.difficulties.map((d) => d.icon));
+  const missing = wanted.filter(([, name]) => !hasIcon(name));
+  const el = document.getElementById('report');
+  el.textContent = missing.length
+    ? `Нет в реестре (${missing.length}): ` + missing.map(([w, n]) => `${w}/${n}`).join(', ')
+    : `Иконок в реестре: ${ICON_NAMES.length}. Все имена из конфига найдены.`;
+  const total = ONLY ? ICON_NAMES.filter((n) => n.startsWith(ONLY)).length : ICON_NAMES.length;
+  const pages = Math.ceil(total / PER_PAGE);
+  el.textContent += `  |  страница ${PAGE} из ${pages}`
+    + (pages > 1 ? ' — ?page=N, ?only=префикс, ?per=N' : '');
+}
+
+render();
+checkCoverage();
+</script>
+</body>
+</html>
