@@ -1,0 +1,313 @@
+// Стенд героев. Импортирует настоящие модули игры, поэтому походка, эффекты
+// способности и мигание неуязвимости здесь ровно те же, что в бою: правишь
+// sprites.js — правится и стенд.
+//
+// Живёт вкладкой на общей странице стендов (preview.html). mount() рисует
+// свою разметку внутрь переданного корня и возвращает функцию остановки —
+// без неё циклы анимации копились бы с каждым переключением вкладки.
+
+import { CONFIG } from '../js/config.js';
+import {
+  drawHero, drawShadow, drawAbilitySparks, drawAbilityEffect, drawBeast, drawDrone,
+  drawPortal, drawMedalPickup, drawStinkCloud, drawBatmobile, circle,
+} from '../js/render/sprites.js';
+import { SpiderMinion } from '../js/entities/projectile.js';
+import { drawIcon } from '../js/render/icons.js';
+
+export const title = 'Герои';
+export const about = 'В каждой полосе четверо: обычный, мигает после удара, способность заряжена и способность работает';
+
+export function mount(root) {
+  root.innerHTML = `
+    <div class="tools">
+      <button id="toggle">Пауза</button>
+      <button id="slow">Замедлить</button>
+      <button id="flip">Развернуть</button>
+      <button id="pets">Питомцы: нет</button>
+    </div>
+    <canvas id="stage" class="stage" width="1400"></canvas>
+  `;
+  const $ = (sel) => root.querySelector(sel);
+  let alive = true;
+
+  // Стенд для просмотра героев. Импортирует настоящие модули игры, поэтому
+  // походка, эффекты способности и мигание неуязвимости здесь ровно те же,
+  // что в бою: правишь sprites.js — правится и стенд.
+
+  const canvas = $('#stage');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+
+  const heroes = CONFIG.characters;
+  // Высоту ставим из JS по числу героев: при делении фиксированной высоты
+  // добавление героя молча сплющивает полосы, и фигуры лезут друг на друга.
+  // На четверых подпись уже залезала в соседнюю полосу на девять пикселей.
+  const LANE_HEIGHT = 260;
+  canvas.height = heroes.length * LANE_HEIGHT;
+  const H = canvas.height;
+  const RADIUS = 44;             // в игре 20, здесь крупнее — чтобы разглядеть детали
+  const BASE_SPEED = 90;
+
+  let running = true;
+  let timeScale = 1;
+  let facing = 1;
+
+  $('#toggle').onclick = (e) => {
+    running = !running;
+    e.target.textContent = running ? 'Пауза' : 'Продолжить';
+  };
+  $('#slow').onclick = (e) => {
+    timeScale = timeScale === 1 ? 0.25 : 1;
+    e.target.textContent = timeScale === 1 ? 'Замедлить' : 'Обычная скорость';
+  };
+  // Влево герой рисуется зеркально — тут это удобно проверить одной кнопкой.
+  $('#flip').onclick = () => { facing = -facing; };
+
+  // Питомцев показываем рядом с героем: важна именно пара, а не собачка сама
+  // по себе — и то, отличается ли она от зомби-собаки на игровом размере.
+  const PETS = ['none', 'dog', 'drone'];
+  const PET_NAMES = { none: 'нет', dog: 'собачка', drone: 'дрон' };
+  let pet = 'none';
+  $('#pets').onclick = (e) => {
+    pet = PETS[(PETS.indexOf(pet) + 1) % PETS.length];
+    e.target.textContent = `Питомцы: ${PET_NAMES[pet]}`;
+  };
+
+  // Четыре состояния, в которых героя вообще можно увидеть в игре.
+  const STATES = [
+    { label: 'обычный', glow: 'none' },
+    { label: 'после удара', glow: 'none', blink: true },
+    { label: 'способность заряжена', glow: 'ready' },
+    { label: 'способность работает', glow: 'active' },
+  ];
+
+  const walkers = [];
+  heroes.forEach((hero, i) => {
+    const laneY = LANE_HEIGHT * (i + 0.66);
+    STATES.forEach((state, k) => {
+      walkers.push({ hero, state, y: laneY, x: W * (0.14 + k * 0.23), phase: k * 1.1 });
+    });
+  });
+
+  // Эффект способности рисуется двумя слоями вокруг героя — ровно так же,
+  // как в player.js: back до персонажа, front после.
+  function drawFx(w, ability, layer) {
+    if (w.state.glow === 'none' || !ability) return;
+    const fx = { radius: RADIUS, color: ability.color, phase: w.phase, facing, layer };
+    if (w.state.glow === 'active') drawAbilityEffect(ctx, { ...fx, style: w.hero.ability });
+    else drawAbilitySparks(ctx, fx);
+  }
+
+  // Способности, живущие в МИРЕ, а не на герое. drawAbilityEffect про них не
+  // знает — он умеет только рисовать вокруг персонажа, — и раньше стенд честно
+  // писал «эффект в бою», то есть не показывал ничего. Здесь они собраны
+  // картинкой: настоящими функциями, где такие есть, и понятным намёком, где
+  // эффект живёт снарядами или частицами.
+  const WORLD_FX = {
+    // 💥 Волна: расходящиеся кольца, как их рисуют частицы в бою.
+    shockwave(w, spec) {
+      ctx.strokeStyle = spec.color;
+      [0.55, 0.85, 1.15].forEach((k, i) => {
+        ctx.globalAlpha = 0.75 - i * 0.22;
+        ctx.lineWidth = RADIUS * 0.16;
+        ctx.beginPath();
+        ctx.arc(0, RADIUS * 0.6, RADIUS * 2.2 * k, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    },
+
+    // 🌀 Портал: та же самая функция, что и в бою.
+    portal(w, spec) {
+      drawPortal(ctx, {
+        x: 0, y: RADIUS * 1.4, grip: spec.grip, reach: spec.radius * 0.5,
+        color: spec.color, phase: w.phase, fade: 1,
+      });
+    },
+
+    // ⛈ Разряд: молнии от героя к нескольким точкам вокруг.
+    zap(w, spec) {
+      ctx.strokeStyle = spec.color;
+      ctx.lineWidth = RADIUS * 0.09;
+      ctx.lineJoin = 'round';
+      [-2.4, -1.1, 0.5, 1.9].forEach((a, i) => {
+        const tx = Math.cos(a) * RADIUS * 2.4;
+        const ty = Math.sin(a) * RADIUS * 1.5 + RADIUS * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -RADIUS);
+        ctx.lineTo(tx * 0.45 + RADIUS * 0.2, ty * 0.4 - RADIUS * 0.3);
+        ctx.lineTo(tx * 0.72 - RADIUS * 0.2, ty * 0.75);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.fillStyle = spec.color;
+        ctx.globalAlpha = 0.35;
+        circle(ctx, tx, ty, spec.radius * 0.5);
+        ctx.globalAlpha = 1;
+      });
+    },
+
+    // 🕷 Полчище паучков: настоящие снаряды, нарисованные своим же кодом.
+    swarm(w, spec) {
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + w.phase * 0.2;
+        const d = RADIUS * (1.5 + Math.sin(w.phase + i) * 0.3);
+        const minion = new SpiderMinion(0, 0, a, {
+          speed: 0, turnSpeed: 0, damage: 0, life: 9, retarget: 1,
+          chillFactor: spec.chillFactor, chillTime: spec.chillTime,
+        });
+        minion.x = Math.cos(a) * d;
+        minion.y = Math.sin(a) * d * 0.7 + RADIUS * 0.5;
+        minion.wobble = w.phase + i;
+        minion.draw(ctx);
+      }
+    },
+
+    // 🎁 Подарки: хлопки кольцами и медальки, что остаются после.
+    gifts(w, spec) {
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + 0.4;
+        const x = Math.cos(a) * RADIUS * 1.9;
+        const y = Math.sin(a) * RADIUS * 1.2 + RADIUS * 0.5;
+        ctx.strokeStyle = spec.color;
+        ctx.globalAlpha = 0.7;
+        ctx.lineWidth = RADIUS * 0.1;
+        ctx.beginPath();
+        ctx.arc(x, y, spec.blastRadius * 0.42, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.save();
+        ctx.translate(x, y);
+        drawMedalPickup(ctx, { radius: RADIUS * 0.22, phase: w.phase + i });
+        ctx.restore();
+      }
+    },
+
+    // 🚗 Бэтмобиль: та же машина, что и в бою, — рисуется настоящей функцией,
+    // поэтому разъехаться со стендом физически не может.
+    batmobile(w, spec) {
+      // Машина крупная и едет МИМО героя, а не стоит у него под ногами: в бою
+      // она проносится через всю арену, и стенд должен показывать это, а не
+      // игрушку на подставке.
+      ctx.save();
+      ctx.translate(-RADIUS * 1.7, RADIUS * 0.8);
+      ctx.scale(RADIUS / 30, RADIUS / 30);
+      drawBatmobile(ctx, 0, 0, 1, w.phase * 6);
+      ctx.restore();
+      // След от колёс — намёк, что она приехала издалека, а не стоит.
+      ctx.strokeStyle = spec.color;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = RADIUS * 0.08;
+      ctx.setLineDash([RADIUS * 0.3, RADIUS * 0.25]);
+      ctx.beginPath();
+      ctx.moveTo(-RADIUS * 3.4, RADIUS * 1.45);
+      ctx.lineTo(-RADIUS * 2.4, RADIUS * 1.45);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    },
+  };
+
+  function drawWalker(w) {
+    const ability = CONFIG.abilities[w.hero.ability];
+    const worldFx = WORLD_FX[w.hero.ability];
+    const active = w.state.glow === 'active';
+    ctx.save();
+    ctx.translate(w.x, w.y);
+    drawShadow(ctx, RADIUS);
+    // Перк-облако Хэнки рисуется всегда, как и в бою: это не способность, а
+    // постоянное свойство героя, и на стенде оно должно быть в каждой колонке.
+    if (w.hero.perk?.stinkRadius) {
+      drawStinkCloud(ctx, w.hero.perk.stinkRadius * (RADIUS / 20) * 0.5, w.phase);
+    }
+    // Мировые эффекты — под героем: в бою они лежат на земле.
+    if (active && worldFx) worldFx(w, ability);
+    drawFx(w, ability, 'back');
+
+    drawHero(ctx, {
+      radius: RADIUS,
+      walkPhase: w.phase,
+      facing,
+      // Мигание в игре идёт по таймеру неуязвимости — здесь по фазе шага.
+      blinking: w.state.blink && Math.floor(w.phase * 1.6) % 2 === 0,
+      look: w.hero.look,
+    });
+    drawFx(w, ability, 'front');
+    if (pet !== 'none') drawPetBeside(w);
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(28,26,56,0.7)';
+    ctx.font = '13px system-ui, sans-serif';
+    // Раньше тут стояла заглушка «эффект в бою» для способностей, живущих в
+    // мире. Список в ней устаревал молча, и половина колонок оставалась пустой.
+    // Теперь рисуется всё, а подпись помечает мировые эффекты как таковые.
+    // Мировые эффекты лежат на земле и перекрывают подпись — её приходится
+    // отодвигать ниже. Портал наступал на неё ровно так.
+    const inWorld = active && WORLD_FX[w.hero.ability];
+    const label = inWorld ? `${w.state.label} (в мире)` : w.state.label;
+    ctx.fillText(label, w.x, w.y + RADIUS * (inWorld ? 2.7 : 2.1));
+    ctx.restore();
+  }
+
+  function drawPetBeside(w) {
+    const spec = CONFIG.pets[pet];
+    const r = RADIUS * 0.7;
+    ctx.save();
+    ctx.translate(-facing * RADIUS * 2.1, RADIUS * 0.5);
+    drawShadow(ctx, r);
+    if (pet === 'dog') {
+      drawBeast(ctx, { radius: r, walkPhase: w.phase, facing, look: spec.look, mood: 'friendly' });
+    } else {
+      drawDrone(ctx, { radius: r, phase: w.phase, facing, look: spec.look });
+    }
+    ctx.restore();
+  }
+
+  // Полосы чередуются оттенком — так соседние герои не сливаются.
+  function drawLanes() {
+    heroes.forEach((hero, i) => {
+      const top = LANE_HEIGHT * i;
+      ctx.fillStyle = i % 2 ? '#78c04b' : '#7ec850';
+      ctx.fillRect(0, top, W, LANE_HEIGHT);
+
+      const ability = CONFIG.abilities[hero.ability];
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#1c1a38';
+      ctx.font = 'bold 20px system-ui, sans-serif';
+      ctx.fillText(hero.name, 18, top + 30);
+
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(28,26,56,0.65)';
+      ctx.fillText(`перк: ${hero.about}`, 18, top + 52);
+      if (ability) {
+        // Значок рисуем, а не пишем текстом: поле emoji переименовано в icon
+        // и хранит ИМЯ иконки. Прежняя строка молча печатала «undefined» —
+        // поймал это гейт значков, а не глаз.
+        drawIcon(ctx, ability.icon, 26, top + 67, 16);
+        ctx.fillText(`${ability.name} — ${ability.about}`, 38, top + 72);
+      }
+    });
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    if (!alive) return;
+    const dt = Math.min(0.05, (now - last) / 1000) * timeScale;
+    last = now;
+
+    if (running) {
+      for (const w of walkers) {
+        // Герои шагают на месте: важна походка и эффекты, а не перемещение.
+        w.phase += dt * 9;
+      }
+    }
+
+    drawLanes();
+    walkers.forEach(drawWalker);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  return () => { alive = false; };
+}

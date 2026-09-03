@@ -20,9 +20,8 @@ const ROOT = new URL('..', import.meta.url).pathname;
 
 // Что проверяем. docs/ и README.md намеренно НЕ проверяем: там эмодзи —
 // текст для разработчика, они уместны и полезны в таблицах.
-const DIRS = ['js', 'css'];
-const FILES = ['index.html'];
-const PREVIEWS = readdirSync(ROOT).filter((f) => f.startsWith('preview-') && f.endsWith('.html'));
+const DIRS = ['js', 'css', 'preview'];
+const FILES = ['index.html', 'preview.html'];
 
 // Одной «эмодзи-области» мало. ▶ (U+25B6) и ● (U+25CF) живут в блоке
 // геометрических фигур, и без него проверка пропустила бы половину кнопок.
@@ -71,7 +70,6 @@ function walk(dir) {
 const targets = [
   ...DIRS.flatMap((d) => walk(join(ROOT, d))),
   ...FILES.map((f) => join(ROOT, f)),
-  ...PREVIEWS.map((f) => join(ROOT, f)),
 ];
 
 const found = [];
