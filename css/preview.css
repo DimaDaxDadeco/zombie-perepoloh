@@ -1,0 +1,167 @@
+/* Общая страница стендов (preview.html).
+   К игре не относится: index.html этот файл не подключает. */
+
+body {
+  margin: 0;
+  background: #1c1a38;
+  color: #fff;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+/* --- Шапка: вкладки и подпись активного стенда --- */
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 10px 16px;
+  background: #14122c;
+  border-bottom: 1px solid #322e5c;
+}
+
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tab {
+  font: inherit;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #322e5c;
+  color: #fff;
+  cursor: pointer;
+}
+
+.tab:hover { background: #433d77; }
+.tab--on { background: #ff6b35; }
+
+.about {
+  margin: 8px 2px 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+/* --- Панель кнопок стенда --- */
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.tools button {
+  font: inherit;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #ff6b3d;
+  color: #fff;
+  cursor: pointer;
+}
+
+.tools button:hover { background: #ff8a5f; }
+
+/* --- Фон под каждый стенд --- */
+
+/* Персонажей смотрим на траве — на том же фоне, что в игре: контраст
+   силуэта с землёй и есть половина того, ради чего стенд существует. */
+body[data-stand='heroes'],
+body[data-stand='zombies'],
+body[data-stand='bosses'] { background: #7ec850; }
+
+body[data-stand='firetrail'] { background: #2a2536; text-align: center; }
+
+.stage { display: block; width: 100%; height: auto; }
+
+/* --- Локации --- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+  padding: 18px;
+}
+
+.tile { background: #262346; border-radius: 14px; overflow: hidden; }
+.tile h2 { margin: 0; padding: 10px 14px 4px; font-size: 19px; }
+.tile p { margin: 0; padding: 0 14px 10px; color: rgba(255, 255, 255, 0.6); font-size: 13px; }
+.tile canvas { display: block; width: 100%; height: auto; }
+
+/* --- Значки --- */
+
+/* Своя сетка: у локаций плитки широкие, у значков — мелкие карточки.
+   Раньше это были два отдельных файла со своим .grid; теперь страница одна,
+   и правила обязаны быть разведены явно. */
+body[data-stand='icons'] .grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.bgs { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 0; }
+
+.bgs button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #322e5c;
+  color: #fff;
+  cursor: pointer;
+}
+
+.bgs button.on { background: #ff6b35; }
+
+.report { padding: 8px 16px; color: #ff8a9b; font-size: 13px; }
+
+.cell {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+  border: 1px solid #ffffff22;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  min-height: 92px;
+  overflow: hidden;
+  color: var(--ink);
+}
+
+.s16 { font-size: 16px; }
+.s24 { font-size: 24px; }
+.s48 { font-size: 44px; }
+.s96 { font-size: 72px; }
+
+.name {
+  margin-top: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  opacity: 0.65;
+  cursor: copy;
+  word-break: break-all;
+}
+
+.pair {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #ffffff33;
+}
+
+.pair span { font-size: 10px; opacity: 0.5; }
+
+body[data-stand='icons'] h2 { margin: 22px 16px 6px; font-size: 15px; opacity: 0.8; }
+
+/* --- Огненная дорожка --- */
+
+body[data-stand='firetrail'] h3 { margin: 14px 0 4px; font-size: 15px; }
+body[data-stand='firetrail'] .note { margin: 0 0 6px; opacity: 0.65; font-size: 13px; }
+body[data-stand='firetrail'] canvas { background: #6b8f4e; border-radius: 10px; }
