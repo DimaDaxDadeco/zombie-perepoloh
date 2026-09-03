@@ -44,7 +44,8 @@ function resolveHitsFor(world, player) {
     : (player.isRaging ? CONFIG.abilities.rage : null);
   if (contact) {
     for (const enemy of world.enemies) {
-      if (!enemy.alive || enemy.isHidden || !circlesOverlap(player, enemy)) continue;
+      if (!enemy.alive || enemy.isHidden || enemy.harmless) continue;
+      if (!circlesOverlap(player, enemy)) continue;
       enemy.applyKnockback(player.x, player.y, contact.force);
       world.damageEnemy(enemy, contact.damage, 'ability');
       world.particles.addBurst(enemy.x, enemy.y, 8, 0.8);
@@ -56,6 +57,10 @@ function resolveHitsFor(world, player) {
 
   for (const enemy of world.enemies) {
     if (!enemy.alive || enemy.isHidden) continue;   // крот под землёй не кусается
+    // Воришку ЛОВЯТ, а не он кусает: касание с ним не отнимает сердечко и
+    // не даёт ярости его «убить». Флаг нужен в обеих ветках — и в контактной
+    // выше, иначе катящийся Соник расправился бы с ним сам.
+    if (enemy.harmless) continue;
     if (!circlesOverlap(player, enemy)) continue;
     enemy.onTouchPlayer?.(player); // ледяной босс примораживает
     if (player.takeDamage()) {
@@ -94,6 +99,11 @@ export function separateEnemies(enemies) {
       // давит. Пропускаем пару целиком — это не «я тяжёлый», как у босса
       // ниже, а «мы физически не встречаемся».
       if (a.isFloating || b.isFloating) continue;
+      // Воришка проскальзывает через толпу. Не украшение: замер показал, что
+      // расталкивание превращает толпу в сеть — воришку прибивало к зомби, и
+      // догонялки сводились к «подойди». Он и так безобиден, встречаться ему
+      // с толпой незачем.
+      if (a.harmless || b.harmless) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const minDist = a.radius + b.radius;

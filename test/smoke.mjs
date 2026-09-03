@@ -48,11 +48,41 @@ for (const heroId of heroIds()) {
   }
 }
 
+// Второй проход: каждое оружие × каждая задача со своими объектами мира.
+//
+// Это гейт правила «ни один выбор не должен быть проигрышным». Ребёнок берёт
+// стартовое оружие по картинке, и глава с воришкой обязана заканчиваться и
+// мечом, который бьёт вплотную по убегающему. На глаз такое не проверишь: надо
+// сыграть все четырнадцать.
+const PROP_GOALS = ['rescue', 'delivery', 'campfire', 'thief'];
+let goalRuns = 0;
+
+for (const goal of PROP_GOALS) {
+  for (const weaponId of selectableWeaponIds()) {
+    const where = `${goal} / ${weaponId}`;
+    goalRuns++;
+    seedRandom(seed++);
+    try {
+      const result = playRound({ round: ROUND, heroId: 'superS', weaponId, goal });
+      // Победы не требуем — упасть можно и в честной главе. Требуем, чтобы
+      // раунд ЗАКОНЧИЛСЯ: «идёт и идёт» означает, что цель недостижима.
+      if (!result.finished) problems.push(`${where}: раунд не завершился за ${result.frames} кадров`);
+      if (!Number.isFinite(result.hp)) problems.push(`${where}: hp = ${result.hp}`);
+    } catch (error) {
+      problems.push(`${where}: ${error.message.split('\n')[0]}`);
+    } finally {
+      unseedRandom();
+    }
+  }
+}
+
 const seconds = ((Date.now() - started) / 1000).toFixed(1);
 const heroes = heroIds().length;
 const weapons = selectableWeaponIds().length;
 
-console.log(`Смоук: ${heroes} героев × ${weapons} оружий = ${runs} прогонов на раунде ${ROUND}, ${seconds} с`);
+console.log(`Смоук: ${heroes} героев × ${weapons} оружий = ${runs} прогонов`
+  + ` плюс ${weapons} оружий × ${PROP_GOALS.length} задач = ${goalRuns},`
+  + ` всё на раунде ${ROUND}, ${seconds} с`);
 
 if (problems.length === 0) {
   console.log(`Всё в порядке. Зомби-типов ${CONFIG.zombieTypes.length}, боссов ${CONFIG.bossTypes.length}.`);

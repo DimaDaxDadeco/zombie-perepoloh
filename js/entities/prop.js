@@ -53,6 +53,14 @@ export class Prop {
     return best;
   }
 
+  // Арена изменилась (повернули планшет) — вернуться в кадр. Проп за краем
+  // экрана делает главу непроходимой: до него не добежать.
+  clampToArena(arena) {
+    const m = this.radius + 8;
+    this.x = Math.max(m, Math.min(arena.width - m, this.x));
+    this.y = Math.max(m, Math.min(arena.height - m, this.y));
+  }
+
   // Круг с кругом, как все столкновения в проекте. reach — запас, чтобы
   // ребёнку не приходилось попадать в пиксель.
   touching(entity) {
@@ -174,6 +182,11 @@ export class Load extends Prop {
     this.x = this.carrier.x;
     // Над головой: сортировка по Y тогда сама кладёт ношу поверх героя.
     this.y = this.carrier.y - this.carrier.radius * 2.2;
+
+    // Донесли. Проверяет сама ноша, а не цель: тогда цели не нужен свой
+    // покадровый крючок, и её роль остаётся прежней — расставить и посчитать.
+    const zone = this.spec.zone;
+    if (zone && zone.touching(this.carrier)) this.spec.onDeliver(this, world);
   }
 
   pickUp(player) {

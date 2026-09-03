@@ -62,6 +62,37 @@ function fleeDirection(player, enemies) {
   return { x: x / length, y: y / length };
 }
 
+// Куда бот хочет попасть в этой главе. Задачи вроде «освободи друзей» или
+// «догони воришку» требуют бежать К чему-то, а бот умеет только убегать — он
+// не завершил бы такую главу никогда, и гейт показал бы поломку там, где её
+// нет.
+//
+// Точку называет сама цель (Goal.botHint). Копия игровых правил здесь была бы
+// хуже: харнесс принципиально ничего не считает сам. У всех старых целей
+// botHint возвращает null, поэтому смоук и балансная сетка идут прежним кодом.
+function goalDirection(world, player) {
+  const point = world.goal.botHint?.(world, player);
+  if (!point) return null;
+  const dx = point.x - player.x;
+  const dy = point.y - player.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length };
+}
+
+// Смесь «беги к задаче» и «уворачивайся». Перевес у задачи: иначе бот кружит
+// вокруг клетки, не решаясь подойти, и глава не заканчивается.
+const GOAL_PULL = 0.7;
+
+function steer(world, player) {
+  const flee = fleeDirection(player, world.enemies);
+  const goal = goalDirection(world, player);
+  if (!goal) return flee;
+  const x = goal.x * GOAL_PULL + flee.x * (1 - GOAL_PULL);
+  const y = goal.y * GOAL_PULL + flee.y * (1 - GOAL_PULL);
+  const length = Math.hypot(x, y) || 1;
+  return { x: x / length, y: y / length };
+}
+
 // Один раунд от начала до исхода.
 //
 // Сид не задаётся здесь: подмена Math.random должна произойти ДО импорта
@@ -111,7 +142,7 @@ export function playRound({
   while (!world.finished && frames < FRAME_LIMIT) {
     const player = world.player;
     if (player.ability?.isReady) world.useAbility(0);
-    world.update(FRAME, [fleeDirection(player, world.enemies)]);
+    world.update(FRAME, world.players.map((p) => steer(world, p)));
     frames++;
   }
 

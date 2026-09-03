@@ -158,10 +158,24 @@ export function bossOf(chapter) {
 }
 
 // Задача главы словами — для озвучки на карте и подписи под карточкой.
+//
+// Таблицей, а не лестницей условий: промах в лестнице молча давал «Победи
+// босса: », и заметить это можно было бы только глазами. count берётся из
+// спеки главы, а если она его не указала — из умолчания цели, иначе карта
+// сказала бы «Освободи undefined друзей».
+const GOAL_TEXT = {
+  zombies: (g) => `Прогони ${g.count} зомби`,
+  medals: (g) => `Собери ${g.count} медалек`,
+  survive: (g, chapter) => `Продержись ${chapter.duration} секунд`,
+  rescue: (g) => `Освободи ${g.count} друзей`,
+  delivery: (g) => `Отнеси вещь ${g.count} раза`,
+  campfire: (g) => `Береги костёр ${g.count} секунд`,
+  thief: (g) => (g.count > 1 ? `Поймай ${g.count} воришек` : 'Поймай воришку'),
+};
+
 export function goalText(chapter) {
-  const goal = typeof chapter.goal === 'string' ? { kind: chapter.goal } : chapter.goal;
-  if (goal.kind === 'zombies') return `Прогони ${goal.count} зомби`;
-  if (goal.kind === 'medals') return `Собери ${goal.count} медалек`;
-  if (goal.kind === 'survive') return `Продержись ${chapter.duration} секунд`;
-  return `Победи босса: ${bossOf(chapter)?.name || ''}`;
+  const spec = typeof chapter.goal === 'string' ? { kind: chapter.goal } : chapter.goal;
+  const text = GOAL_TEXT[spec.kind];
+  if (!text) return `Победи босса: ${bossOf(chapter)?.name || ''}`;
+  return text({ ...CONFIG.goals[spec.kind], ...spec }, chapter);
 }
