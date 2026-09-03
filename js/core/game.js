@@ -26,6 +26,7 @@ import { DifficultyScreen } from '../screens/difficulty.js';
 import { PlayersScreen } from '../screens/players.js';
 import { AlbumScreen } from '../screens/album.js';
 import { MapScreen } from '../screens/map.js';
+import { JourneysScreen } from '../screens/journeys.js';
 import { StoryScreen } from '../screens/story.js';
 import { ConfirmScreen } from '../screens/confirm.js';
 import { WeaponsScreen } from '../screens/weapons.js';
@@ -48,6 +49,7 @@ export const GameState = {
   WEAPONS: 'weapons',
   CONFIRM: 'confirm',
   ALBUM: 'album',
+  JOURNEYS: 'journeys', // выбор путешествия
   MAP: 'map',       // карта сюжетной кампании
   STORY: 'story',   // кадры истории: завязка и финал
 };
@@ -150,6 +152,11 @@ export class Game {
         onMenu: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
+      journeys: new JourneysScreen('journeys-overlay', {
+        onPick: (id) => this.enterJourney(id),
+        onClose: () => this.goToMenu(),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
       map: new MapScreen('map-overlay', {
         onPlay: (chapterId) => this.startChapter(chapterId),
         // Магазин прямо с карты. Без него ребёнок упирается в седьмую главу:
@@ -168,7 +175,6 @@ export class Game {
         onPlayers: () => this.openPlayers(() => this.openMap()),
         // Переключить путешествие. Кнопки нет, пока открыто одно: мёртвый
         // контрол для нечитающего ребёнка хуже, чем его отсутствие.
-        onJourney: (id) => this.openMap(id),
         onClose: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
@@ -698,16 +704,33 @@ export class Game {
   // Считаем пройденные главы ЭТОГО путешествия, а не длину общего списка:
   // список общий на все путешествия, и после первого он никогда не пуст —
   // завязка второго не показалась бы никогда. Молча.
+  // Вход из меню. Путешествий больше одного — сначала спрашиваем, куда идти:
+  // выбор из двух историй ребёнок должен увидеть ДО того, как окажется внутри
+  // одной из них. Путешествие одно — экран выбора не показываем вовсе, это
+  // было бы лишнее нажатие.
   openCampaign() {
-    this.campaign = currentJourney(this.storage);
-    // Завязка играется один раз — когда ребёнок заходит в это путешествие
-    // впервые. Считаем главы ЭТОГО путешествия, а не длину общего списка:
-    // список общий на все, и после первого он никогда не пуст — завязка
-    // второго не показалась бы никогда. Молча.
+    const open = openJourneys(this.storage);
+    if (open.length < 2) return this.enterJourney(open[0]?.id);
+
+    this.state = GameState.JOURNEYS;
+    this.hideAllScreens();
+    this.screens.journeys.render(open, currentJourney(this.storage).id);
+  }
+
+  // Заходим в выбранное путешествие. Завязка играется один раз — когда
+  // ребёнок попадает сюда впервые.
+  //
+  // Считаем главы ЭТОГО путешествия, а не длину общего списка: список общий на
+  // все, и после первого он никогда не пуст — завязка второго не показалась бы
+  // никогда. Молча.
+  enterJourney(journeyId) {
+    this.campaign = openJourneys(this.storage).find((c) => c.id === journeyId)
+      || currentJourney(this.storage);
+    this.audio.click();
     if (this.campaign.doneCount === 0 && this.campaign.spec.intro) {
-      return this.playStory(this.campaign.spec.intro, () => this.openMap());
+      return this.playStory(this.campaign.spec.intro, () => this.openMap(this.campaign.id));
     }
-    this.openMap();
+    this.openMap(this.campaign.id);
   }
 
   playStory(frames, next) {
@@ -734,11 +757,7 @@ export class Game {
     this.round = null;
     this.audio.stopMusic();
     this.hideAllScreens();
-    // Все открытые путешествия — вкладками в шапке карты. Одно открыто,
-    // значит вкладка одна и выглядит как прежний заголовок.
-    this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look, {
-      journeys: open,
-    });
+    this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look);
   }
 
   togglePause() {

@@ -361,6 +361,12 @@ html, body {
   .panel--characters .hero-card__name { font-size: 12px; }
   .panel--characters .hero-card__perk,
   .panel--characters .hero-card__ability { display: none; }
+  /* На выборе путешествия карточек две, а не десять: счёт пройденного там
+     помещается и нужен — по нему видно, что уже начато. Правило выше прячет
+     подписи ради десяти героев в три ряда. */
+  .panel--journeys .hero-card { width: 140px; }
+  .panel--journeys .hero-card__perk { display: flex; font-size: 13px; }
+
   .panel--characters .heroes { gap: 8px; }
 
   .hero-card__name {
@@ -849,52 +855,6 @@ html, body, #game-canvas, #touch-controls { touch-action: none; }
 .panel--map { width: min(94vw, 760px); }
 
 /* Полоска страниц: сколько альбома уже собрано. */
-/* Вкладки путешествий в шапке карты. Появляются, только когда путешествий
-   больше одного; при одном там прежний заголовок. Выбор между ними обязан
-   быть виден сразу — кнопка под картой уезжала под сгиб. */
-.map-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-}
-
-.map-tab {
-  font: inherit;
-  font-size: 17px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-secondary);
-  color: var(--color-text);
-  cursor: pointer;
-  opacity: 0.65;
-}
-
-.map-tab:hover { opacity: 0.9; }
-
-/* Активная — цветом путешествия, а не просто ярче: ребёнок не читает, и
-   «где я сейчас» должно отличаться от «куда можно уйти» без слов. */
-.map-tab--on {
-  background: var(--color-journey);
-  opacity: 1;
-}
-
-.map-tab__count {
-  font-size: 13px;
-  font-weight: normal;
-  opacity: 0.85;
-}
-
-@media (max-width: 760px) {
-  .map-tab { font-size: 14px; padding: 6px 10px; }
-  .map-tab__count { font-size: 11px; }
-}
-
 .map-pages {
   display: flex;
   align-items: center;
