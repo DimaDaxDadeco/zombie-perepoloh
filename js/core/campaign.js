@@ -70,16 +70,16 @@ export function campaignProgress(save) {
   };
 }
 
-// Эмодзи локации: карта и экран победы показывают ими место главы. Держим
+// Значок локации: карта и экран победы показывают им место главы. Держим
 // здесь, а не в CONFIG.themes: это подпись для ребёнка, а не свойство фона, и
-// тема без эмодзи не должна считаться сломанной.
-const THEME_EMOJI = {
-  yard: '🏡', park: '🌳', beach: '🏖', space: '🚀',
-  cave: '🕳', rink: '⛸', farm: '🌾',
+// тема без значка не должна считаться сломанной.
+const THEME_ICON = {
+  yard: 'place-yard', park: 'place-park', beach: 'place-beach', space: 'place-space',
+  cave: 'place-cave', rink: 'place-rink', farm: 'place-farm',
 };
 
-export function themeEmoji(themeId) {
-  return THEME_EMOJI[themeId] || '📄';
+export function themeIcon(themeId) {
+  return THEME_ICON[themeId] || 'ui-page';
 }
 
 // Цвета локации — карта красит ими остановки, и семь разных мест читаются с

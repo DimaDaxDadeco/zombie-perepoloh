@@ -50,12 +50,12 @@ export const CONFIG = {
     order: ['medalRain', 'night', 'horde'],
 
     medalRain: {
-      emoji: '🌧', name: 'Дождь медалек', announce: 'Дождь медалек!',
+      icon: 'round-medalRain', name: 'Дождь медалек', announce: 'Дождь медалек!',
       extraMedals: 1, dropInterval: 1.2, dropRadius: 300, dropMinDist: 70,
       maxPickups: 40,
     },
     night: {
-      emoji: '🌙', name: 'Ночь', announce: 'Ночь! Смотри, у тебя фонарик',
+      icon: 'round-night', name: 'Ночь', announce: 'Ночь! Смотри, у тебя фонарик',
       // Тёмно-синий, а не чёрный: чёрный экран — единственное, что реально
       // страшно в пять лет. Прозрачность 0.55, а не 0.9: зомби вне круга
       // обязан оставаться узнаваемым силуэтом, никто не выпрыгивает из
@@ -65,7 +65,7 @@ export const CONFIG = {
       flicker: 12,
     },
     horde: {
-      emoji: '🧟', name: 'Волна-толпа', announce: 'Их очень много! Беги!',
+      icon: 'round-horde', name: 'Волна-толпа', announce: 'Их очень много! Беги!',
       hp: 0.5, maxTypeHp: 1, intervalFactor: 0.5, batchBonus: 2, maxAlive: 1.6,
     },
   },
@@ -299,14 +299,14 @@ export const CONFIG = {
   // множители единичные. Подробности и цели по победам — в docs/balance.md.
   difficulties: [
     {
-      id: 'easy', name: 'Легко', emoji: '🐣',
+      id: 'easy', name: 'Легко', icon: 'difficulty-easy',
       about: 'Зомби медленные, сердечки быстро возвращаются',
       hpRoundOffset: 0, hpEveryRounds: 3,
       zombieSpeed: 1, spawnRate: 1, maxAlive: 1, bossHp: 1,
       regenFactor: 1, extraHearts: 0, money: 1,
     },
     {
-      id: 'normal', name: 'Нормально', emoji: '🙂',
+      id: 'normal', name: 'Нормально', icon: 'difficulty-normal',
       about: 'Зомби покрепче, зато долларов больше',
       // Сердечки намеренно не режем: «нормально» должно читаться как
       // «зомби больше», а не «жизней меньше».
@@ -315,7 +315,7 @@ export const CONFIG = {
       regenFactor: 1.35, extraHearts: 0, money: 1.5,
     },
     {
-      id: 'hard', name: 'Сложно', emoji: '🔥',
+      id: 'hard', name: 'Сложно', icon: 'difficulty-hard',
       about: 'Зомби быстрые и злые, зато долларов вдвое больше',
       hpRoundOffset: 1, hpEveryRounds: 2,
       zombieSpeed: 1.25, spawnRate: 1.3, maxAlive: 1.35, bossHp: 1.45,
@@ -332,13 +332,13 @@ export const CONFIG = {
     bossCharge: 10,     // босс сразу даёт полшкалы: убил босса — есть чем начать
 
     shockwave: {
-      name: 'Супер-удар', emoji: '💥', about: 'Волна раскидывает зомби',
+      name: 'Супер-удар', icon: 'ability-shockwave', about: 'Волна раскидывает зомби',
       color: '#ff8a2b',
       radius: 260, damage: 6, force: 900,
       shake: { strength: 12, time: 0.35 },
     },
     portal: {
-      name: 'Портал', emoji: '🌀', about: 'Затягивает зомби в иной мир',
+      name: 'Портал', icon: 'ability-portal', about: 'Затягивает зомби в иной мир',
       color: '#b06bff',
       duration: 4,
       radius: 290,      // кого достаёт воронка
@@ -355,12 +355,12 @@ export const CONFIG = {
       grip: 85,
     },
     turbo: {
-      name: 'Турбо', emoji: '⚡', about: 'Оружие палит вдвое чаще',
+      name: 'Турбо', icon: 'ability-turbo', about: 'Оружие палит вдвое чаще',
       color: '#9be86b',
       duration: 6, rate: 2,
     },
     spindash: {
-      name: 'Спин-дэш', emoji: '💨', about: 'Катится шаром и всех сшибает',
+      name: 'Спин-дэш', icon: 'ability-spindash', about: 'Катится шаром и всех сшибает',
       color: '#4fd1ff',
       // Длинный рывок, а не короткий тычок: он бьёт только по прямой, и на
       // 0.9 сек задевал двоих-троих. Плюс всё это время герой неуязвим —
@@ -369,7 +369,7 @@ export const CONFIG = {
       duration: 1.8, speed: 700, damage: 6, force: 780,
     },
     swarm: {
-      name: 'Полчище паучков', emoji: '🕷', about: 'Паучки разбегаются и кусают',
+      name: 'Полчище паучков', icon: 'ability-swarm', about: 'Паучки разбегаются и кусают',
       color: '#c8b6ff',
       // Их заметно больше, чем пчёл, и живут дольше — иначе на глаз это
       // тот же рой. Плюс укус замедляет, чего пчёлы не умеют.
@@ -377,14 +377,14 @@ export const CONFIG = {
       chillFactor: 0.55, chillTime: 1.2,
     },
     rage: {
-      name: 'Ярость', emoji: '👊', about: 'Растёт и сносит всех подряд',
+      name: 'Ярость', icon: 'ability-rage', about: 'Растёт и сносит всех подряд',
       color: '#7bd94a',
       // Три секунды, а не пять: с пятью Халк давал 81/90 против 69 у эталона.
       // Режем длительность, а не «два сердечка» — сердечки его имя.
       duration: 3, size: 1.8, damage: 20, force: 900,
     },
     gifts: {
-      name: 'Подарки', emoji: '🎁', about: 'Подарки хлопают и бьют зомби',
+      name: 'Подарки', icon: 'ability-gifts', about: 'Подарки хлопают и бьют зомби',
       color: '#e8434f',
       // Делает две вещи разом: бьёт и даёт. Медальки идут в опыт, то есть в
       // карточки прокачки, — приятная добавка к урону.
@@ -401,7 +401,7 @@ export const CONFIG = {
     // Машина едет строго горизонтально, потому что рисуется сбоку: под углом
     // вид сбоку читался бы как перевёрнутая коробка.
     batmobile: {
-      name: 'Бэтмобиль', emoji: '🚗', about: 'Машина раскидывает зомби',
+      name: 'Бэтмобиль', icon: 'ability-batmobile', about: 'Машина раскидывает зомби',
       color: '#3f9dd4',
       speed: 900, damage: 10, force: 820, life: 3,
       // Змейка: размах в стороны и длина одной волны в пикселях пути. При 260
@@ -411,12 +411,12 @@ export const CONFIG = {
       shake: { strength: 9, time: 0.3 },
     },
     zap: {
-      name: 'Разряд', emoji: '⛈', about: 'Молнии бьют по всей толпе',
+      name: 'Разряд', icon: 'ability-zap', about: 'Молнии бьют по всей толпе',
       color: '#ffe14d',
       bolts: 8, damage: 7, radius: 60, stunTime: 1.4, stunFactor: 0.15,
     },
     meow: {
-      name: 'Мяу!', emoji: '🐾', about: 'Все зомби замирают',
+      name: 'Мяу!', icon: 'ability-meow', about: 'Все зомби замирают',
       color: '#ffb3de',
       duration: 4,
     },
@@ -797,28 +797,28 @@ export const CONFIG = {
     // быть полноценным оружием (класс, ствол в руке, эмодзи, озвучка).
     // Флаг evolved прячет её из выбора стартового и из карточек «новое».
     water: {
-      name: 'Водяной пистолет', emoji: '💧', evolution: 'watercannon',
+      name: 'Водяной пистолет', icon: 'weapon-water', evolution: 'watercannon',
       cooldown: [0.55, 0.45, 0.4, 0.35, 0.28],
       count:    [1, 1, 2, 2, 3],
       damage:   [1, 1, 1, 2, 2],
       speed: 520,
     },
     tomato: {
-      name: 'Помидорометалка', emoji: '🍅', evolution: 'tomatocannon',
+      name: 'Помидорометалка', icon: 'weapon-tomato', evolution: 'tomatocannon',
       cooldown: [1.7, 1.5, 1.3, 1.15, 1.0],
       radius:   [60, 72, 84, 96, 112],
       damage:   [2, 2, 3, 3, 4],
       flightTime: 0.55,
     },
     lightning: {
-      name: 'Молния', emoji: '⚡', evolution: 'stormbolt',
+      name: 'Молния', icon: 'weapon-lightning', evolution: 'stormbolt',
       cooldown: [1.5, 1.3, 1.15, 1.0, 0.85],
       chain:    [1, 2, 2, 3, 4],
       damage:   [3, 3, 4, 4, 5],
       chainRadius: 170,
     },
     spinner: {
-      name: 'Вертушка', emoji: '🌀', evolution: 'cyclone',
+      name: 'Вертушка', icon: 'weapon-spinner', evolution: 'cyclone',
       // Вертушка бьёт вблизи, а ребёнок убегает — поэтому со старта ей нужны
       // две лопасти и широкая орбита, иначе преследователи её не задевают.
       blades:   [2, 2, 3, 3, 4],
@@ -828,7 +828,7 @@ export const CONFIG = {
       hitCooldown: 0.4,     // пауза между ударами по одному зомби
     },
     rocket: {
-      name: 'Ракета-морковка', emoji: '🥕', evolution: 'carrotswarm',
+      name: 'Ракета-морковка', icon: 'weapon-rocket', evolution: 'carrotswarm',
       cooldown: [3.5, 3.1, 2.7, 2.3, 1.9],
       radius:   [80, 90, 100, 115, 130],
       damage:   [5, 6, 7, 8, 10],
@@ -836,7 +836,7 @@ export const CONFIG = {
       turnSpeed: 3.5,       // как резко доворачивает к цели
     },
     fire: {
-      name: 'Огнемёт', emoji: '🔥', evolution: 'firestorm',
+      name: 'Огнемёт', icon: 'weapon-fire', evolution: 'firestorm',
       cooldown: [0.9, 0.8, 0.7, 0.6, 0.5],
       damage:   [1, 1, 2, 2, 3],   // урон самой струи
       burnDps:  [1, 2, 2, 3, 4],   // и сколько капает каждую секунду горения
@@ -847,7 +847,7 @@ export const CONFIG = {
       range: 330,                  // пламя гаснет на лету: бьёт ближе других, но достаёт
     },
     ice: {
-      name: 'Ледяная пушка', emoji: '❄️', evolution: 'blizzard',
+      name: 'Ледяная пушка', icon: 'weapon-ice', evolution: 'blizzard',
       cooldown:    [1.1, 0.95, 0.85, 0.75, 0.65],
       damage:      [2, 2, 3, 4, 5],
       freezeTime:  [1.4, 1.7, 2.0, 2.4, 2.8],
@@ -857,7 +857,7 @@ export const CONFIG = {
       speed: 420,
     },
     saber: {
-      name: 'Световой меч', emoji: '⚔️', evolution: 'dualsaber',
+      name: 'Световой меч', icon: 'weapon-saber', evolution: 'dualsaber',
       cooldown: [0.75, 0.65, 0.58, 0.5, 0.42],
       damage:   [3, 4, 5, 6, 8],
       reach:    [95, 105, 115, 125, 140],  // длина клинка
@@ -865,7 +865,7 @@ export const CONFIG = {
     },
 
     laser: {
-      name: 'Лазерные глаза', emoji: '👁', evolution: 'wideray',
+      name: 'Лазерные глаза', icon: 'weapon-laser', evolution: 'wideray',
       // Луч бьёт мгновенно, не промахивается и работает без пауз, поэтому
       // урон за секунду держим ниже водяного пистолета: платит он охватом.
       cooldown:   [0.4, 0.35, 0.3, 0.26, 0.22],   // пауза между прожигами
@@ -880,7 +880,7 @@ export const CONFIG = {
         'rgba(255,80,80,0.35)', 'rgba(176,107,255,0.4)'],
     },
     boomerang: {
-      name: 'Бумеранг', emoji: '🪃', evolution: 'doubleboomerang',
+      name: 'Бумеранг', icon: 'weapon-boomerang', evolution: 'doubleboomerang',
       cooldown: [1.4, 1.25, 1.1, 1.0, 0.85],
       damage:   [2, 2, 3, 3, 4],
       range:    [220, 240, 260, 290, 320],        // где разворачивается
@@ -889,7 +889,7 @@ export const CONFIG = {
       spread: 0.5, life: 4,                       // не догнал за 4 секунды — растаял
     },
     bees: {
-      name: 'Рой пчёл', emoji: '🐝', evolution: 'hive',
+      name: 'Рой пчёл', icon: 'weapon-bees', evolution: 'hive',
       cooldown: [2.2, 2.0, 1.8, 1.6, 1.4],
       count:    [3, 3, 4, 5, 6],
       damage:   [2, 2, 2, 3, 3],
@@ -907,7 +907,7 @@ export const CONFIG = {
       // Комета, а не 🔥: с огнемётом значок совпадал, и на экране выбора две
       // карточки были неразличимы. Ребёнок читать не умеет и ориентируется
       // ровно по значку — см. docs/weapons.md.
-      name: 'Огненная дорожка', emoji: '☄️', evolution: 'lavatrail',
+      name: 'Огненная дорожка', icon: 'weapon-firetrail', evolution: 'lavatrail',
       // Дорожка, а не зона под ногами. Ширина — примерно половина героя
       // (радиус героя 20, тут полуширина 11, то есть лента в 22 пикселя), и
       // держится она пять секунд: этого хватает, чтобы обежать толпу и
@@ -943,7 +943,7 @@ export const CONFIG = {
     // конфетти. Зомби выбывает не от урона, а от того, что его поймали, —
     // такого в игре ещё не было.
     bubbles: {
-      name: 'Мыльные пузыри', emoji: '🫧', evolution: 'bubblestorm',
+      name: 'Мыльные пузыри', icon: 'weapon-bubbles', evolution: 'bubblestorm',
       cooldown: [1.5, 1.3, 1.1, 0.95, 0.8],
       count:    [1, 1, 2, 2, 3],
       damage:   [6, 8, 10, 13, 16],   // урон в момент, когда пузырь лопается
@@ -956,7 +956,7 @@ export const CONFIG = {
     // Супер-Егора отличается тем, что ходит, а не стоит: портал — точка на
     // земле, торнадо — блуждающая опасность, от которой толпа не отстаёт.
     tornado: {
-      name: 'Торнадо', emoji: '🌪', evolution: 'hurricane',
+      name: 'Торнадо', icon: 'weapon-tornado', evolution: 'hurricane',
       // Вихрь один: новый выстрел обрывает прежний. Поэтому откат заметно
       // короче жизни — на поздних звёздах торнадо просто не переставая
       // обновляется у героя, и это его характер: он не залп, а спутник.
@@ -974,7 +974,7 @@ export const CONFIG = {
 
     web: {
       signature: true,
-      name: 'Паутина', emoji: '🕸', about: 'Липкие пятна замедляют зомби',
+      name: 'Паутина', icon: 'weapon-web', about: 'Липкие пятна замедляют зомби',
       // Урон почти символический: это оружие-помеха. Паук выезжает не на нём
       // одном, а на том, что наберёт карточками сверху.
       cooldown: [0.9, 0.8, 0.72, 0.64, 0.55],
@@ -990,47 +990,47 @@ export const CONFIG = {
     // короче числа звёзд. Звёзды у эволюции всегда максимальные.
     lavatrail: {
       evolved: true,
-      name: 'Лавовая дорожка', emoji: '🌋', about: 'Шире, жарче и держится дольше',
+      name: 'Лавовая дорожка', icon: 'weapon-lavatrail', about: 'Шире, жарче и держится дольше',
       cooldown: [0.04], radius: [24], burnDps: [22], burnTime: 2.2, patchLife: 7,
       grow: 5, spreadRange: 48, spreadFactor: 0.75,
       squash: 0.72,
     },
     bubblestorm: {
       evolved: true,
-      name: 'Пузырьковая буря', emoji: '🌈', about: 'Ловит сразу пятерых',
+      name: 'Пузырьковая буря', icon: 'weapon-bubblestorm', about: 'Ловит сразу пятерых',
       cooldown: [0.7], count: [5], damage: [20], holdTime: [2.6],
       speed: 280, radius: 30,
     },
     hurricane: {
       evolved: true,
-      name: 'Ураган', emoji: '💨', about: 'Огромный вихрь, тащит всю толпу',
+      name: 'Ураган', icon: 'weapon-hurricane', about: 'Огромный вихрь, тащит всю толпу',
       cooldown: [2.2], radius: [170], damage: [6],
       pull: 340, life: 9, speed: 110, tickTime: 0.2,
     },
     watercannon: {
       evolved: true,
-      name: 'Водомёт', emoji: '🌊', about: 'Бьёт струёй насквозь',
+      name: 'Водомёт', icon: 'weapon-watercannon', about: 'Бьёт струёй насквозь',
       cooldown: [0.16], damage: [2], count: [1], speed: 640, pierce: 4,
     },
     tomatocannon: {
       evolved: true,
-      name: 'Помидорная пушка', emoji: '🍝', about: 'Три помидора разом',
+      name: 'Помидорная пушка', icon: 'weapon-tomatocannon', about: 'Три помидора разом',
       cooldown: [1.1], damage: [6], radius: [130], count: [3],
       flightTime: 0.55, spread: 90,
     },
     dualsaber: {
       evolved: true,
-      name: 'Двойной меч', emoji: '🗡', about: 'Рубит вокруг себя',
+      name: 'Двойной меч', icon: 'weapon-dualsaber', about: 'Рубит вокруг себя',
       cooldown: [0.38], damage: [9], reach: [155], arc: [6.3],
     },
     stormbolt: {
       evolved: true,
-      name: 'Гроза', emoji: '🌩', about: 'Молния прыгает по всей толпе',
+      name: 'Гроза', icon: 'weapon-stormbolt', about: 'Молния прыгает по всей толпе',
       cooldown: [0.8], chain: [7], damage: [5], chainRadius: 230,
     },
     cyclone: {
       evolved: true,
-      name: 'Циклон', emoji: '💠', about: 'Два кольца лопастей',
+      name: 'Циклон', icon: 'weapon-cyclone', about: 'Два кольца лопастей',
       blades: [6], orbit: [150], damage: [5],
       spinSpeed: 4.0, hitCooldown: 0.32,
       // Второе кольцо, поближе: снаружи оно ловит подбегающих, внутри —
@@ -1039,25 +1039,25 @@ export const CONFIG = {
     },
     carrotswarm: {
       evolved: true,
-      name: 'Морковный залп', emoji: '🧡', about: 'Три ракеты разом',
+      name: 'Морковный залп', icon: 'weapon-carrotswarm', about: 'Три ракеты разом',
       cooldown: [2.2], radius: [120], damage: [8], count: [3],
       speed: 320, turnSpeed: 3.8, spread: 0.5,
     },
     firestorm: {
       evolved: true,
-      name: 'Огненный шторм', emoji: '🎆', about: 'Жжёт дольше и шире',
+      name: 'Огненный шторм', icon: 'weapon-firestorm', about: 'Жжёт дольше и шире',
       cooldown: [0.42], damage: [3], burnDps: [6], burnTime: [5.0], count: [7],
       spread: 0.5, speed: 340, range: 360,
     },
     blizzard: {
       evolved: true,
-      name: 'Метель', emoji: '🌨', about: 'Морозит целую пачку',
+      name: 'Метель', icon: 'weapon-blizzard', about: 'Морозит целую пачку',
       cooldown: [0.55], damage: [5], freezeTime: [3.4], freezeFactor: [0.25], count: [5],
       spread: 0.34, speed: 440,
     },
     wideray: {
       evolved: true,
-      name: 'Широкий луч', emoji: '🔭', about: 'Толстый луч, но короче',
+      name: 'Широкий луч', icon: 'weapon-wideray', about: 'Толстый луч, но короче',
       // Единственная эволюция, идущая ВБОК, а не вверх. Лазер и без неё
       // сильнейшее оружие в сетке, и прямое усиление сделало бы его
       // безальтернативным. Поэтому: втрое шире и вдвое больше целей — но
@@ -1068,13 +1068,13 @@ export const CONFIG = {
     },
     doubleboomerang: {
       evolved: true,
-      name: 'Двойной бумеранг', emoji: '🌟', about: 'Летит крест-накрест',
+      name: 'Двойной бумеранг', icon: 'weapon-doubleboomerang', about: 'Летит крест-накрест',
       cooldown: [0.7], damage: [5], range: [340], count: [4],
       speed: 470, returnSpeed: 560, spread: 1.6, life: 4,
     },
     hive: {
       evolved: true,
-      name: 'Улей', emoji: '🍯', about: 'Пчёл вдвое больше',
+      name: 'Улей', icon: 'weapon-hive', about: 'Пчёл вдвое больше',
       cooldown: [1.0], count: [10], damage: [3],
       speed: 240, turnSpeed: 7, life: 3.2, spread: 2.0, retarget: 0.3,
     },
@@ -1115,29 +1115,29 @@ export const CONFIG = {
 
   shop: {
     speed: {
-      name: 'Быстрые кроссовки', emoji: '👟', about: 'Бегаешь быстрее',
+      name: 'Быстрые кроссовки', icon: 'shop-speed', about: 'Бегаешь быстрее',
       prices: [10, 20, 35, 55, 80], bonus: 18,
     },
     heart: {
-      name: 'Сердечко', emoji: '❤️', about: 'Ещё одна жизнь',
+      name: 'Сердечко', icon: 'shop-heart', about: 'Ещё одна жизнь',
       prices: [20, 50], bonus: 1,
     },
     star: {
-      name: 'Сильный старт', emoji: '💪', about: 'Оружие сразу сильнее',
+      name: 'Сильный старт', icon: 'shop-star', about: 'Оружие сразу сильнее',
       prices: [40, 90], bonus: 1,
     },
     magnet: {
-      name: 'Магнит медалек', emoji: '🧲', about: 'Медальки летят к тебе издалека',
+      name: 'Магнит медалек', icon: 'shop-magnet', about: 'Медальки летят к тебе издалека',
       prices: [10, 25, 45, 70], bonus: 1,
     },
     // Питомцы — товары с одной ценой: точки читаются как «есть / нет», и
     // весь остальной код магазина работает без единой правки.
     dog: {
-      name: 'Собачка', emoji: '🐕', about: 'Бегает с тобой и кусает зомби',
+      name: 'Собачка', icon: 'shop-dog', about: 'Бегает с тобой и кусает зомби',
       prices: [60], bonus: 1, pet: 'dog',
     },
     drone: {
-      name: 'Робот-помощник', emoji: '🤖', about: 'Летает рядом и стреляет',
+      name: 'Робот-помощник', icon: 'shop-drone', about: 'Летает рядом и стреляет',
       prices: [90], bonus: 1, pet: 'drone',
     },
   },
@@ -1157,43 +1157,43 @@ export const CONFIG = {
   // Сами проверки живут в js/core/achievements.js: здесь только слова и
   // картинки, как в CONFIG.shop и CONFIG.abilities.
   achievements: [
-    { id: 'noHit', emoji: '🛡', name: 'Ни царапины',
+    { id: 'noHit', icon: 'medal-noHit', name: 'Ни царапины',
       about: 'Прошёл раунд и ни разу не получил!',
       hint: 'Пройди раунд и ни разу не дай себя укусить' },
-    { id: 'bossByAbility', emoji: '💥', name: 'Супер-финал',
+    { id: 'bossByAbility', icon: 'medal-bossByAbility', name: 'Супер-финал',
       about: 'Добил босса суперспособностью!',
       hint: 'Добей босса суперспособностью' },
-    { id: 'evolved', emoji: '⭐', name: 'Выросло!',
+    { id: 'evolved', icon: 'medal-evolved', name: 'Выросло!',
       about: 'Докачал оружие до превращения!',
       hint: 'Прокачай оружие до пятой звезды' },
-    { id: 'arsenal', emoji: '🎒', name: 'Полный арсенал',
+    { id: 'arsenal', icon: 'medal-arsenal', name: 'Полный арсенал',
       about: 'Победил, держа пять оружий разом!',
       hint: 'Победи, держа сразу пять оружий' },
-    { id: 'century', emoji: '💯', name: 'Сто зомби',
+    { id: 'century', icon: 'medal-century', name: 'Сто зомби',
       about: 'Прогнал сотню зомби за один раунд!',
       hint: 'Прогони сто зомби за один раунд' },
-    { id: 'hardWin', emoji: '🔥', name: 'Настоящий герой',
+    { id: 'hardWin', icon: 'medal-hardWin', name: 'Настоящий герой',
       about: 'Победил на «Сложно»!',
       hint: 'Победи раунд на уровне «Сложно»' },
-    { id: 'nightWin', emoji: '🌙', name: 'Не боюсь темноты',
+    { id: 'nightWin', icon: 'medal-nightWin', name: 'Не боюсь темноты',
       about: 'Прошёл ночной раунд!',
       hint: 'Пройди ночной раунд' },
-    { id: 'hordeWin', emoji: '🧟', name: 'Против толпы',
+    { id: 'hordeWin', icon: 'medal-hordeWin', name: 'Против толпы',
       about: 'Устоял против целой толпы!',
       hint: 'Пройди раунд, когда зомби очень много' },
-    { id: 'duo', emoji: '🤝', name: 'Вдвоём веселее',
+    { id: 'duo', icon: 'medal-duo', name: 'Вдвоём веселее',
       about: 'Победил вместе с напарником!',
       hint: 'Победи раунд вдвоём' },
-    { id: 'deepRun', emoji: '🔟', name: 'Далеко зашёл',
+    { id: 'deepRun', icon: 'medal-deepRun', name: 'Далеко зашёл',
       about: 'Дошёл до десятого раунда!',
       hint: 'Дойди до десятого раунда' },
-    { id: 'allHeroes', emoji: '🎭', name: 'Все герои',
+    { id: 'allHeroes', icon: 'medal-allHeroes', name: 'Все герои',
       about: 'Поиграл за всех десятерых!',
       hint: 'Поиграй за каждого героя' },
-    { id: 'pagesBack', emoji: '🗺', name: 'Всё вернул',
+    { id: 'pagesBack', icon: 'medal-pagesBack', name: 'Всё вернул',
       about: 'Прошёл всё путешествие и вернул альбом!',
       hint: 'Пройди все главы путешествия' },
-    { id: 'collector', emoji: '📖', name: 'Полный альбом',
+    { id: 'collector', icon: 'medal-collector', name: 'Полный альбом',
       about: 'Собрал все наклейки!',
       hint: 'Открой все наклейки в альбоме' },
   ],
@@ -1216,7 +1216,7 @@ export const CONFIG = {
   // по смыслу, а не по арифметике.
   campaign: {
     title: 'Верни альбом',
-    emoji: '🗺',
+    icon: 'ui-map',
     chapters: [
       { id: 'ch1',  level: 1,  theme: 'yard',  boss: 'tophat',
         goal: 'boss', about: 'Толстяк уселся на первую страницу' },
@@ -1254,8 +1254,8 @@ export const CONFIG = {
     // Волн без босса меньше давления, поэтому «продержись» уплотняет спавн:
     // иначе глава без босса ощущается передышкой, а не задачей.
     survive: { intervalFactor: 0.85, batchBonus: 1 },
-    zombies: { emoji: '🧟', count: 40 },
-    medals: { emoji: '🏅', count: 30 },
+    zombies: { icon: 'ui-zombie', count: 40 },
+    medals: { icon: 'ui-medal', count: 30 },
   },
 
   // id — для сюжетных глав: они ссылаются на локацию явно, а не по русскому

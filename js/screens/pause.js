@@ -4,6 +4,7 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class PauseScreen extends Overlay {
   constructor(rootId, { onResume, onMenu, onSpeak }) {
@@ -25,9 +26,9 @@ export class PauseScreen extends Overlay {
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--small">ПАУЗА</h2>
-        ${weapons.length ? this.renderWeapons(weapons) : '<div class="menu-hero">⏸</div>'}
-        <button class="btn btn--big" data-action="resume">ПРОДОЛЖИТЬ ▶</button>
-        <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
+        ${weapons.length ? this.renderWeapons(weapons) : `<div class="menu-hero">${icon('ui-pause')}</div>`}
+        <button class="btn btn--big" data-action="resume">ПРОДОЛЖИТЬ ${icon('ui-play')}</button>
+        <button class="btn btn--secondary" data-action="menu">${icon('ui-home')} В меню</button>
       </div>
     `);
     this.on('[data-action="resume"]', this.onResume);
@@ -40,9 +41,9 @@ export class PauseScreen extends Overlay {
     const items = weapons.map((weapon) => `
       <div class="weapon-chip">
         ${Overlay.speakButton(describeWeapon(weapon))}
-        <span class="weapon-chip__emoji">${weapon.emoji}</span>
+        <span class="weapon-chip__emoji">${icon(weapon.icon)}</span>
         <span class="weapon-chip__stars">
-          ${'⭐'.repeat(weapon.stars)}${'☆'.repeat(CONFIG.maxStars - weapon.stars)}
+          ${icon('ui-star').repeat(weapon.stars)}${icon('ui-star-empty').repeat(CONFIG.maxStars - weapon.stars)}
         </span>
       </div>
     `).join('');
@@ -50,7 +51,7 @@ export class PauseScreen extends Overlay {
     return `
       <p class="big-line">Твоё оружие:</p>
       <div class="weapon-chips">${items}</div>
-      <p class="hint">Нажми 🔈, чтобы послушать название</p>
+      <p class="hint">Нажми ${icon('ui-speak')}, чтобы послушать название</p>
     `;
   }
 }

@@ -5,6 +5,7 @@
 import { CONFIG } from '../config.js';
 import { CardKind } from '../systems/levelup.js';
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class CardsScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -36,7 +37,7 @@ export class CardsScreen extends Overlay {
             ${this.decks[i].map((card, k) => this.renderCard(card, k)).join('')}
           </div>`)}
         <p class="hint">Кликни картинку или выбери стрелками и нажми Enter.
-           Нажми 🔈, чтобы послушать название</p>
+           Нажми ${icon('ui-speak')}, чтобы послушать название</p>
       </div>
     `);
     this.onCards('.card', (owner, index) => {
@@ -58,12 +59,13 @@ export class CardsScreen extends Overlay {
     const label = { [CardKind.NEW_WEAPON]: 'НОВОЕ!', [CardKind.EVOLVE]: 'ВЫРОСЛО!' }[card.kind] || '';
     const stars = card.kind === CardKind.HEAL
       ? ''
-      : '⭐'.repeat(card.stars) + '☆'.repeat(Math.max(0, CONFIG.maxStars - card.stars));
+      : icon('ui-star').repeat(card.stars)
+        + icon('ui-star-empty').repeat(Math.max(0, CONFIG.maxStars - card.stars));
     return `
       <div class="card ${card.kind === CardKind.EVOLVE ? 'card--evolve' : ''}" data-index="${index}">
         ${label ? `<span class="card__badge">${label}</span>` : ''}
         ${Overlay.speakButton(describeCard(card))}
-        <span class="card__emoji">${card.emoji}</span>
+        <span class="card__emoji">${icon(card.icon)}</span>
         <span class="card__title">${card.title}</span>
         <span class="card__stars">${stars}</span>
       </div>

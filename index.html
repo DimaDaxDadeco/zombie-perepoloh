@@ -5,20 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Зомби-переполох</title>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧟</text></svg>">
+  <!-- Значок вкладки ставит Game.setupFavicon() из общего реестра иконок:
+       здесь он был бы эмодзи, то есть картинкой операционной системы. -->
+  <link rel="icon" href="data:,">
 </head>
 <body>
   <!-- Игровой мир -->
   <canvas id="game-canvas"></canvas>
 
   <!-- Кнопки доступны всегда, поверх любого экрана -->
-  <button id="sound-button" class="sound-button" title="Звук">🔊</button>
-  <button id="pause-button" class="sound-button pause-button hidden" title="Пауза">⏸</button>
+  <!-- Содержимое кнопок ставит код: значки рисует js/render/icons.js, а не
+       шрифт операционной системы. Здесь они пустые, чтобы при медленной
+       загрузке модулей не мелькнул чужой глиф. -->
+  <button id="sound-button" class="sound-button" title="Звук"></button>
+  <button id="pause-button" class="sound-button pause-button hidden" title="Пауза"></button>
 
   <!-- Управление пальцем: показывается только на сенсорных устройствах -->
   <div id="touch-controls" class="hidden">
     <div id="touch-field"><div id="touch-marker"></div></div>
-    <button id="touch-ability" type="button">✨</button>
+    <button id="touch-ability" type="button"></button>
   </div>
 
   <!-- Экраны-оверлеи. Содержимое рендерят модули из js/screens/ -->

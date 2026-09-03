@@ -3,6 +3,7 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay, playerTitle } from './overlay.js';
+import { icon } from '../render/icons.js';
 const PREVIEW_SIZE = 150;
 
 export class CharactersScreen extends Overlay {
@@ -36,10 +37,10 @@ export class CharactersScreen extends Overlay {
             ${CONFIG.characters.map((c, k) => this.renderCard(c, k)).join('')}
           </div>
           <button class="btn btn--big" data-confirm="${i}">
-            ${total > 1 ? 'ГОТОВ ▶' : 'ИГРАТЬ ▶'}
+            ${total > 1 ? 'ГОТОВ' : 'ИГРАТЬ'} ${icon('ui-play')}
           </button>`)}
         <p class="hint">Кликни героя или выбери стрелками и нажми Enter.
-           Нажми 🔈, чтобы послушать имя</p>
+           Нажми ${icon('ui-speak')}, чтобы послушать имя</p>
       </div>
     `);
 
@@ -106,5 +107,5 @@ function describeCharacter(character) {
 // читает, а выбор героя теперь решает не только внешность.
 function describeAbility(character) {
   const ability = CONFIG.abilities[character.ability];
-  return ability ? `${ability.emoji} ${ability.name}` : '';
+  return ability ? `${icon(ability.icon)} ${ability.name}` : '';
 }

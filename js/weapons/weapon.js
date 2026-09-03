@@ -18,7 +18,7 @@ export class Weapon {
   }
 
   get name() { return this.spec.name; }
-  get emoji() { return this.spec.emoji; }
+  get icon() { return this.spec.icon; }
   get isMaxed() { return this.stars >= CONFIG.maxStars; }
 
   upgrade() {

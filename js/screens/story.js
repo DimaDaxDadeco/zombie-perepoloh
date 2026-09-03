@@ -14,6 +14,7 @@
 // карточка на карте и баннер с задачей в бою.
 
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class StoryScreen extends Overlay {
   constructor(rootId, { onSpeak }) {
@@ -48,9 +49,9 @@ export class StoryScreen extends Overlay {
     this.setContent(`
       <div class="panel panel--end panel--story">
         ${Overlay.speakButton(frame.line)}
-        <div class="menu-hero story-art">${frame.emoji}</div>
+        <div class="menu-hero story-art">${icon(frame.icon)}</div>
         <p class="big-line story-line">${frame.line}</p>
-        <button class="btn btn--big" data-action="next">${last ? 'В ПУТЬ! ▶' : 'ДАЛЬШЕ ▶'}</button>
+        <button class="btn btn--big" data-action="next">${last ? 'В ПУТЬ!' : 'ДАЛЬШЕ'} ${icon('ui-play')}</button>
       </div>
     `);
     this.on('[data-action="next"]', () => this.next());

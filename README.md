@@ -89,6 +89,7 @@ cd ~/Desktop/Game && python3 -m http.server 8321
 | [docs/entities.md](docs/entities.md) | Герой, зомби, босс, снаряды, пикапы |
 | [docs/weapons.md](docs/weapons.md) | Система оружия и как добавить новое |
 | [docs/screens.md](docs/screens.md) | Экраны, HUD и переходы между ними |
+| [docs/icons.md](docs/icons.md) | Значки: почему они нарисованы кодом и как добавить новый |
 | [docs/input.md](docs/input.md) | Клавиатура, геймпад и как устроены источники ввода |
 | [docs/audio.md](docs/audio.md) | Синтез звуков и музыки |
 | [docs/contributing.md](docs/contributing.md) | Рецепты доработок и соглашения по коду |
@@ -107,11 +108,11 @@ git add -A && git commit -m "что поменялось" && git push
 
 ## Стенды для рисовки
 
-Пять страниц для разработки — открываются на том же сервере:
+Шесть страниц для разработки — открываются на том же сервере:
 `preview-heroes.html`, `preview-zombies.html`, `preview-bosses.html`,
-`preview-locations.html`, `preview-firetrail.html`. Каждая импортирует
-настоящий код игры, так что персонажи там ровно те же, что в бою. Подробности — в
-[docs/contributing.md](docs/contributing.md).
+`preview-locations.html`, `preview-firetrail.html`, `preview-icons.html`.
+Каждая импортирует настоящий код игры, так что персонажи и значки там ровно
+те же, что в бою. Подробности — в [docs/contributing.md](docs/contributing.md).
 
 ## Технологии
 

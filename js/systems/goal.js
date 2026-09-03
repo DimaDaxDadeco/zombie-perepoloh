@@ -98,7 +98,7 @@ class SurviveGoal extends Goal {
   }
 
   hudLine(world) {
-    return { emoji: '⏳', done: Math.max(0, Math.ceil(world.timeLeft)), target: null };
+    return { icon: 'ui-timer', done: Math.max(0, Math.ceil(world.timeLeft)), target: null };
   }
 
   get announce() {
@@ -124,7 +124,7 @@ class CountGoal extends Goal {
   }
 
   hudLine(world) {
-    return { emoji: this.spec.emoji, done: this.done(world), target: this.target(world) };
+    return { icon: this.spec.icon, done: this.done(world), target: this.target(world) };
   }
 }
 

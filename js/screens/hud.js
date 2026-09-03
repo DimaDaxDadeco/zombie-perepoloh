@@ -11,6 +11,25 @@
 
 import { CONFIG } from '../config.js';
 import { drawHeartIcon } from '../render/sprites.js';
+import { drawIcon, drawIconOnField } from '../render/icons.js';
+
+// Значок рядом с текстом. HUD рисует строки то от правого края, то от центра
+// (вдвоём), поэтому пару «значок + подпись» приходится раскладывать самим:
+// ширину текста берём у ctx.measureText, а не подгоняем на глаз.
+//
+// Раньше это была одна строка вида '🧟 12' одним fillText — но эмодзи внутри
+// текста рисует шрифт операционной системы, ровно от чего мы и уходим.
+function drawLabel(ctx, iconName, text, x, y, { align, size = 20 }) {
+  const gap = size * 0.32;
+  const width = ctx.measureText(text).width + size + gap;
+  const left = align === 'right' ? x - width : (align === 'center' ? x - width / 2 : x);
+  drawIconOnField(ctx, iconName, left + size / 2, y + size / 2, size);
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.strokeText(text, left + size + gap, y);
+  ctx.fillText(text, left + size + gap, y);
+  ctx.restore();
+}
 
 const PADDING = 20;
 const HEART_SIZE = 16;
@@ -76,11 +95,13 @@ export class Hud {
 
     if (!compact) {
       // Медалька вместо слова «уровень» — читать ребёнку пока нечем
+      const mid = y + XP_BAR_HEIGHT / 2 + 1;
+      drawIcon(ctx, 'ui-medal', PADDING + 14, mid, 14);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 13px system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`🏅 ${team.level}`, PADDING + 8, y + XP_BAR_HEIGHT / 2 + 1);
+      ctx.fillText(`${team.level}`, PADDING + 24, mid);
     }
     ctx.restore();
   }
@@ -114,11 +135,9 @@ export class Hud {
     ctx.roundRect(x, y, Math.max(0, ABILITY_BAR_WIDTH * ratio), ABILITY_BAR_HEIGHT, 7);
     ctx.fill();
 
-    ctx.font = `${ability.isReady ? 18 : 15}px system-ui, sans-serif`;
-    ctx.textAlign = right ? 'right' : 'left';
-    ctx.textBaseline = 'middle';
-    const emojiX = right ? x - 8 : x + ABILITY_BAR_WIDTH + 8;
-    ctx.fillText(ability.emoji, emojiX, y + ABILITY_BAR_HEIGHT / 2);
+    const iconSize = ability.isReady ? 22 : 18;
+    const iconX = right ? x - 8 - iconSize / 2 : x + ABILITY_BAR_WIDTH + 8 + iconSize / 2;
+    drawIconOnField(ctx, ability.icon, iconX, y + ABILITY_BAR_HEIGHT / 2, iconSize);
     ctx.restore();
   }
 
@@ -136,20 +155,28 @@ export class Hud {
     // Что стоит первой строкой. У сюжетной цели без таймера часы застыли бы
     // на 0:00 — там вместо них счёт «сделано из нужного», и это единственное,
     // по чему ребёнок понимает, сколько осталось.
-    const label = bossActive ? '👑 БОСС!' : goalLabel(goal, timeLeft);
-    // Особый раунд — только эмодзи: имя ребёнок не прочитает, а место справа
-    // и без того дефицитное.
-    // На телефоне — только таймер (и значок особого раунда). Счётчик убитых и
-    // номер раунда там просто занимают место: ни на одно решение ребёнка они
-    // не влияют.
-    const lines = compact ? [label] : [label, `🧟 ${zombiesDefeated}`, `Раунд ${round}`];
-    if (modifier) lines.splice(1, 0, modifier.emoji);
+    //
+    // Строка — это пара «значок + подпись», а не одна строка текста с эмодзи
+    // внутри: значки рисует наш код, а не шрифт системы. Подпись бывает
+    // пустой (особый раунд показывает только значок: имя ребёнок не
+    // прочитает, а место справа дефицитное).
+    const align = coop ? 'center' : 'right';
+    const lines = [
+      bossActive ? { icon: 'ui-crown', text: 'БОСС!' } : goalLine(goal, timeLeft),
+    ];
+    if (modifier) lines.push({ icon: modifier.icon, text: '' });
+    // На телефоне — только первая строка и значок особого раунда. Счётчик
+    // убитых и номер раунда там просто занимают место: ни на одно решение
+    // ребёнка они не влияют.
+    if (!compact) {
+      lines.push({ icon: 'ui-zombie', text: `${zombiesDefeated}` });
+      lines.push({ icon: 'ui-flag', text: `${round}` });
+    }
     lines.forEach((line, i) => {
       // Отступ сверху — чтобы счётчики не налезали на кнопку звука.
       const y = PADDING + (coop ? 0 : SOUND_BUTTON_CLEARANCE) + i * 28;
       const x = coop ? arena.width / 2 : arena.width - PADDING;
-      ctx.strokeText(line, x, y);
-      ctx.fillText(line, x, y);
+      drawLabel(ctx, line.icon, line.text, x, y, { align });
     });
     ctx.restore();
   }
@@ -174,18 +201,21 @@ export class Hud {
       ctx.roundRect(x - slotSize / 2 + 3, y - slotSize / 2, slotSize - 6, slotSize, 10);
       ctx.fill();
 
-      ctx.font = '22px system-ui, sans-serif';
-      ctx.fillText(weapon.emoji, x, y - 6);
+      drawIcon(ctx, weapon.icon, x, y - 6, 24);
 
-      // Звёзды точками: заполненные = текущий уровень оружия
-      ctx.font = '9px system-ui, sans-serif';
-      ctx.fillStyle = '#ffd93d';
-      // Эволюция — не «пять точек как у прокачанного», а звезда: слот
-      // выросшего оружия должен читаться одним взглядом.
-      const dots = weapon.spec.evolved
-        ? '★'
-        : '●'.repeat(weapon.stars) + '○'.repeat(CONFIG.maxStars - weapon.stars);
-      ctx.fillText(dots, x, y + 14);
+      // Звёзды точками: заполненные = текущий уровень оружия. Эволюция — не
+      // «пять точек как у прокачанного», а звезда: слот выросшего оружия
+      // должен читаться одним взглядом.
+      if (weapon.spec.evolved) {
+        drawIcon(ctx, 'ui-star', x, y + 14, 11);
+      } else {
+        const step = 6;
+        const left = x - ((CONFIG.maxStars - 1) * step) / 2;
+        for (let s = 0; s < CONFIG.maxStars; s++) {
+          drawIcon(ctx, s < weapon.stars ? 'ui-dot' : 'ui-dot-empty',
+            left + s * step, y + 14, 5);
+        }
+      }
     });
     ctx.restore();
   }
@@ -200,11 +230,11 @@ function weaponAlign(coop, right, compact) {
   return right ? 'right' : 'left';
 }
 
-// goal — { emoji, done, target } от цели раунда либо null у обычного.
-function goalLabel(goal, timeLeft) {
-  if (!goal) return `⏱ ${formatTime(timeLeft)}`;
-  if (goal.target === null) return `${goal.emoji} ${goal.done}`;
-  return `${goal.emoji} ${goal.done}/${goal.target}`;
+// goal — { icon, done, target } от цели раунда либо null у обычного.
+function goalLine(goal, timeLeft) {
+  if (!goal) return { icon: 'ui-timer', text: formatTime(timeLeft) };
+  if (goal.target === null) return { icon: goal.icon, text: `${goal.done}` };
+  return { icon: goal.icon, text: `${goal.done}/${goal.target}` };
 }
 
 function formatTime(seconds) {

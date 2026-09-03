@@ -23,13 +23,13 @@
 <body>
   <div class="bar">
     <b>Зомби: виды и состояния</b>
-    <span>В каждой полосе трое: обычный, горящий 🔥 и замороженный ❄️ —
+    <span>В каждой полосе трое: обычный, горящий и замороженный —
       замороженный отстаёт, потому что и в игре ползёт медленнее</span>
     <button id="toggle">Пауза</button>
     <button id="slow">Замедлить</button>
-    <a href="./preview-bosses.html">→ стенд боссов</a>
-    <a href="./preview-locations.html">→ стенд локаций</a>
-    <a href="./preview-heroes.html">→ стенд героев</a>
+    <a href="./preview-bosses.html">» стенд боссов</a>
+    <a href="./preview-locations.html">» стенд локаций</a>
+    <a href="./preview-heroes.html">» стенд героев</a>
   </div>
   <canvas id="stage" width="1400" height="1000"></canvas>
 
@@ -68,8 +68,8 @@ document.getElementById('slow').onclick = (e) => {
 // Замороженный идёт медленнее ровно во столько же раз, что и в игре.
 const STATES = [
   { key: 'normal', label: 'обычный', burning: false, frozen: false, slow: 1 },
-  { key: 'burning', label: 'горит 🔥', burning: true, frozen: false, slow: 1 },
-  { key: 'frozen', label: 'заморожен ❄️', burning: false, frozen: true, slow: FREEZE_FACTOR },
+  { key: 'burning', label: 'горит', burning: true, frozen: false, slow: 1 },
+  { key: 'frozen', label: 'заморожен', burning: false, frozen: true, slow: FREEZE_FACTOR },
 ];
 
 // Все трое идут по одной линии, но с большим интервалом: если разносить их

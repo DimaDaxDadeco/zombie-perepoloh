@@ -43,7 +43,7 @@ export function generateCards(player) {
         kind: CardKind.EVOLVE,
         weaponId: weapon.id,
         title: CONFIG.weapons[evolveId].name,
-        emoji: CONFIG.weapons[evolveId].emoji,
+        icon: CONFIG.weapons[evolveId].icon,
         about: CONFIG.weapons[evolveId].about,
         stars: CONFIG.maxStars,
       });
@@ -53,7 +53,7 @@ export function generateCards(player) {
       kind: CardKind.UPGRADE,
       weaponId: weapon.id,
       title: weapon.name,
-      emoji: weapon.emoji,
+      icon: weapon.icon,
       stars: weapon.stars + 1,
     });
   }
@@ -73,7 +73,7 @@ export function generateCards(player) {
         kind: CardKind.NEW_WEAPON,
         weaponId: id,
         title: CONFIG.weapons[id].name,
-        emoji: CONFIG.weapons[id].emoji,
+        icon: CONFIG.weapons[id].icon,
         stars: 1,
       });
     }
@@ -96,7 +96,7 @@ export function generateCards(player) {
       kind: CardKind.HEAL,
       weaponId: null,
       title: 'Сердечко',
-      emoji: '❤️',
+      icon: 'ui-heart',
       stars: 0,
     });
   }

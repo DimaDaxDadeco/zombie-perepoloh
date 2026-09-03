@@ -5,6 +5,7 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class DifficultyScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -29,9 +30,9 @@ export class DifficultyScreen extends Overlay {
         <div class="heroes">
           ${CONFIG.difficulties.map((spec, i) => this.renderCard(spec, i)).join('')}
         </div>
-        <button class="btn btn--big" data-action="next">ДАЛЬШЕ ▶</button>
+        <button class="btn btn--big" data-action="next">ДАЛЬШЕ ${icon('ui-play')}</button>
         <p class="hint">Дальше выберешь героя и оружие.
-           Нажми 🔈, чтобы послушать</p>
+           Нажми ${icon('ui-speak')}, чтобы послушать</p>
       </div>
     `);
 
@@ -51,7 +52,7 @@ export class DifficultyScreen extends Overlay {
     return `
       <div class="hero-card" data-index="${index}">
         ${Overlay.speakButton(describeDifficulty(spec))}
-        <span class="weapon-choice__emoji">${spec.emoji}</span>
+        <span class="weapon-choice__emoji">${icon(spec.icon)}</span>
         <span class="hero-card__name">${spec.name}</span>
         <span class="hero-card__perk">${spec.about}</span>
       </div>
