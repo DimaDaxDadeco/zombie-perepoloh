@@ -213,7 +213,9 @@ export class Load extends Prop {
   draw(ctx) {
     ctx.save();
     ctx.translate(this.x, this.y);
-    drawGiftBox(ctx, { radius: this.radius, phase: this.phase });
+    // Трясётся, только пока лежит: поднятая ноша уже нашлась, и звать
+    // больше некого.
+    drawGiftBox(ctx, { radius: this.radius, phase: this.phase, shake: !this.carrier });
     ctx.restore();
   }
 }

@@ -24,7 +24,8 @@ const SCENES = [
   { name: 'костёр: горит', draw: (ctx, r, t) => drawCampfire(ctx, { radius: r, heat: 1, phase: t }) },
   { name: 'костёр: тускнеет', draw: (ctx, r, t) => drawCampfire(ctx, { radius: r, heat: 0.4, phase: t }) },
   { name: 'костёр: угли', draw: (ctx, r, t) => drawCampfire(ctx, { radius: r, heat: 0, phase: t }) },
-  { name: 'ноша (подарок)', draw: (ctx, r, t) => drawGiftBox(ctx, { radius: r * 0.6, phase: t }) },
+  { name: 'ноша: лежит', draw: (ctx, r, t) => drawGiftBox(ctx, { radius: r * 0.6, phase: t }) },
+  { name: 'ноша: несут', draw: (ctx, r) => drawGiftBox(ctx, { radius: r * 0.6, shake: false }) },
   { name: 'мешок воришки', draw: (ctx, r, t) => drawLoot(ctx, { radius: r * 0.5, phase: t }) },
   {
     name: 'воришка в маске',
