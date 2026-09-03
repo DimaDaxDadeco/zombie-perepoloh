@@ -13,6 +13,7 @@ export const STANDS = [
   { id: 'locations', load: () => import('./locations.js') },
   { id: 'icons',     load: () => import('./icons.js') },
   { id: 'firetrail', load: () => import('./firetrail.js') },
+  { id: 'props',     load: () => import('./props.js') },
 ];
 
 // Названия вкладок держим здесь, а не тянем из модулей: иначе показать
@@ -25,4 +26,5 @@ export const TAB_NAMES = {
   locations: 'Локации',
   icons: 'Значки',
   firetrail: 'Дорожка',
+  props: 'Объекты',
 };

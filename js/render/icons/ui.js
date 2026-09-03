@@ -209,6 +209,34 @@ export const UI_ICONS = {
     { d: disc(23, 11, 4.5), fill: 'skin' },
   ],
 
+  // Значки задач сюжетных глав. Все четыре встречаются в HUD на 16 пикселях,
+  // поэтому силуэт важнее деталей.
+  'ui-cage': [
+    { d: rect(5, 8, 22, 19, 3), fill: 'metalDark' },
+    { d: rect(8, 11, 16, 13, 2), fill: 'dark' },
+    { d: line([[12, 11], [12, 24]]), stroke: 'metal', width: 2.2 },
+    { d: line([[16, 11], [16, 24]]), stroke: 'metal', width: 2.2 },
+    { d: line([[20, 11], [20, 24]]), stroke: 'metal', width: 2.2 },
+    { d: rect(11, 4, 10, 4, 2), fill: 'metalDark' },
+  ],
+
+  'ui-fire': [
+    { d: `M16 3c6 8 3 9 5 12s4-1 4-1c2 4 1 17-9 17S5 21 8 15c1 3 3 4 4 2s-2-6 4-14z`, fill: 'fire' },
+    { d: `M16 17c3 3 2 5 1 7s-4 1-4-2 2-3 3-5z`, fill: 'gold' },
+  ],
+
+  'ui-bag': [
+    { d: `M9 12h14l3 17H6z`, fill: 'wood' },
+    { d: rect(11, 8, 10, 5, 2), fill: 'goldDark' },
+    { d: disc(16, 21, 3), fill: 'gold' },
+  ],
+
+  'ui-box': [
+    { d: rect(4, 11, 24, 17, 2), fill: 'wood' },
+    { d: rect(4, 11, 24, 5, 2), fill: 'goldDark' },
+    { d: rect(14, 11, 4, 17), fill: 'gold' },
+  ],
+
   'ui-trophy': [
     { d: poly([[9, 4], [23, 4], [22, 15], [10, 15]]), fill: 'gold' },
     { d: `M9 6C3 6 3 15 10.5 15`, stroke: 'goldDark', width: 2.4 },

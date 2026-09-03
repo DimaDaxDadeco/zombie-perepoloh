@@ -3379,3 +3379,181 @@ function drawSparksRage(ctx, r, phase, layer) {
   }
   ctx.globalAlpha = 1;
 }
+
+// --- Объекты мира, которые ставит цель раунда (js/entities/prop.js) ---
+//
+// Как и всё в этом файле: центр в (0,0), translate делает вызывающий.
+
+// Клетка с другом. Внутри — НАСТОЯЩИЙ герой тем же drawHero, что и в бою:
+// ребёнок должен видеть, кого именно он спасает, а не абстрактный силуэт.
+// Дуга прогресса идёт по кругу вокруг клетки — тот же язык, что у отсчёта
+// подъёма упавшего напарника.
+export function drawCage(ctx, { radius, progress = 0, open = false, look = DEFAULT_LOOK }) {
+  drawShadow(ctx, radius);
+
+  const w = radius * 1.5;
+  const h = radius * 1.8;
+
+  ctx.save();
+  ctx.translate(0, -h * 0.45);
+  // Пленник — за прутьями, поэтому рисуется первым.
+  ctx.save();
+  ctx.translate(0, h * 0.62);
+  drawHero(ctx, { radius: radius * 0.52, walkPhase: 0, facing: 1, blinking: false, look });
+  ctx.restore();
+
+  ctx.strokeStyle = '#8d99ae';
+  ctx.lineWidth = radius * 0.13;
+  ctx.lineCap = 'round';
+  if (open) {
+    // Распахнутая дверца: прутья уехали вбок и наклонились. Пустая клетка
+    // должна читаться издалека — это отметка «здесь уже был».
+    ctx.save();
+    ctx.translate(-w * 0.55, 0);
+    ctx.rotate(-0.5);
+    for (let i = 0; i < 3; i++) {
+      const x = -w * 0.2 + (i * w) / 5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else {
+    for (let i = 0; i <= 4; i++) {
+      const x = -w / 2 + (i * w) / 4;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+  }
+  // Основание и крыша — толще прутьев, иначе клетка «рассыпается».
+  ctx.lineWidth = radius * 0.2;
+  ctx.beginPath();
+  ctx.moveTo(-w / 2 - 2, 0);
+  ctx.lineTo(w / 2 + 2, 0);
+  ctx.moveTo(-w / 2 - 2, h);
+  ctx.lineTo(w / 2 + 2, h);
+  ctx.stroke();
+  ctx.restore();
+
+  if (progress > 0 && !open) {
+    ctx.strokeStyle = '#ffd93d';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 1.35, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// Костёр. Высота пламени и его цвет идут от heat, при углях остаётся дымок —
+// ребёнок должен видеть, что костёр ещё жив и его можно раздуть обратно.
+export function drawCampfire(ctx, { radius, heat = 1, phase = 0 }) {
+  drawShadow(ctx, radius);
+
+  // Тёплый круг света: он же показывает, докуда добираются зомби.
+  if (heat > 0) {
+    ctx.globalAlpha = 0.16 * heat;
+    ctx.fillStyle = '#ffb74d';
+    circle(ctx, 0, 0, radius * 2.1);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = '#8d5524';
+  for (const angle of [-0.5, 0.5]) {
+    ctx.save();
+    ctx.rotate(angle);
+    roundRect(ctx, -radius * 0.85, radius * 0.12, radius * 1.7, radius * 0.3, radius * 0.15);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (heat <= 0) {
+    // Угли: три тускло-оранжевых пятна и дымок.
+    ctx.fillStyle = '#b34a2a';
+    for (let i = 0; i < 3; i++) {
+      circle(ctx, (i - 1) * radius * 0.35, radius * 0.05, radius * 0.16);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#cfd8dc';
+    circle(ctx, Math.sin(phase) * radius * 0.2, -radius * (0.6 + Math.sin(phase * 0.7) * 0.1),
+      radius * 0.28);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  const h = radius * (0.7 + heat * 1.5);
+  const w = radius * (0.4 + heat * 0.4);
+  const wobble = Math.sin(phase * 6) * radius * 0.08;
+  ctx.fillStyle = '#ff7043';
+  ctx.beginPath();
+  ctx.moveTo(0, -h);
+  ctx.quadraticCurveTo(w + wobble, -h * 0.35, w * 0.6, radius * 0.15);
+  ctx.lineTo(-w * 0.6, radius * 0.15);
+  ctx.quadraticCurveTo(-w - wobble, -h * 0.35, 0, -h);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffd93d';
+  ctx.beginPath();
+  ctx.moveTo(0, -h * 0.55);
+  ctx.quadraticCurveTo(w * 0.5 - wobble, -h * 0.2, w * 0.3, radius * 0.12);
+  ctx.lineTo(-w * 0.3, radius * 0.12);
+  ctx.quadraticCurveTo(-w * 0.5 + wobble, -h * 0.2, 0, -h * 0.55);
+  ctx.fill();
+}
+
+// Мешок с добычей. ОДИН спрайт на два случая — за спиной воришки и как ноша:
+// ребёнок должен читать их как одну и ту же вещь.
+export function drawLoot(ctx, { radius, phase = 0 }) {
+  const bob = Math.sin(phase * 3) * radius * 0.08;
+  ctx.save();
+  ctx.translate(0, bob);
+  ctx.fillStyle = '#c98b3a';
+  ctx.beginPath();
+  ctx.moveTo(-radius * 0.75, radius * 0.9);
+  ctx.quadraticCurveTo(-radius * 1.05, -radius * 0.3, -radius * 0.35, -radius * 0.55);
+  ctx.lineTo(radius * 0.35, -radius * 0.55);
+  ctx.quadraticCurveTo(radius * 1.05, -radius * 0.3, radius * 0.75, radius * 0.9);
+  ctx.closePath();
+  ctx.fill();
+  // Горловина, перевязанная верёвкой.
+  ctx.fillStyle = '#8d5524';
+  roundRect(ctx, -radius * 0.42, -radius * 0.8, radius * 0.84, radius * 0.3, radius * 0.12);
+  ctx.fill();
+  ctx.fillStyle = '#ffd93d';
+  circle(ctx, 0, radius * 0.15, radius * 0.22);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Куда нести. Лежит на земле, поэтому эллипс, а не круг: круг на земле
+// читается как шар, висящий в воздухе.
+export function drawDropZone(ctx, { radius, phase = 0 }) {
+  const pulse = 1 + Math.sin(phase * 3) * 0.08;
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#ffd93d';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * pulse, radius * 0.5 * pulse, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = '#ffd93d';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * pulse, radius * 0.5 * pulse, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Стрелка «сюда»: без неё пятно читается как лужа.
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = '#ffd93d';
+  const lift = -radius * (0.7 + Math.sin(phase * 3) * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(0, lift + radius * 0.3);
+  ctx.lineTo(-radius * 0.26, lift - radius * 0.1);
+  ctx.lineTo(radius * 0.26, lift - radius * 0.1);
+  ctx.fill();
+  ctx.restore();
+}
