@@ -110,7 +110,11 @@ add('медаль', CONFIG.achievements.map((a) => a.icon));
 add('сложность', CONFIG.difficulties.map((d) => d.icon));
 add('особый раунд', Object.values(CONFIG.specialRounds.types || {}).map((m) => m && m.icon));
 add('цель', Object.values(CONFIG.goals || {}).map((g) => g && g.icon));
-add('кампания', [CONFIG.campaign.icon]);
+add('путешествие', CONFIG.journeys.map((j) => j.icon));
+add('награда', CONFIG.journeys.map((j) => j.reward?.icon));
+// Значки кадров истории раньше не проверялись вовсе — закрываем заодно.
+add('кадр истории', CONFIG.journeys.flatMap((j) =>
+  [...(j.intro || []), ...(j.finale || []), ...(j.unlock || [])].map((f) => f.icon)));
 
 const known = new Set(ICON_NAMES);
 const missing = names.filter(([, name]) => !known.has(name));

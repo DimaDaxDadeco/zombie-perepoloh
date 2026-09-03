@@ -103,14 +103,20 @@ const CHECKS = {
 
   allHeroes: ({ save }) => save.heroesPlayed.length >= CONFIG.characters.length,
 
-  // Считается по конфигу, а не по длине списка: если глав станет больше,
-  // старая медаль не должна оставаться выданной за неполное прохождение.
-  pagesBack: ({ save }) => CONFIG.campaign.chapters
-    .every((c) => (save.campaign?.done || []).includes(c.id)),
-
   collector: ({ save }) => {
     const progress = albumProgress(save);
     return progress.zombies.open >= progress.zombies.total
       && progress.bosses.open >= progress.bosses.total;
   },
+
+  // Медаль за полное прохождение — у каждого путешествия своя, и правила для
+  // них генерируются по конфигу. Третье путешествие тогда не потребует ни
+  // строчки кода: запись в journeys, запись в achievements, иконка.
+  //
+  // Считается по главам путешествия, а не по длине общего списка: он общий на
+  // все путешествия, и по его длине медаль выдавалась бы за чужие успехи.
+  ...Object.fromEntries(CONFIG.journeys
+    .filter((journey) => journey.medal)
+    .map((journey) => [journey.medal, ({ save }) => journey.chapters
+      .every((c) => (save.campaign?.done || []).includes(c.id))])),
 };

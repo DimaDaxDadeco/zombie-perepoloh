@@ -19,11 +19,10 @@
 // Экран один на двоих: кампания общая, поэтому инфраструктура picker
 // (startPicking/pickerColumns) тут не нужна.
 
-import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
 import {
-  campaignProgress, themeIcon, themeName, themeColors, bossOf, goalText,
+  journeyProgress, themeIcon, themeName, themeColors, bossOf, goalText,
 } from '../core/campaign.js';
 
 const BOSS_SIZE = 72;
@@ -32,12 +31,13 @@ const BOSS_SIZE = 72;
 const PER_ROW = 4;
 
 export class MapScreen extends Overlay {
-  constructor(rootId, { onPlay, onShop, onHero, onPlayers, onClose, onSpeak }) {
+  constructor(rootId, { onPlay, onShop, onHero, onPlayers, onJourney, onClose, onSpeak }) {
     super(rootId);
     this.onPlay = onPlay;
     this.onShop = onShop;
     this.onHero = onHero;
     this.onPlayers = onPlayers;
+    this.onJourney = onJourney;
     this.onClose = onClose;
     this.onSpeak = onSpeak;
     this.stops = [];
@@ -50,7 +50,7 @@ export class MapScreen extends Overlay {
     });
   }
 
-  render(save, campaign, look) {
+  render(save, campaign, look, { others = [] } = {}) {
     this.look = look;
     this.stops = campaign.chapters.map((chapter, index) => ({
       chapter,
@@ -65,16 +65,16 @@ export class MapScreen extends Overlay {
     // Курсор встаёт на первую непройденную — туда, куда ребёнку идти.
     this.selected = campaign.currentIndex;
 
-    const progress = campaignProgress(save);
+    const progress = journeyProgress(campaign);
     // Кнопка показывает нынешний выбор, а не приглашение его сменить:
     // ребёнок читать не умеет, и «Вдвоём» рядом с двумя фигурками говорит
     // ему, что сейчас играют двое, — а нажатие это меняет.
     const duo = (save.playersCount || 1) > 1;
     this.setContent(`
       <div class="panel panel--map">
-        <h2 class="title title--small">${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()}</h2>
+        <h2 class="title title--small">${icon(campaign.spec.icon)} ${campaign.spec.title.toUpperCase()}</h2>
         <div class="map-pages">
-          ${renderPageStrip(progress)}
+          ${renderPageStrip(progress, campaign.spec.reward.icon)}
           <span class="map-pages__count">${progress.open}/${progress.total}</span>
         </div>
         <div class="map-road">
@@ -88,6 +88,10 @@ export class MapScreen extends Overlay {
             ${icon(duo ? 'ui-heroes' : 'ui-hero')} ${duo ? 'Вдвоём' : 'Один'}
           </button>
           <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин ${icon('ui-money')} ${save.coins}</button>
+          ${others.map((other) => `
+            <button class="btn btn--secondary" data-action="journey" data-journey="${other.id}">
+              ${icon(other.spec.icon)} ${other.spec.title}
+            </button>`).join('')}
           <button class="btn btn--secondary" data-action="close">${icon('ui-home')} В меню</button>
         </div>
       </div>
@@ -101,6 +105,7 @@ export class MapScreen extends Overlay {
     this.on('[data-action="play"]', () => this.enter());
     this.on('[data-action="hero"]', this.onHero);
     this.on('[data-action="players"]', this.onPlayers);
+    this.onAll('[data-action="journey"]', (el) => this.onJourney(el.dataset.journey));
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="close"]', this.onClose);
     this.bindSpeakButtons(this.onSpeak);
@@ -224,9 +229,9 @@ function placeOnRoad(index, total) {
 
 // Полоска страниц вверху: наглядно, сколько альбома уже собрано. Для
 // нечитающего ребёнка это единственный способ увидеть прогресс числом.
-function renderPageStrip(progress) {
+function renderPageStrip(progress, rewardIcon) {
   return Array.from({ length: progress.total }, (_, i) => `
-    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">${icon('ui-page')}</span>
+    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">${icon(rewardIcon)}</span>
   `).join('');
 }
 

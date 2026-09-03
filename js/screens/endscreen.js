@@ -54,7 +54,7 @@ export class EndScreen extends Overlay {
     this.bindSpeakButtons(this.onSpeak);
     this.show();
     // Вернувшаяся страница — главное событие главы, и ребёнок не читает.
-    if (page) this.onSpeak?.('Ура! Страница вернулась в альбом!');
+    if (page) this.onSpeak?.(page.reward.voice);
   }
 
   // back — куда ведёт вторая кнопка. Из главы это карта, а не меню: провалив
@@ -118,10 +118,14 @@ function renderMedals(medals) {
 // Вернувшаяся страница альбома — награда за главу кампании. Эмодзи локации, а
 // не картинка: страницы как объекта в игре нет, рисовать нечего, и заводить
 // ради неё функцию в sprites.js (он и так самый большой модуль) незачем.
-function renderPage(chapter) {
-  if (!chapter) return '';
+// Награда за главу. Текст и значок берутся у путешествия: страница — сюжет
+// первого, у второго своя награда, и экран победы про страницы знать не
+// должен.
+function renderPage(page) {
+  if (!page) return '';
+  const { chapter, reward } = page;
   return `
-    <p class="big-line">${icon('ui-page')} СТРАНИЦА ВЕРНУЛАСЬ!</p>
+    <p class="big-line">${icon(reward.icon)} ${reward.line}</p>
     <div class="fresh-stickers">
       <span class="fresh-medal">
         <span class="fresh-medal__emoji">${icon(themeIcon(chapter.theme))}</span>

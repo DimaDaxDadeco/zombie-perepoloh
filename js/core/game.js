@@ -12,7 +12,7 @@ import { Speech } from './speech.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
 import { Achievements } from './achievements.js';
-import { Campaign } from './campaign.js';
+import { currentJourney, openJourneys, allJourneys } from './campaign.js';
 import { Round } from './round.js';
 // applyCard под псевдонимом: одноимённый метод ниже — обёртка над ней,
 // и без псевдонима вызов читался бы как рекурсия.
@@ -55,20 +55,6 @@ export const GameState = {
 const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» после сворачивания окна
 const FIREWORK_INTERVAL = 0.35;
 
-// Завязка и финал кампании. Одна фраза на кадр — длиннее ребёнок не дослушает,
-// да и Speech всё равно не умеет говорить две подряд.
-const INTRO_FRAMES = [
-  { icon: 'ui-album', line: 'Зомби утащили твой альбом с наклейками!' },
-  { icon: 'ui-page', line: 'Они порвали его на двенадцать страниц.' },
-  { icon: 'ui-map', line: 'И спрятали страницы по всему свету.' },
-  { icon: 'ui-hero', line: 'Пойдём забирать! Первая — во дворе.' },
-];
-
-const FINALE_FRAMES = [
-  { icon: 'ui-album', line: 'Двенадцать страниц! Альбом снова целый!' },
-  { icon: 'ui-trophy', line: 'Ты вернул все наклейки. Ты настоящий герой!' },
-];
-
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -78,7 +64,9 @@ export class Game {
     this.storage = new Storage();
     this.album = new Album(this.storage);
     this.achievements = new Achievements(this.storage);
-    this.campaign = new Campaign(this.storage);
+    // Текущее путешествие. Пересчитывается при каждом входе на карту:
+    // пройденное первое само уступает место второму.
+    this.campaign = currentJourney(this.storage);
     // Спека текущей главы или null. Единственный признак «мы в кампании», и
     // снимается он в launch() — то есть при ЛЮБОМ входе в бой, включая
     // обычный раунд. Иначе после выхода из главы игра продолжала бы считать,
@@ -87,7 +75,10 @@ export class Game {
     // Финал ждёт показа. Ставится в момент, когда встала последняя страница,
     // а не вычисляется на входе в карту: пройденные главы можно переигрывать,
     // и «все главы пройдены» было бы истиной после каждой такой победы.
-    this.pendingFinale = false;
+    // Чей финал ещё не показан: id путешествия либо null. Именно id, а не
+    // булев флаг — с двумя путешествиями флаг не скажет, чью концовку играть,
+    // и ребёнок увидел бы финал первого, закончив второе.
+    this.pendingFinale = null;
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
     this.input = new Input();
@@ -175,6 +166,9 @@ export class Game {
         // спрашивали «кто играет» только внутри «Новой игры», и позвать
         // второго на одну главу было нельзя.
         onPlayers: () => this.openPlayers(() => this.openMap()),
+        // Переключить путешествие. Кнопки нет, пока открыто одно: мёртвый
+        // контрол для нечитающего ребёнка хуже, чем его отсутствие.
+        onJourney: (id) => this.openMap(id),
         onClose: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
@@ -343,7 +337,7 @@ export class Game {
     this.chapter = null;
     this.audio.stopMusic();
     this.hideAllScreens();
-    this.screens.menu.render(this.storage.data);
+    this.screens.menu.render(this.storage.data, this.storage);
   }
 
   // «Продолжить» — сразу в бой с сохранённым героем, оружием и раундом.
@@ -657,7 +651,7 @@ export class Game {
     if (outcome === 'victory') {
       if (this.chapter) {
         page = this.campaign.complete(this.chapter.id);
-        if (page && this.campaign.isComplete) this.pendingFinale = true;
+        if (page && this.campaign.isComplete) this.pendingFinale = this.campaign.id;
       } else {
         save.round = summary.round + 1;
         save.bestRound = Math.max(save.bestRound, save.round);
@@ -677,7 +671,8 @@ export class Game {
       this.audio.victory();
       this.fireworkTimer = 0;
       this.screens.end.renderVictory(summary, this.getCharacter().look, {
-        fresh, medals, next, page: page ? this.chapter : null,
+        fresh, medals, next,
+        page: page ? { chapter: this.chapter, reward: this.campaign.spec.reward } : null,
       });
     } else {
       this.audio.fail();
@@ -699,31 +694,58 @@ export class Game {
 
   // Вход из меню. Первый раз показываем завязку: без неё карта — просто
   // двенадцать картинок, и непонятно, зачем по ним идти.
+  //
+  // Считаем пройденные главы ЭТОГО путешествия, а не длину общего списка:
+  // список общий на все путешествия, и после первого он никогда не пуст —
+  // завязка второго не показалась бы никогда. Молча.
   openCampaign() {
-    if (this.campaign.done.length === 0) {
-      this.state = GameState.STORY;
-      this.hideAllScreens();
-      this.screens.story.play(INTRO_FRAMES, () => this.openMap());
-      return;
+    this.campaign = currentJourney(this.storage);
+    if (this.campaign.doneCount === 0 && this.campaign.spec.intro) {
+      return this.playStory(this.campaign.spec.intro, () => this.openMap());
     }
     this.openMap();
   }
 
-  openMap() {
+  playStory(frames, next) {
+    this.state = GameState.STORY;
+    this.hideAllScreens();
+    this.screens.story.play(frames, next);
+  }
+
+  // Путешествие, которое только что открылось пройденным. Кадры про него
+  // показываются один раз, сразу после финала предыдущего: новая карта должна
+  // быть событием, а не запертой дверью, которую ребёнок видел всё время.
+  justUnlocked(finishedId) {
+    return openJourneys(this.storage).find((c) => c.spec.needs === finishedId
+      && c.doneCount === 0 && c.spec.unlock);
+  }
+
+  openMap(journeyId = null) {
     if (this.pendingFinale) {
-      this.pendingFinale = false;
+      const finished = allJourneys(this.storage).find((c) => c.id === this.pendingFinale);
+      this.pendingFinale = null;
       this.chapter = null;
-      this.state = GameState.STORY;
-      this.hideAllScreens();
-      this.screens.story.play(FINALE_FRAMES, () => this.openMap());
-      return;
+      const next = this.justUnlocked(finished.id);
+      return this.playStory(finished.spec.finale, () => (next
+        ? this.playStory(next.spec.unlock, () => this.openMap(next.id))
+        : this.openMap(finished.id)));
     }
+
+    const open = openJourneys(this.storage);
+    this.campaign = open.find((c) => c.id === journeyId) || currentJourney(this.storage);
+    this.storage.data.campaign.at = this.campaign.id;
+    this.storage.save();
+
     this.chapter = null;
     this.state = GameState.MAP;
     this.round = null;
     this.audio.stopMusic();
     this.hideAllScreens();
-    this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look);
+    this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look, {
+      // Другие открытые путешествия — для переключателя. Одно открыто, значит
+      // переключать не на что, и кнопки на карте не будет вовсе.
+      others: open.filter((c) => c.id !== this.campaign.id),
+    });
   }
 
   togglePause() {
