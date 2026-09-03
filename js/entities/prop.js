@@ -15,7 +15,7 @@
 
 import { CONFIG } from '../config.js';
 import {
-  drawCage, drawCampfire, drawLoot, drawDropZone,
+  drawCage, drawCampfire, drawGiftBox, drawDropZone,
 } from '../render/sprites.js';
 
 export class Prop {
@@ -213,7 +213,7 @@ export class Load extends Prop {
   draw(ctx) {
     ctx.save();
     ctx.translate(this.x, this.y);
-    drawLoot(ctx, { radius: this.radius, phase: this.phase });
+    drawGiftBox(ctx, { radius: this.radius, phase: this.phase });
     ctx.restore();
   }
 }

@@ -192,7 +192,10 @@ class RescueGoal extends CountGoal {
   setup(world) {
     for (let i = 0; i < this.target(world); i++) {
       const at = placeAway(world, this.cages, { minSpacing: this.spec.minSpacing });
-      const cage = new Cage(at.x, at.y, this.spec, (c, player, w) => this.freeFriend(c, player, w));
+      // Пленника рисуем внешностью того самого друга, который из клетки
+      // выйдет: ребёнок должен узнать его, когда тот побежит рядом.
+      const spec = { ...this.spec, look: CONFIG.pets[this.spec.friendPet]?.look };
+      const cage = new Cage(at.x, at.y, spec, (c, player, w) => this.freeFriend(c, player, w));
       this.cages.push(world.addProp(cage));
     }
   }

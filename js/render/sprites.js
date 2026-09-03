@@ -3396,11 +3396,18 @@ export function drawCage(ctx, { radius, progress = 0, open = false, look = DEFAU
 
   ctx.save();
   ctx.translate(0, -h * 0.45);
-  // Пленник — за прутьями, поэтому рисуется первым.
-  ctx.save();
-  ctx.translate(0, h * 0.62);
-  drawHero(ctx, { radius: radius * 0.52, walkPhase: 0, facing: 1, blinking: false, look });
-  ctx.restore();
+  // Пленник — за прутьями, поэтому рисуется первым. Выглядит он ровно так же,
+  // как друг, который сейчас выйдет: ребёнок должен видеть, КОГО спасает, и
+  // узнать его, когда тот побежит рядом.
+  //
+  // У открытой клетки пленника нет вовсе: она пустая, и это самая понятная
+  // отметка «здесь уже был».
+  if (!open) {
+    ctx.save();
+    ctx.translate(0, h * 0.62);
+    drawHero(ctx, { radius: radius * 0.52, walkPhase: 0, facing: 1, blinking: false, look });
+    ctx.restore();
+  }
 
   ctx.strokeStyle = '#8d99ae';
   ctx.lineWidth = radius * 0.13;
@@ -3506,8 +3513,7 @@ export function drawCampfire(ctx, { radius, heat = 1, phase = 0 }) {
   ctx.fill();
 }
 
-// Мешок с добычей. ОДИН спрайт на два случая — за спиной воришки и как ноша:
-// ребёнок должен читать их как одну и ту же вещь.
+// Мешок с добычей — за спиной воришки.
 export function drawLoot(ctx, { radius, phase = 0 }) {
   const bob = Math.sin(phase * 3) * radius * 0.08;
   ctx.save();
@@ -3526,6 +3532,81 @@ export function drawLoot(ctx, { radius, phase = 0 }) {
   ctx.fill();
   ctx.fillStyle = '#ffd93d';
   circle(ctx, 0, radius * 0.15, radius * 0.22);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Ноша — красный подарок со свечением.
+//
+// Сначала это был тот же мешок, что у воришки. На траве он терялся: коричневое
+// на зелёном, да ещё и мелкое. Подарок читается издалека — красный с золотой
+// лентой не встречается в игре больше нигде, — а свечение отвечает на главный
+// вопрос ребёнка «где эта штука вообще».
+export function drawGiftBox(ctx, { radius, phase = 0, glow = true }) {
+  const pulse = 1 + Math.sin(phase * 3) * 0.1;
+  if (glow) {
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#ffd93d';
+    circle(ctx, 0, 0, radius * 1.9 * pulse);
+    ctx.fill();
+    ctx.globalAlpha = 0.22;
+    circle(ctx, 0, 0, radius * 2.6 * pulse);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const bob = Math.sin(phase * 3) * radius * 0.1;
+  ctx.save();
+  ctx.translate(0, bob);
+
+  const w = radius * 1.7;
+  const h = radius * 1.5;
+  // Коробка.
+  ctx.fillStyle = '#e0392b';
+  roundRect(ctx, -w / 2, -h / 2 + radius * 0.2, w, h, radius * 0.16);
+  ctx.fill();
+  // Крышка — темнее, иначе подарок читается плоским кирпичом.
+  ctx.fillStyle = '#b62a1f';
+  roundRect(ctx, -w / 2 - radius * 0.1, -h / 2, w + radius * 0.2, h * 0.34, radius * 0.14);
+  ctx.fill();
+  // Лента крест-накрест.
+  ctx.fillStyle = '#ffd93d';
+  ctx.fillRect(-radius * 0.16, -h / 2, radius * 0.32, h + radius * 0.2);
+  ctx.fillRect(-w / 2 - radius * 0.1, -h * 0.1, w + radius * 0.2, radius * 0.26);
+  // Бант.
+  ctx.beginPath();
+  ctx.moveTo(0, -h / 2);
+  ctx.quadraticCurveTo(-radius * 0.85, -h / 2 - radius * 0.75, -radius * 0.1, -h / 2 - radius * 0.1);
+  ctx.quadraticCurveTo(radius * 0.1, -h / 2 - radius * 0.1, radius * 0.1, -h / 2 - radius * 0.1);
+  ctx.quadraticCurveTo(radius * 0.85, -h / 2 - radius * 0.75, 0, -h / 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Маска воришки: тёмная полоса поперёк глаз, а глаза — поверх неё, как в
+// прорезях. Рисуется ПОСЛЕ обычного зомби, поэтому свои глаза обязательны:
+// иначе полоса просто закрасила бы лицо.
+export function drawThiefMask(ctx, r) {
+  ctx.save();
+  ctx.fillStyle = '#2a2750';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.48, -r * 0.98);
+  ctx.quadraticCurveTo(0, -r * 1.08, r * 0.48, -r * 0.98);
+  ctx.lineTo(r * 0.44, -r * 0.7);
+  ctx.quadraticCurveTo(0, -r * 0.62, -r * 0.44, -r * 0.7);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = EYE_WHITE;
+  circle(ctx, -r * 0.18, -r * 0.85, r * 0.13);
+  ctx.fill();
+  circle(ctx, r * 0.19, -r * 0.82, r * 0.11);
+  ctx.fill();
+  ctx.fillStyle = DARK;
+  circle(ctx, -r * 0.14, -r * 0.85, r * 0.06);
+  ctx.fill();
+  circle(ctx, r * 0.15, -r * 0.8, r * 0.05);
   ctx.fill();
   ctx.restore();
 }

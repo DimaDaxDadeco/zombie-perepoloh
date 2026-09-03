@@ -24,7 +24,7 @@
 import { CONFIG } from '../config.js';
 import { Zombie } from './zombie.js';
 import { Pickup, PickupType } from './pickup.js';
-import { drawLoot } from '../render/sprites.js';
+import { drawLoot, drawThiefMask } from '../render/sprites.js';
 
 // Сколько направлений перебирать. Шестнадцати хватает: шаг в 22 градуса
 // глазом уже не отличить от плавного поворота.
@@ -181,10 +181,22 @@ export class Thief extends Zombie {
   }
 
   draw(ctx) {
-    super.draw(ctx);
+    // Мешок — ЗА спиной, а не на голове. Сначала он лежал сверху и закрывал
+    // лицо целиком: маску, ради которой всё и затевалось, видно не было вовсе.
     ctx.save();
-    ctx.translate(this.x, this.y - this.radius * 0.9);
-    drawLoot(ctx, { radius: this.radius * 0.55, phase: this.lootPhase });
+    ctx.translate(this.x - this.facing * this.radius * 0.75, this.y - this.radius * 0.55);
+    drawLoot(ctx, { radius: this.radius * 0.5, phase: this.lootPhase });
+    ctx.restore();
+
+    super.draw(ctx);
+
+    // Маска поверх обычного лица: по ней воришку видно в толпе, а без неё он
+    // ничем не отличался от соседнего зомби, и ребёнок не понимал, за кем
+    // бежать.
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.scale(this.facing, 1);
+    drawThiefMask(ctx, this.radius);
     ctx.restore();
   }
 }
