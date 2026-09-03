@@ -31,7 +31,7 @@ export class RoundModifier {
     this.timer = 0;
   }
 
-  get emoji() { return this.spec.emoji; }
+  get icon() { return this.spec.icon; }
   get announce() { return this.spec.announce; }
 
   tuneSpawner(spawner) {}          // разово, при создании раунда

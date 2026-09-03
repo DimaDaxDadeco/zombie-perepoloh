@@ -33,6 +33,7 @@ import { PauseScreen } from '../screens/pause.js';
 import { Hud } from '../screens/hud.js';
 import { Overlay } from '../screens/overlay.js';
 import { TouchControls } from '../screens/touch.js';
+import { icon } from '../render/icons.js';
 
 export const GameState = {
   MENU: 'menu',
@@ -57,15 +58,15 @@ const FIREWORK_INTERVAL = 0.35;
 // Завязка и финал кампании. Одна фраза на кадр — длиннее ребёнок не дослушает,
 // да и Speech всё равно не умеет говорить две подряд.
 const INTRO_FRAMES = [
-  { emoji: '📖', line: 'Зомби утащили твой альбом с наклейками!' },
-  { emoji: '📄', line: 'Они порвали его на двенадцать страниц.' },
-  { emoji: '🗺', line: 'И спрятали страницы по всему свету.' },
-  { emoji: '🦸', line: 'Пойдём забирать! Первая — во дворе.' },
+  { icon: 'ui-album', line: 'Зомби утащили твой альбом с наклейками!' },
+  { icon: 'ui-page', line: 'Они порвали его на двенадцать страниц.' },
+  { icon: 'ui-map', line: 'И спрятали страницы по всему свету.' },
+  { icon: 'ui-hero', line: 'Пойдём забирать! Первая — во дворе.' },
 ];
 
 const FINALE_FRAMES = [
-  { emoji: '📖', line: 'Двенадцать страниц! Альбом снова целый!' },
-  { emoji: '🏆', line: 'Ты вернул все наклейки. Ты настоящий герой!' },
+  { icon: 'ui-album', line: 'Двенадцать страниц! Альбом снова целый!' },
+  { icon: 'ui-trophy', line: 'Ты вернул все наклейки. Ты настоящий герой!' },
 ];
 
 export class Game {
@@ -103,6 +104,7 @@ export class Game {
     this.setupTouch();
     this.setupSoundButton();
     this.setupPauseButton();
+    this.setupFavicon();
     this.setupResize();
     // Первый клик разблокирует звук — требование браузеров.
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
@@ -316,7 +318,7 @@ export class Game {
     const ability = this.round?.player.ability;
     this.touch.setVisible(this.state === GameState.PLAYING);
     if (ability) {
-      this.touch.setAbility({ emoji: ability.emoji, color: ability.color, ready: ability.isReady });
+      this.touch.setAbility({ icon: ability.icon, color: ability.color, ready: ability.isReady });
     }
   }
 
@@ -359,9 +361,9 @@ export class Game {
     this.hideAllScreens();
     this.screens.confirm.render({
       title: 'НОВАЯ ИГРА?',
-      emoji: '✨',
+      icon: 'ui-spark',
       question: 'Доллары, покупки и раунды пропадут. Начинаем сначала?',
-      cancelText: 'НЕТ, ОСТАВИТЬ ◀',
+      cancelText: `НЕТ, ОСТАВИТЬ ${icon('ui-back')}`,
       confirmText: 'Да, новая игра',
       onCancel: () => {
         this.audio.click();
@@ -645,8 +647,8 @@ export class Game {
     // Куда ведёт большая кнопка. Из главы — обратно на карту: там страница и
     // встанет на место, а магазин между главами не открывается сам.
     const next = this.chapter
-      ? { label: 'НА КАРТУ 🗺', action: () => this.openMap() }
-      : { label: `РАУНД ${summary.round + 1} ▶`, action: () => this.openShop(GameState.ROUND_END) };
+      ? { label: `НА КАРТУ ${icon('ui-map')}`, action: () => this.openMap() }
+      : { label: `РАУНД ${summary.round + 1} ${icon('ui-play')}`, action: () => this.openShop(GameState.ROUND_END) };
 
     if (outcome === 'victory') {
       this.audio.victory();
@@ -659,7 +661,9 @@ export class Game {
       this.screens.end.renderDefeat(summary, {
         fresh,
         medals,
-        back: this.chapter ? { label: '🗺 На карту', action: () => this.openMap() } : null,
+        back: this.chapter
+          ? { label: `${icon('ui-map')} На карту`, action: () => this.openMap() }
+          : null,
       });
     }
     // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Одну, даже
@@ -809,8 +813,22 @@ export class Game {
     });
   }
 
+  // Значок вкладки — из того же реестра, что и всё остальное.
+  //
+  // Собираем в коде, а не строкой в index.html: там это data-URI, а в нём
+  // каждая решётка из цвета (#7cb342) обрывает адрес и должна быть записана
+  // как %23. Отлаживать это особенно неприятно — фавиконки кешируются
+  // намертво. encodeURIComponent снимает вопрос целиком.
+  setupFavicon() {
+    const link = document.querySelector('link[rel="icon"]');
+    if (!link) return;
+    link.href = `data:image/svg+xml,${encodeURIComponent(icon('ui-zombie', 64))}`;
+  }
+
   // Кнопка паузы нужна именно на планшете: клавиши Esc там нет.
   setupPauseButton() {
+    const button = document.getElementById('pause-button');
+    if (button) button.innerHTML = icon('ui-pause');
     document.getElementById('pause-button')?.addEventListener('click', () => {
       if (this.state === GameState.PLAYING || this.state === GameState.PAUSED) this.togglePause();
     });
@@ -819,7 +837,7 @@ export class Game {
   setupSoundButton() {
     const button = document.getElementById('sound-button');
     const sync = () => {
-      button.textContent = this.storage.data.soundOn ? '🔊' : '🔇';
+      button.innerHTML = icon(this.storage.data.soundOn ? 'ui-sound-on' : 'ui-sound-off');
     };
     button.addEventListener('click', () => {
       const on = !this.storage.data.soundOn;

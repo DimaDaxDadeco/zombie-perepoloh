@@ -16,6 +16,7 @@ import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
 import { achievementsProgress } from '../core/achievements.js';
+import { icon } from '../render/icons.js';
 
 const CARD_SIZE = 110;
 
@@ -57,11 +58,11 @@ export class AlbumScreen extends Overlay {
 
     this.setContent(`
       <div class="panel panel--album">
-        <h2 class="title title--small">📖 АЛЬБОМ</h2>
+        <h2 class="title title--small">${icon('ui-album')} АЛЬБОМ</h2>
         <div class="stats-row">
-          <span class="stat">🧟 ${progress.zombies.open}/${progress.zombies.total}</span>
-          <span class="stat">👑 ${progress.bosses.open}/${progress.bosses.total}</span>
-          <span class="stat">🏅 ${medals.open}/${medals.total}</span>
+          <span class="stat">${icon('ui-zombie')} ${progress.zombies.open}/${progress.zombies.total}</span>
+          <span class="stat">${icon('ui-crown')} ${progress.bosses.open}/${progress.bosses.total}</span>
+          <span class="stat">${icon('ui-medal')} ${medals.open}/${medals.total}</span>
         </div>
         <div class="album-grid">${zombieCards.map((s, i) => this.renderCard(s, i)).join('')}</div>
         <div class="album-grid">
@@ -70,9 +71,9 @@ export class AlbumScreen extends Overlay {
         <div class="album-grid">
           ${medalCards.map((s, i) => this.renderCard(s, i + medalOffset)).join('')}
         </div>
-        <button class="btn btn--big" data-action="close">ГОТОВО ✓</button>
+        <button class="btn btn--big" data-action="close">ГОТОВО ${icon('ui-check')}</button>
         <p class="hint">Кого встретишь в игре — тот появится в альбоме.
-           Нажми 🔈, чтобы послушать</p>
+           Нажми ${icon('ui-speak')}, чтобы послушать</p>
       </div>
     `);
 
@@ -103,7 +104,7 @@ export class AlbumScreen extends Overlay {
       return `
         <div class="album-card ${sticker.open ? '' : 'album-card--locked'}" data-index="${index}">
           ${Overlay.speakButton(describeSticker(sticker))}
-          <span class="album-card__emoji">${sticker.spec.emoji}</span>
+          <span class="album-card__emoji">${icon(sticker.spec.icon)}</span>
           <span class="album-card__name">${sticker.spec.name}</span>
         </div>
       `;
@@ -115,7 +116,7 @@ export class AlbumScreen extends Overlay {
         <canvas class="album-card__canvas" width="${size}" height="${size}"
                 data-index="${index}"></canvas>
         <span class="album-card__name">${sticker.open ? sticker.spec.name : '???'}</span>
-        ${sticker.open ? '' : '<span class="album-card__lock">❓</span>'}
+        ${sticker.open ? '' : `<span class="album-card__lock">${icon('ui-question')}</span>`}
       </div>
     `;
   }

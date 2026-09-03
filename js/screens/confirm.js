@@ -3,6 +3,7 @@
 // он попадёт в безопасный вариант.
 
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class ConfirmScreen extends Overlay {
   constructor(rootId) {
@@ -19,14 +20,14 @@ export class ConfirmScreen extends Overlay {
     });
   }
 
-  render({ title, emoji, question, confirmText, cancelText, onConfirm, onCancel }) {
+  render({ title, icon: iconName, question, confirmText, cancelText, onConfirm, onCancel }) {
     this.onConfirm = onConfirm;
     this.onCancel = onCancel;
 
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--small">${title}</h2>
-        <div class="menu-hero">${emoji}</div>
+        <div class="menu-hero">${icon(iconName)}</div>
         <p class="big-line">${question}</p>
         <button class="btn btn--big" data-action="cancel">${cancelText}</button>
         <button class="btn btn--danger" data-action="confirm">${confirmText}</button>

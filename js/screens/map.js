@@ -21,8 +21,9 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 import {
-  campaignProgress, themeEmoji, themeName, themeColors, bossOf, goalText,
+  campaignProgress, themeIcon, themeName, themeColors, bossOf, goalText,
 } from '../core/campaign.js';
 
 const BOSS_SIZE = 72;
@@ -75,11 +76,11 @@ export class MapScreen extends Overlay {
           ${this.stops.map((stop) => this.renderStop(stop)).join('')}
         </div>
         <div class="map-info"></div>
-        <button class="btn btn--big" data-action="play">ИГРАТЬ ▶</button>
+        <button class="btn btn--big" data-action="play">ИГРАТЬ ${icon('ui-play')}</button>
         <div class="menu-buttons">
-          <button class="btn btn--secondary" data-action="hero">🦸 Герой</button>
-          <button class="btn btn--secondary" data-action="shop">🛒 Магазин 💵 ${save.coins}</button>
-          <button class="btn btn--secondary" data-action="close">🏠 В меню</button>
+          <button class="btn btn--secondary" data-action="hero">${icon('ui-hero')} Герой</button>
+          <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин ${icon('ui-money')} ${save.coins}</button>
+          <button class="btn btn--secondary" data-action="close">${icon('ui-home')} В меню</button>
         </div>
       </div>
     `);
@@ -110,7 +111,7 @@ export class MapScreen extends Overlay {
     // Пройдено помечаем галочкой, а не страницей: страница на тёмном кружке
     // читается как серое надгробие, а галочку ребёнок понимает мгновенно.
     // Страницы при этом никуда не делись — они в полоске над картой.
-    const badge = done ? '✅' : (here ? '📍' : (open ? '' : '🔒'));
+    const badge = done ? 'ui-done' : (here ? 'ui-pin' : (open ? null : 'ui-lock'));
     return `
       <div class="map-stop ${state} map-stop--${turn}" data-index="${index}"
            style="grid-area: ${stop.row} / ${column};
@@ -120,10 +121,10 @@ export class MapScreen extends Overlay {
           <canvas class="map-stop__canvas" width="${BOSS_SIZE}" height="${BOSS_SIZE}"
                   data-index="${index}"></canvas>
           <span class="map-stop__number">${index + 1}</span>
-          ${badge ? `<span class="map-stop__badge">${badge}</span>` : ''}
-          ${last ? '<span class="map-stop__crown">👑</span>' : ''}
+          ${badge ? `<span class="map-stop__badge">${icon(badge)}</span>` : ''}
+          ${last ? `<span class="map-stop__crown">${icon('ui-crown')}</span>` : ''}
         </div>
-        <span class="map-stop__place">${themeEmoji(chapter.theme)}</span>
+        <span class="map-stop__place">${icon(themeIcon(chapter.theme))}</span>
       </div>
     `;
   }
@@ -169,9 +170,11 @@ export class MapScreen extends Overlay {
     const { chapter, boss, done, open } = stop;
     box.className = `map-info ${open ? '' : 'map-info--locked'}`;
     box.innerHTML = `
-      <span class="map-info__place">${themeEmoji(chapter.theme)} ${themeName(chapter.theme)}</span>
+      <span class="map-info__place">${icon(themeIcon(chapter.theme))} ${themeName(chapter.theme)}</span>
       <span class="map-info__task">
-        ${open ? `${done ? '✅ ' : ''}${goalText(chapter)}` : `🔒 Сюда ещё рано — ${boss?.name || ''} ждёт`}
+        ${open
+          ? `${done ? `${icon('ui-done')} ` : ''}${goalText(chapter)}`
+          : `${icon('ui-lock')} Сюда ещё рано — ${boss?.name || ''} ждёт`}
       </span>
     `;
   }
@@ -214,7 +217,7 @@ function placeOnRoad(index, total) {
 // нечитающего ребёнка это единственный способ увидеть прогресс числом.
 function renderPageStrip(progress) {
   return Array.from({ length: progress.total }, (_, i) => `
-    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">📄</span>
+    <span class="map-page ${i < progress.open ? 'map-page--back' : ''}">${icon('ui-page')}</span>
   `).join('');
 }
 

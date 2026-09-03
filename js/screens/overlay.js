@@ -4,6 +4,7 @@
 
 import { CONFIG } from '../config.js';
 import { drawHero, drawZombie, drawBoss } from '../render/sprites.js';
+import { icon } from '../render/icons.js';
 
 // Чей это выбор. Цвет — тот же, что кольцо у ног героя в бою. Живёт здесь, а
 // не в characters.js: подпись нужна всем трём экранам выбора, а импорт из
@@ -93,7 +94,7 @@ export class Overlay {
         <div class="picker__column" data-player="${i}">
           ${duo ? `<div class="picker__who">${playerTitle(i, this.total)}</div>` : ''}
           ${renderInner(i)}
-          ${duo ? '<div class="picker__ready">ГОТОВ ✓</div>' : ''}
+          ${duo ? `<div class="picker__ready">ГОТОВ ${icon('ui-check')}</div>` : ''}
         </div>`).join('')}
     </div>`;
   }
@@ -200,7 +201,9 @@ export class Overlay {
   // Кнопка-динамик: ребёнок не читает, поэтому любую подпись можно послушать.
   // Возвращает разметку; обработчики вешает bindSpeakButtons().
   static speakButton(text) {
-    return `<span class="speak" data-speak="${escapeAttribute(text)}" title="Послушать">🔈</span>`;
+    // Разметку значка не экранируем — она вставляется как есть; экранируется
+    // только подпись, которая уходит в озвучку.
+    return `<span class="speak" data-speak="${escapeAttribute(text)}" title="Послушать">${icon('ui-speak')}</span>`;
   }
 
   // Клик по динамику не должен выбирать карточку, на которой он стоит.

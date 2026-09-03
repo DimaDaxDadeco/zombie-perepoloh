@@ -18,6 +18,7 @@
 
 import { CONFIG } from '../config.js';
 import { InputSource } from '../core/input.js';
+import { icon } from '../render/icons.js';
 
 // Источник ввода, который наполняется пальцами. Для игры он неотличим от
 // клавиатуры и геймпада — тот же InputSource.
@@ -64,6 +65,10 @@ export class TouchControls {
     this.field = this.root.querySelector('#touch-field');
     this.marker = this.root.querySelector('#touch-marker');
     this.button = this.root.querySelector('#touch-ability');
+    // Значок по умолчанию ставим здесь: в index.html кнопка пустая (иначе там
+    // пришлось бы держать эмодзи), а setAbility зовётся только в бою.
+    this.abilityIcon = null;
+    this.setAbility({});
 
     this.bindField();
     this.bindButton();
@@ -75,7 +80,7 @@ export class TouchControls {
     el.className = 'hidden';
     el.innerHTML = `
       <div id="touch-field"><div id="touch-marker"></div></div>
-      <button id="touch-ability" type="button">✨</button>
+      <button id="touch-ability" type="button">${icon('ui-spark')}</button>
     `;
     document.body.appendChild(el);
     return el;
@@ -178,11 +183,18 @@ export class TouchControls {
     }
   }
 
-  // Кнопка показывает эмодзи способности героя и наливается цветом, когда
+  // Кнопка показывает значок способности героя и наливается цветом, когда
   // та готова. Сейчас о готовности сообщает только шкала в углу — на планшете
   // палец и так лежит на кнопке, и подсветка попадает прямо в поле зрения.
-  setAbility({ emoji, color, ready }) {
-    if (this.button.textContent !== emoji) this.button.textContent = emoji || '✨';
+  //
+  // Сравниваем ИМЯ значка, а не разметку: метод зовётся каждый кадр, и
+  // сличать на каждом кадре строку с целым svg внутри — пустая работа.
+  setAbility({ icon: iconName, color, ready }) {
+    const next = iconName || 'ui-spark';
+    if (this.abilityIcon !== next) {
+      this.abilityIcon = next;
+      this.button.innerHTML = icon(next);
+    }
     this.button.classList.toggle('ready', Boolean(ready));
     if (color) this.button.style.setProperty('--ability-color', color);
   }

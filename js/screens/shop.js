@@ -3,6 +3,7 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 export class ShopScreen extends Overlay {
   constructor(rootId, { onBuy, onClose, onSpeak }) {
@@ -58,10 +59,10 @@ export class ShopScreen extends Overlay {
     this.setContentKeepingScroll(`
       <div class="panel panel--shop">
         <h2 class="title title--small">МАГАЗИН</h2>
-        <div class="stats-row"><span class="stat">💵 ${save.coins}</span></div>
+        <div class="stats-row"><span class="stat">${icon('ui-money')} ${save.coins}</span></div>
         <div class="shop-items">${items}</div>
-        <button class="btn btn--big" data-action="close">ГОТОВО ✓</button>
-        <p class="hint">Нажми 🔈, чтобы послушать название и цену</p>
+        <button class="btn btn--big" data-action="close">ГОТОВО ${icon('ui-check')}</button>
+        <p class="hint">Нажми ${icon('ui-speak')}, чтобы послушать название и цену</p>
       </div>
     `);
 
@@ -81,16 +82,16 @@ export class ShopScreen extends Overlay {
     const isMaxed = level >= maxLevel;
     const price = isMaxed ? null : spec.prices[level];
     const affordable = !isMaxed && save.coins >= price;
-    const dots = '●'.repeat(level) + '○'.repeat(maxLevel - level);
+    const dots = icon('ui-dot').repeat(level) + icon('ui-dot-empty').repeat(maxLevel - level);
 
     return `
       <div class="shop-item ${affordable ? '' : 'shop-item--locked'}" data-id="${id}">
         ${Overlay.speakButton(describeItem(spec, price, isMaxed, affordable))}
-        <span class="shop-item__emoji">${spec.emoji}</span>
+        <span class="shop-item__emoji">${icon(spec.icon)}</span>
         <span class="shop-item__name">${spec.name}</span>
         <span class="shop-item__about">${spec.about}</span>
         <span class="shop-item__dots">${dots}</span>
-        <span class="shop-item__price">${isMaxed ? 'МАКС' : `💵 ${price}`}</span>
+        <span class="shop-item__price">${isMaxed ? 'МАКС' : `${icon('ui-money')} ${price}`}</span>
       </div>
     `;
   }

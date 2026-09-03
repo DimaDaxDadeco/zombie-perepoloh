@@ -4,7 +4,8 @@
 
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
-import { themeEmoji, themeName } from '../core/campaign.js';
+import { themeIcon, themeName } from '../core/campaign.js';
+import { icon } from '../render/icons.js';
 
 const HERO_SIZE = 130;
 
@@ -31,19 +32,19 @@ export class EndScreen extends Overlay {
   // четыре, и на пятом вызов перестал бы читаться.
   renderVictory({ round, zombiesDefeated, coinsEarned }, look,
     { fresh = null, medals = [], page = null, next } = {}) {
-    const button = next || { label: `РАУНД ${round + 1} ▶`, action: () => {} };
+    const button = next || { label: `РАУНД ${round + 1} ${icon('ui-play')}`, action: () => {} };
     this.onNext = button.action;
     this.setContent(`
       <div class="panel panel--end">
-        <h2 class="title">ПОБЕДА! 🎉</h2>
+        <h2 class="title">ПОБЕДА! ${icon('ui-party')}</h2>
         <canvas class="menu-hero-canvas" width="${HERO_SIZE}" height="${HERO_SIZE}"></canvas>
         <p class="big-line">Ты прогнал <b>${zombiesDefeated}</b> зомби!</p>
-        <p class="big-line">Заработано 💵 <b>${coinsEarned}</b></p>
+        <p class="big-line">Заработано ${icon('ui-money')} <b>${coinsEarned}</b></p>
         ${renderPage(page)}
         ${renderFresh(fresh)}
         ${renderMedals(medals)}
         <button class="btn btn--big" data-action="next">${button.label}</button>
-        <button class="btn btn--secondary" data-action="menu">🏠 В меню</button>
+        <button class="btn btn--secondary" data-action="menu">${icon('ui-home')} В меню</button>
       </div>
     `);
     Overlay.paintHero(this.root.querySelector('.menu-hero-canvas'), look);
@@ -63,13 +64,13 @@ export class EndScreen extends Overlay {
     this.setContent(`
       <div class="panel panel--end">
         <h2 class="title title--soft">ПОЧТИ ПОЛУЧИЛОСЬ!</h2>
-        <div class="menu-hero">😅</div>
+        <div class="menu-hero">${icon('ui-sad')}</div>
         <p class="big-line">Ты прогнал <b>${zombiesDefeated}</b> зомби — это много!</p>
-        <p class="big-line">Заработано 💵 <b>${coinsEarned}</b></p>
+        <p class="big-line">Заработано ${icon('ui-money')} <b>${coinsEarned}</b></p>
         ${renderFresh(fresh)}
         ${renderMedals(medals)}
-        <button class="btn btn--big" data-action="retry">ЕЩЁ РАЗ ▶</button>
-        <button class="btn btn--secondary" data-action="back">${back?.label || '🏠 В меню'}</button>
+        <button class="btn btn--big" data-action="retry">ЕЩЁ РАЗ ${icon('ui-play')}</button>
+        <button class="btn btn--secondary" data-action="back">${back?.label || `${icon('ui-home')} В меню`}</button>
       </div>
     `);
     this.paintFresh(fresh);
@@ -102,11 +103,11 @@ export class EndScreen extends Overlay {
 function renderMedals(medals) {
   if (!medals || !medals.length) return '';
   return `
-    <p class="big-line">🏅 ${medals.length > 1 ? 'НОВЫЕ МЕДАЛИ!' : 'НОВАЯ МЕДАЛЬ!'}</p>
+    <p class="big-line">${icon('ui-medal')} ${medals.length > 1 ? 'НОВЫЕ МЕДАЛИ!' : 'НОВАЯ МЕДАЛЬ!'}</p>
     <div class="fresh-stickers">
       ${medals.map((m) => `
         <span class="fresh-medal" title="${m.name}">
-          <span class="fresh-medal__emoji">${m.emoji}</span>
+          <span class="fresh-medal__emoji">${icon(m.icon)}</span>
           <span class="fresh-medal__name">${m.name}</span>
         </span>
       `).join('')}
@@ -120,10 +121,10 @@ function renderMedals(medals) {
 function renderPage(chapter) {
   if (!chapter) return '';
   return `
-    <p class="big-line">📖 СТРАНИЦА ВЕРНУЛАСЬ!</p>
+    <p class="big-line">${icon('ui-page')} СТРАНИЦА ВЕРНУЛАСЬ!</p>
     <div class="fresh-stickers">
       <span class="fresh-medal">
-        <span class="fresh-medal__emoji">${themeEmoji(chapter.theme)}</span>
+        <span class="fresh-medal__emoji">${icon(themeIcon(chapter.theme))}</span>
         <span class="fresh-medal__name">${themeName(chapter.theme)}</span>
       </span>
     </div>
@@ -138,7 +139,7 @@ function renderFresh(fresh) {
   ];
   if (!all.length) return '';
   return `
-    <p class="big-line">📖 НОВЫЕ НАКЛЕЙКИ!</p>
+    <p class="big-line">${icon('ui-album')} НОВЫЕ НАКЛЕЙКИ!</p>
     <div class="fresh-stickers">
       ${all.map((s) => `<canvas class="fresh-sticker" width="70" height="70"
           data-kind="${s.kind}" data-id="${s.id}"></canvas>`).join('')}

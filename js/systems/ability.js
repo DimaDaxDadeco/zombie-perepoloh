@@ -21,7 +21,7 @@ export class Ability {
   }
 
   get name() { return this.spec.name; }
-  get emoji() { return this.spec.emoji; }
+  get icon() { return this.spec.icon; }
   get color() { return this.spec.color; }
   get isReady() { return this.charge >= CONFIG.abilities.chargeNeeded; }
   get isActive() { return this.timer > 0; }

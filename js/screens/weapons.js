@@ -5,6 +5,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { ALL_WEAPON_IDS } from '../weapons/weapons.js';
+import { icon } from '../render/icons.js';
 
 export class WeaponsScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -39,10 +40,10 @@ export class WeaponsScreen extends Overlay {
               ${ALL_WEAPON_IDS.map((id, k) => this.renderCard(id, k)).join('')}
             </div>
             <button class="btn btn--big" data-confirm="${i}">
-              ${total > 1 ? 'ГОТОВ ▶' : 'ИГРАТЬ ▶'}
+              ${total > 1 ? 'ГОТОВ' : 'ИГРАТЬ'} ${icon('ui-play')}
             </button>`))}
         <p class="hint">Это оружие будет у тебя с самого начала.
-           Остальное можно набрать в бою. Нажми 🔈, чтобы послушать</p>
+           Остальное можно набрать в бою. Нажми ${icon('ui-speak')}, чтобы послушать</p>
       </div>
     `);
 
@@ -70,7 +71,7 @@ export class WeaponsScreen extends Overlay {
       <div class="hero-card ${locked ? 'hero-card--locked hero-card--selected' : ''}"
            data-index="${index}">
         ${Overlay.speakButton(describeWeapon(id))}
-        <span class="weapon-choice__emoji">${spec.emoji}</span>
+        <span class="weapon-choice__emoji">${icon(spec.icon)}</span>
         <span class="hero-card__name">${spec.name}</span>
         <span class="hero-card__perk">${WEAPON_HINTS[id]}</span>
       </div>

@@ -16,6 +16,7 @@ import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
 import { campaignProgress } from '../core/campaign.js';
+import { icon } from '../render/icons.js';
 
 const HERO_PREVIEW_SIZE = 130;
 
@@ -55,24 +56,24 @@ export class MenuScreen extends Overlay {
                 height="${HERO_PREVIEW_SIZE}"></canvas>
         ${canContinue ? `
           <div class="stats-row">
-            <span class="stat">💵 ${save.coins}</span>
-            <span class="stat">🏁 Раунд ${save.round}</span>
-            <span class="stat" title="${difficulty.name}">${difficulty.emoji}</span>
+            <span class="stat">${icon('ui-money')} ${save.coins}</span>
+            <span class="stat">${icon('ui-flag')} Раунд ${save.round}</span>
+            <span class="stat" title="${difficulty.name}">${icon(difficulty.icon)}</span>
           </div>
         ` : ''}
         <div class="menu-play">
           ${canContinue
-            ? '<button class="btn btn--big" data-action="continue">ПРОДОЛЖИТЬ ▶</button>'
-            : '<button class="btn btn--big" data-action="new">НОВАЯ ИГРА ▶</button>'}
+            ? `<button class="btn btn--big" data-action="continue">ПРОДОЛЖИТЬ ${icon('ui-play')}</button>`
+            : `<button class="btn btn--big" data-action="new">НОВАЯ ИГРА ${icon('ui-play')}</button>`}
           <button class="btn btn--big btn--journey" data-action="campaign">
-            ${CONFIG.campaign.emoji} ${CONFIG.campaign.title.toUpperCase()} ▶
+            ${icon(CONFIG.campaign.icon)} ${CONFIG.campaign.title.toUpperCase()} ${icon('ui-play')}
             <span class="btn__note">${campaign.open}/${campaign.total} страниц</span>
           </button>
         </div>
         <div class="menu-buttons">
-          ${canContinue ? '<button class="btn btn--secondary" data-action="new">✨ Новая игра</button>' : ''}
-          <button class="btn btn--secondary" data-action="shop">🛒 Магазин</button>
-          <button class="btn btn--secondary" data-action="album">📖 Альбом ${albumOpen(save)}</button>
+          ${canContinue ? `<button class="btn btn--secondary" data-action="new">${icon('ui-spark')} Новая игра</button>` : ''}
+          <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин</button>
+          <button class="btn btn--secondary" data-action="album">${icon('ui-album')} Альбом ${albumOpen(save)}</button>
         </div>
         <p class="hint">Выбирай стрелками, нажимай пробел. В бою бегай стрелками —
            оружие стреляет само!</p>

@@ -3,14 +3,19 @@
 // героя и оружия.
 
 import { Overlay } from './overlay.js';
+import { icon } from '../render/icons.js';
 
 const OPTIONS = [
   {
-    count: 1, emoji: '🦸', name: 'Один',
-    about: 'Играешь сам', hint: '← ↑ → ↓ или геймпад',
+    count: 1, icon: 'ui-hero', name: 'Один',
+    about: 'Играешь сам',
+    // Подпись со стрелками — не украшение, а инструкция, как ходить. Значки
+    // тут поэтому такие же нарисованные, как всё остальное.
+    hint: `${icon('ui-arrow-left')}${icon('ui-arrow-up')}${icon('ui-arrow-right')}`
+      + `${icon('ui-arrow-down')} или ${icon('ui-gamepad')} геймпад`,
   },
   {
-    count: 2, emoji: '🦸🦸', name: 'Вдвоём',
+    count: 2, icon: 'ui-heroes', name: 'Вдвоём',
     about: 'Вдвоём на одном экране', hint: 'первый — стрелки, второй — WASD или геймпад',
   },
 ];
@@ -38,9 +43,9 @@ export class PlayersScreen extends Overlay {
         <div class="heroes">
           ${OPTIONS.map((option, i) => this.renderCard(option, i)).join('')}
         </div>
-        <button class="btn btn--big" data-action="next">ДАЛЬШЕ ▶</button>
+        <button class="btn btn--big" data-action="next">ДАЛЬШЕ ${icon('ui-play')}</button>
         <p class="hint">Вдвоём — на одной клавиатуре или с геймпадом.
-           Нажми 🔈, чтобы послушать</p>
+           Нажми ${icon('ui-speak')}, чтобы послушать</p>
       </div>
     `);
 
@@ -60,7 +65,7 @@ export class PlayersScreen extends Overlay {
     return `
       <div class="hero-card" data-index="${index}">
         ${Overlay.speakButton(describePlayers(option))}
-        <span class="weapon-choice__emoji">${option.emoji}</span>
+        <span class="weapon-choice__emoji">${icon(option.icon)}</span>
         <span class="hero-card__name">${option.name}</span>
         <span class="hero-card__perk">${option.about}</span>
         <span class="hero-card__ability">${option.hint}</span>
