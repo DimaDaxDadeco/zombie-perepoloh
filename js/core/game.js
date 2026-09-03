@@ -700,8 +700,16 @@ export class Game {
   // завязка второго не показалась бы никогда. Молча.
   openCampaign() {
     this.campaign = currentJourney(this.storage);
-    if (this.campaign.doneCount === 0 && this.campaign.spec.intro) {
-      return this.playStory(this.campaign.spec.intro, () => this.openMap());
+    // Кадры «про что это» показываются один раз, на пустом прогрессе.
+    //
+    // Запасной вариант через unlock обязателен: у второго путешествия своей
+    // завязки нет, его кадры играются сразу после финала первого. Но любой
+    // путь мимо этой цепочки — сохранение с уже пройденным первым, перенос
+    // прогресса, отладка — оставлял ребёнка на новой карте без единого слова
+    // о том, что случилось.
+    const frames = this.campaign.spec.intro || this.campaign.spec.unlock;
+    if (this.campaign.doneCount === 0 && frames) {
+      return this.playStory(frames, () => this.openMap());
     }
     this.openMap();
   }
