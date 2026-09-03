@@ -18,6 +18,10 @@ import { seedRandom, unseedRandom } from './seed.mjs';
 const { playChapter } = await import('./harness.mjs');
 const { CONFIG } = await import('../js/config.js');
 
+// Цели, в которых убийства — часть задачи. Медальки тоже: они падают с
+// убитых.
+const KILLING_GOALS = new Set(['boss', 'zombies', 'survive', 'medals']);
+
 const HERO = 'superS';
 const WEAPON = 'water';
 const FIRST_SEED = 500;
@@ -138,7 +142,13 @@ for (const journey of CONFIG.journeys) {
       if (!result.won) losses.push(where);
 
       if (!result.finished) problems.push(`${where}: не завершилась за ${result.frames} кадров — цель недостижима?`);
-      if (result.zombiesDefeated === 0) problems.push(`${where}: ноль убитых зомби`);
+      // Ноль убитых — поломка только там, где убивать И НАДО. В догонялках,
+      // спасении и доставке задача другая: бот может пройти главу, не тронув
+      // никого, и это законный исход, а не сломанное оружие. Оружие проверяет
+      // смоук, отдельно и всеми четырнадцатью.
+      if (KILLING_GOALS.has(result.goalId) && result.zombiesDefeated === 0) {
+        problems.push(`${where}: ноль убитых зомби`);
+      }
       if (!Number.isFinite(result.hp)) problems.push(`${where}: hp = ${result.hp}`);
       // У боссовой цели босс обязан выйти: иначе глава выиграна не тем, чем
       // задумано, и «убей босса» на деле оказалась «дождись конца».
