@@ -170,6 +170,11 @@ export class Game {
         // котором ребёнок ни разу не выбирает, кем играть: обычная цепочка
         // выбора живёт только внутри «Новой игры», а она стирает прогресс.
         onHero: () => this.openCharacters(() => this.openMap()),
+        // И число игроков — тоже с карты. Кампания рассчитана на двоих: цели
+        // умножаются на CONFIG.coop.goalFactor, карта и прогресс общие. Но
+        // спрашивали «кто играет» только внутри «Новой игры», и позвать
+        // второго на одну главу было нельзя.
+        onPlayers: () => this.openPlayers(() => this.openMap()),
         onClose: () => this.goToMenu(),
         onSpeak: (text) => this.speech.speak(text),
       }),
@@ -345,10 +350,7 @@ export class Game {
   continueGame() {
     const save = this.storage.data;
     // Подстраховка на случай неполного сохранения: дособерём недостающее.
-    if (!save.character) return this.openCharacters(0);
-    if (this.playersCount > 1 && !save.character2) return this.openCharacters(1);
-    if (!save.weapon) return this.openWeapons(0);
-    if (this.playersCount > 1 && !save.weapon2) return this.openWeapons(1);
+    if (this.needsPicking()) return this.openCharacters(() => this.continueGame());
     this.startRound(save.round);
   }
 
@@ -397,7 +399,10 @@ export class Game {
     this.goToMenu();
   }
 
-  openPlayers() {
+  // Куда уйти после выбора, решает вызывающий — как и у openCharacters.
+  // Из «Новой игры» дальше идёт сложность, с карты — обратно на карту.
+  openPlayers(after = null) {
+    this.afterPicking = after;
     this.state = GameState.PLAYERS;
     this.hideAllScreens();
     this.screens.players.render(this.storage.data.playersCount);
@@ -411,7 +416,22 @@ export class Game {
     this.audio.click();
     this.speech.stop();
     this.screens.players.hide();
-    this.openDifficulty();
+    if (!this.afterPicking) {
+      this.openDifficulty();
+      return;
+    }
+    // Возвращаемся туда, откуда пришли. Героя второму игроку здесь НЕ
+    // спрашиваем: он может и не понадобиться (переключились обратно на
+    // одного), а перед боем это всё равно проверит startChapter.
+    this.finishPicking();
+  }
+
+  // Есть ли игрок без героя или без оружия. Бывает после переключения на
+  // двоих и при неполном сохранении. Одна проверка на оба случая: два места,
+  // решающих «можно ли начинать», разошлись бы на первой же правке.
+  needsPicking() {
+    return this.eachPlayer().some((i) => !this.storage.data[Game.characterKey(i)]
+      || !(this.getCharacter(i).fixedWeapon || this.storage.data[Game.weaponKey(i)]));
   }
 
   openDifficulty() {
@@ -524,6 +544,9 @@ export class Game {
   startChapter(chapterId) {
     const chapter = this.campaign.chapter(chapterId);
     if (!chapter || !this.campaign.isOpen(chapterId)) return;
+    // У второго игрока может не быть ни героя, ни оружия — если позвали его
+    // только что, прямо с карты. Без этого он вышел бы в бой пустым.
+    if (this.needsPicking()) return this.openCharacters(() => this.startChapter(chapterId));
     this.chapter = chapter;
     this.launch({
       round: chapter.level,
