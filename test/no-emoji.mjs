@@ -114,7 +114,7 @@ add('путешествие', CONFIG.journeys.map((j) => j.icon));
 add('награда', CONFIG.journeys.map((j) => j.reward?.icon));
 // Значки кадров истории раньше не проверялись вовсе — закрываем заодно.
 add('кадр истории', CONFIG.journeys.flatMap((j) =>
-  [...(j.intro || []), ...(j.finale || []), ...(j.unlock || [])].map((f) => f.icon)));
+  [...(j.intro || []), ...(j.finale || [])].map((f) => f.icon)));
 
 const known = new Set(ICON_NAMES);
 const missing = names.filter(([, name]) => !known.has(name));

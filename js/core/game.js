@@ -700,16 +700,12 @@ export class Game {
   // завязка второго не показалась бы никогда. Молча.
   openCampaign() {
     this.campaign = currentJourney(this.storage);
-    // Кадры «про что это» показываются один раз, на пустом прогрессе.
-    //
-    // Запасной вариант через unlock обязателен: у второго путешествия своей
-    // завязки нет, его кадры играются сразу после финала первого. Но любой
-    // путь мимо этой цепочки — сохранение с уже пройденным первым, перенос
-    // прогресса, отладка — оставлял ребёнка на новой карте без единого слова
-    // о том, что случилось.
-    const frames = this.campaign.spec.intro || this.campaign.spec.unlock;
-    if (this.campaign.doneCount === 0 && frames) {
-      return this.playStory(frames, () => this.openMap());
+    // Завязка играется один раз — когда ребёнок заходит в это путешествие
+    // впервые. Считаем главы ЭТОГО путешествия, а не длину общего списка:
+    // список общий на все, и после первого он никогда не пуст — завязка
+    // второго не показалась бы никогда. Молча.
+    if (this.campaign.doneCount === 0 && this.campaign.spec.intro) {
+      return this.playStory(this.campaign.spec.intro, () => this.openMap());
     }
     this.openMap();
   }
@@ -720,23 +716,12 @@ export class Game {
     this.screens.story.play(frames, next);
   }
 
-  // Путешествие, которое только что открылось пройденным. Кадры про него
-  // показываются один раз, сразу после финала предыдущего: новая карта должна
-  // быть событием, а не запертой дверью, которую ребёнок видел всё время.
-  justUnlocked(finishedId) {
-    return openJourneys(this.storage).find((c) => c.spec.needs === finishedId
-      && c.doneCount === 0 && c.spec.unlock);
-  }
-
   openMap(journeyId = null) {
     if (this.pendingFinale) {
       const finished = allJourneys(this.storage).find((c) => c.id === this.pendingFinale);
       this.pendingFinale = null;
       this.chapter = null;
-      const next = this.justUnlocked(finished.id);
-      return this.playStory(finished.spec.finale, () => (next
-        ? this.playStory(next.spec.unlock, () => this.openMap(next.id))
-        : this.openMap(finished.id)));
+      return this.playStory(finished.spec.finale, () => this.openMap(finished.id));
     }
 
     const open = openJourneys(this.storage);
@@ -749,10 +734,10 @@ export class Game {
     this.round = null;
     this.audio.stopMusic();
     this.hideAllScreens();
+    // Все открытые путешествия — вкладками в шапке карты. Одно открыто,
+    // значит вкладка одна и выглядит как прежний заголовок.
     this.screens.map.render(this.storage.data, this.campaign, this.getCharacter().look, {
-      // Другие открытые путешествия — для переключателя. Одно открыто, значит
-      // переключать не на что, и кнопки на карте не будет вовсе.
-      others: open.filter((c) => c.id !== this.campaign.id),
+      journeys: open,
     });
   }
 

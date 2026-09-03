@@ -50,7 +50,7 @@ export class MapScreen extends Overlay {
     });
   }
 
-  render(save, campaign, look, { others = [] } = {}) {
+  render(save, campaign, look, { journeys = [campaign] } = {}) {
     this.look = look;
     this.stops = campaign.chapters.map((chapter, index) => ({
       chapter,
@@ -72,7 +72,7 @@ export class MapScreen extends Overlay {
     const duo = (save.playersCount || 1) > 1;
     this.setContent(`
       <div class="panel panel--map">
-        <h2 class="title title--small">${icon(campaign.spec.icon)} ${campaign.spec.title.toUpperCase()}</h2>
+        ${renderJourneyTabs(journeys, campaign)}
         <div class="map-pages">
           ${renderPageStrip(progress, campaign.spec.reward.icon)}
           <span class="map-pages__count">${progress.open}/${progress.total}</span>
@@ -88,10 +88,6 @@ export class MapScreen extends Overlay {
             ${icon(duo ? 'ui-heroes' : 'ui-hero')} ${duo ? 'Вдвоём' : 'Один'}
           </button>
           <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин ${icon('ui-money')} ${save.coins}</button>
-          ${others.map((other) => `
-            <button class="btn btn--secondary" data-action="journey" data-journey="${other.id}">
-              ${icon(other.spec.icon)} ${other.spec.title}
-            </button>`).join('')}
           <button class="btn btn--secondary" data-action="close">${icon('ui-home')} В меню</button>
         </div>
       </div>
@@ -204,6 +200,27 @@ export class MapScreen extends Overlay {
     }
     this.onPlay(stop.chapter.id);
   }
+}
+
+// Шапка карты: какое путешествие открыто сейчас и какие есть ещё.
+//
+// Вкладками, а не маленькой кнопкой внизу. Путешествий несколько, они
+// равноправны, и выбор между ними обязан быть виден сразу — кнопка под
+// картой уезжала под сгиб, и второе путешествие ребёнок бы просто не нашёл.
+// Пока путешествие одно, вкладка ровно одна и выглядит как прежний заголовок.
+function renderJourneyTabs(journeys, active) {
+  if (journeys.length < 2) {
+    return `<h2 class="title title--small">${icon(active.spec.icon)}`
+      + ` ${active.spec.title.toUpperCase()}</h2>`;
+  }
+  return `<div class="map-tabs">
+    ${journeys.map((journey) => `
+      <button class="map-tab ${journey.id === active.id ? 'map-tab--on' : ''}"
+              data-action="journey" data-journey="${journey.id}">
+        ${icon(journey.spec.icon)} ${journey.spec.title}
+        <span class="map-tab__count">${journeyProgress(journey).open}/${journey.chapters.length}</span>
+      </button>`).join('')}
+  </div>`;
 }
 
 // Где остановка стоит на змейке и куда от неё уходит дорога.
