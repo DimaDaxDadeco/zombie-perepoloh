@@ -16,16 +16,13 @@
 
 import {
   Scene, WebGLRenderer, Color, Fog, Mesh,
-  SphereGeometry, PlaneGeometry,
-  MeshLambertMaterial, DirectionalLight, HemisphereLight, PCFSoftShadowMap,
+  PlaneGeometry,
+  MeshLambertMaterial, DirectionalLight, HemisphereLight, PointLight, PCFSoftShadowMap,
 } from 'three';
 import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
-import { buildFigure, buildProp, buildPickup, poseFigure } from './figures.js';
-
-// Заготовка для того, что ещё не стало фигуркой, — снарядов: радиус ровно
-// единица, масштаб задаётся у меша.
-const UNIT_SPHERE = new SphereGeometry(1, 12, 10);
+import { buildFigure, buildProp, buildPickup, buildShot, poseFigure } from './figures.js';
+import { Effects } from './effects.js';
 
 const DEFAULT_COLOR = '#c8c8c8';
 
@@ -52,9 +49,11 @@ export class Scene3D {
 
     this.buildGround();
     this.buildLights();
+    this.effects = new Effects(this.scene);
 
     this.themeId = null;
     this.theme = null;
+    this.sky = null;
     // Общее время сцены: по нему трепещет пламя и трясётся подарок. Своё, а
     // не игровое, — это украшение, и на симуляцию оно не влияет.
     this.phase = 0;
@@ -76,9 +75,10 @@ export class Scene3D {
 
     // Полусферный свет подсвечивает изнанку фигурок. Без него всё, что не
     // повёрнуто к солнцу, становится чёрным — а зомби и так тёмные.
-    this.scene.add(new HemisphereLight(
+    this.ambient = new HemisphereLight(
       new Color(light.skyColor), new Color(light.groundColor), light.ambientIntensity,
-    ));
+    );
+    this.scene.add(this.ambient);
 
     this.sun = new DirectionalLight(new Color(light.sunColor), light.sunIntensity);
     this.sun.castShadow = true;
@@ -87,6 +87,39 @@ export class Scene3D {
     // Цель света — отдельный объект, и в сцену её нужно добавить руками,
     // иначе Three не пересчитает её мировую матрицу и тени уедут.
     this.scene.add(this.sun.target);
+
+    // Фонарик героя. Живёт всегда, но горит только ночью: создавать источник
+    // света посреди раунда — это перекомпиляция всех шейдеров сцены и
+    // гарантированный рывок ровно в тот момент, когда выходит босс.
+    const night = this.spec.night;
+    this.lamp = new PointLight(new Color(night.lampColor), 0, 1, night.lampDecay);
+    this.lamp.visible = false;
+    this.scene.add(this.lamp);
+    this.night = false;
+  }
+
+  // Ночь: гасим солнце и включаем герою фонарик. В плоской игре это тёмная
+  // заливка и светлый круг — здесь то же самое, только честным светом.
+  setNight(on, world) {
+    const light = this.spec.light;
+    const night = this.spec.night;
+    if (on !== this.night) {
+      this.night = on;
+      this.sun.intensity = light.sunIntensity * (on ? night.sunFactor : 1);
+      this.ambient.intensity = light.ambientIntensity * (on ? night.ambientFactor : 1);
+      this.ambient.color.set(on ? night.skyColor : light.skyColor);
+      this.ambient.groundColor.set(on ? night.groundColor : light.groundColor);
+      this.lamp.visible = on;
+      this.lamp.intensity = on ? night.lampIntensity : 0;
+      this.applySky(on ? night.sky : this.theme?.sky);
+      this.paintGround();
+    }
+    if (!on) return;
+    const hero = world.player;
+    // Радиус фонарика — тот же, что в плоской версии: свет и «зона, где враг
+    // уже виден» обязаны совпадать, иначе ребёнок учится не тому.
+    this.lamp.distance = world.modifier?.spec?.lightRadius || 0;
+    this.lamp.position.set(hero.x, this.lamp.distance * 0.45, hero.y);
   }
 
   materialFor(color) {
@@ -148,8 +181,29 @@ export class Scene3D {
     if (!theme || theme.id === this.themeId) return;
     this.themeId = theme.id;
     this.theme = theme;
-    this.ground.material = this.materialFor(theme.ground);
-    this.scene.background = new Color(theme.sky);
+    this.paintGround();
+    if (!this.night) this.applySky(theme.sky);
+    this.updateFog();
+  }
+
+  // Цвет пола. Ночью он не просто темнеет от слабого света, а уводится в
+  // синеву: песок пляжа и сено фермы под синим светом дают бурый, и ночь
+  // читается как мутный день. Это тот же приём, что тёмно-синий тинт плоской
+  // версии, только вмешанный в сам материал.
+  paintGround() {
+    if (!this.theme) return;
+    const color = this.night
+      ? mixColor(this.theme.ground, this.spec.night.sky, this.spec.night.groundMix)
+      : this.theme.ground;
+    this.ground.material = this.materialFor(color);
+  }
+
+  // Цвет неба и тумана всегда один: иначе на горизонте появляется шов между
+  // растворяющейся землёй и другим по цвету небом.
+  applySky(color) {
+    if (!color) return;
+    this.sky = color;
+    this.scene.background = new Color(color);
     this.updateFog();
   }
 
@@ -161,10 +215,9 @@ export class Scene3D {
   // громкое: арена, посчитанная нулевой (окно ещё не измерено), даёт туман в
   // полторы единицы, и весь мир превращается в ровную заливку цвета неба.
   updateFog() {
-    if (!this.theme) return;
     const unit = Math.max(this.arena.width, this.arena.height);
-    if (!unit) return;
-    this.scene.fog = new Fog(new Color(this.theme.sky), unit * 0.8, unit * 1.9);
+    if (!this.sky || !unit) return;
+    this.scene.fog = new Fog(new Color(this.sky), unit * 0.8, unit * 1.9);
   }
 
   // --- Кадр ---
@@ -184,10 +237,12 @@ export class Scene3D {
   draw(world) {
     if (!world) return;
     this.applyTheme(world.background?.theme);
+    this.setNight(world.modifier?.id === 'night', world);
 
     this.seen.clear();
     this.collect(world);
     this.sweep();
+    this.effects.update(world.particles);
 
     this.camera.sync();
     this.renderer.render(this.scene, this.camera.camera);
@@ -202,7 +257,7 @@ export class Scene3D {
     for (const pet of world.pets) this.place(pet, petSpec(pet));
     for (const prop of world.props) this.place(prop, PROP_SPEC);
     for (const pickup of world.pickups) this.place(pickup, PICKUP_SPEC);
-    for (const shot of world.projectiles) this.place(shot, ballSpec(shot));
+    for (const shot of world.projectiles) this.place(shot, SHOT_SPEC);
   }
 
   // Ставит фигурку на место, слепив её при первой встрече. Ключ — сам объект
@@ -231,18 +286,14 @@ export class Scene3D {
   }
 
   create(entity, spec) {
-    if (spec.shape) {
-      const node = new Mesh(spec.shape, this.materialFor(spec.color));
-      node.castShadow = true;
-      node.receiveShadow = true;
-      return { node };
-    }
     const paint = (color) => this.materialFor(color);
     const figure = spec.kind === 'prop'
       ? (buildProp(entity, paint) || buildFigure(entity.look, 'zombie', paint))
       : spec.kind === 'pickup'
         ? buildPickup(entity.type, paint)
-        : buildFigure(entity.look, spec.kind, paint);
+        : spec.kind === 'shot'
+          ? buildShot(entity, paint)
+          : buildFigure(entity.look, spec.kind, paint);
     figure.node.traverse((part) => {
       if (!part.isMesh) return;
       part.castShadow = true;
@@ -285,6 +336,32 @@ export class Scene3D {
     }
   }
 
+  // Куда показывать стрелками: враги, которых не видно в кадре.
+  //
+  // Нужно это только при опущенной камере — при стартовой в кадр помещается
+  // почти вся арена. Но опустить её ребёнок может в любой момент, и тогда
+  // «зомби подкрался сзади» перестаёт быть его ошибкой и становится нашей.
+  //
+  // Отдаём точку на краю экрана и угол: рисует стрелки Game на холсте HUD,
+  // потому что это подсказка интерфейса, а не часть мира.
+  offscreenMarkers(world, arena, limit = 6) {
+    const marks = [];
+    const cx = arena.width / 2;
+    const cy = arena.height / 2;
+    for (const enemy of world.enemies) {
+      if (marks.length >= limit) break;
+      const point = this.camera.project(enemy.x, enemy.y, arena);
+      if (point.onScreen) continue;
+      // У точки за спиной проекция зеркальна, поэтому направление берём от
+      // центра к её отражению.
+      const dx = (point.behind ? -1 : 1) * (point.x - cx);
+      const dy = (point.behind ? -1 : 1) * (point.y - cy);
+      const len = Math.hypot(dx, dy) || 1;
+      marks.push({ dx: dx / len, dy: dy / len, boss: Boolean(enemy.isBoss) });
+    }
+    return marks;
+  }
+
   dispose() {
     for (const [, figure] of this.figures) this.scene.remove(figure.node);
     this.figures.clear();
@@ -320,7 +397,15 @@ function petSpec(pet) {
   return { kind, radius: CONFIG.player.radius, lift: 0 };
 }
 
-// Снаряды пока шарики: формы под каждый из тринадцати видов — следующий шаг.
-function ballSpec() {
-  return { shape: UNIT_SPHERE, color: '#4fb3ff', radius: 7, lift: 1 };
+// Снаряд летит на уровне груди, а не по траве: в 2D высоты нет вовсе, и без
+// подъёма пуля катилась бы по земле.
+const SHOT_SPEC = { kind: 'shot', radius: 7, lift: 2.2 };
+
+// Смешать два шестнадцатеричных цвета. Своя копия, а не общая утилита: в
+// render3d это единственное место, где цвета смешиваются, а тянуть ради него
+// зависимость от sprites.js значило бы связать два рендера.
+function mixColor(from, to, amount) {
+  const a = new Color(from);
+  const b = new Color(to);
+  return `#${a.lerp(b, amount).getHexString()}`;
 }

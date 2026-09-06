@@ -55,6 +55,8 @@ export const GameState = {
 };
 
 const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» после сворачивания окна
+const MARK_EDGE = 44;         // отступ стрелки-указателя от края экрана
+const MARK_SIZE = 11;
 const FIREWORK_INTERVAL = 0.35;
 
 export class Game {
@@ -308,6 +310,36 @@ export class Game {
     }
   }
 
+  // Стрелки по краю экрана на зомби, которых не видно в кадре. Рисуются на
+  // холсте HUD, а не в сцене: это подсказка интерфейса, и трястись вместе с
+  // миром она не должна.
+  drawOffscreenMarks(ctx, arena) {
+    const marks = this.scene3d.offscreenMarkers(this.round, arena);
+    if (!marks.length) return;
+    const cx = arena.width / 2;
+    const cy = arena.height / 2;
+    // Радиус эллипса — по краю экрана с отступом, чтобы стрелка не налезала
+    // на сердечки и на кнопку звука.
+    const rx = cx - MARK_EDGE;
+    const ry = cy - MARK_EDGE;
+
+    ctx.save();
+    for (const mark of marks) {
+      ctx.save();
+      ctx.translate(cx + mark.dx * rx, cy + mark.dy * ry);
+      ctx.rotate(Math.atan2(mark.dy, mark.dx));
+      ctx.fillStyle = mark.boss ? '#ff4d6d' : 'rgba(42, 39, 80, 0.75)';
+      ctx.beginPath();
+      ctx.moveTo(MARK_SIZE, 0);
+      ctx.lineTo(-MARK_SIZE * 0.7, MARK_SIZE * 0.7);
+      ctx.lineTo(-MARK_SIZE * 0.7, -MARK_SIZE * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   // Направление от стрелок — в мировое. В 2D это тождество; в объёмном
   // режиме камеру можно повернуть мышкой, и тогда «вперёд» для ребёнка — это
   // от камеры, а не вверх по карте. Преобразование стоит ЗДЕСЬ, а не в Round:
@@ -340,6 +372,7 @@ export class Game {
       if (this.scene3d) {
         this.scene3d.draw(this.round);
         this.drawBanner3d(ctx);
+        if (this.state === GameState.PLAYING) this.drawOffscreenMarks(ctx, arena);
       } else {
         this.round.draw(this.worldCtx);
       }

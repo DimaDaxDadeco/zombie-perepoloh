@@ -416,13 +416,21 @@ function buildDropZone(materialFor) {
 export function buildPickup(type, materialFor) {
   const node = new Group();
   if (type === 'money') {
-    node.add(box(1.6, 0.9, 0.12, 0.1, materialFor('#7bd67b'), 0, 0, 0));
-    node.add(flat(starShape(0.28, 4, 0.4), materialFor('#e8f7e8'), 0, 0, 0.08));
+    // Купюра лежит на траве, а не стоит ребром: камера смотрит сверху, и
+    // поставленная вертикально она с высоты превращается в нитку.
+    const note = box(1.7, 1.0, 0.12, 0.1, materialFor('#7bd67b'), 0, 0, 0);
+    note.rotation.x = -Math.PI / 2;
+    node.add(note);
+    const mark = flat(starShape(0.3, 4, 0.4), materialFor('#e8f7e8'), 0, 0.1, 0);
+    mark.rotation.x = -Math.PI / 2;
+    node.add(mark);
   } else {
-    node.add(cylinder(0.9, 0.16, materialFor('#ffd93d'), 0, 0, 0));
-    node.add(flat(starShape(0.55), materialFor('#fff3b0'), 0, 0, 0.1));
-    node.children[1].rotation.x = Math.PI / 2;
-    node.children[0].rotation.x = Math.PI / 2;
+    // Монета тоже плашмя: цилиндр и так стоит на оси y, поворачивать его не
+    // надо — именно этим он и отличается от выдавленной звезды.
+    node.add(cylinder(0.9, 0.18, materialFor('#ffd93d'), 0, 0, 0));
+    const star = flat(starShape(0.55), materialFor('#fff3b0'), 0, 0.12, 0);
+    star.rotation.x = -Math.PI / 2;
+    node.add(star);
   }
   return { node, parts: { legs: [], arms: [] }, kind: 'pickup' };
 }
@@ -440,6 +448,70 @@ function torusRing(radius, thickness, material, y) {
     ring.add(piece);
   }
   return ring;
+}
+
+
+// --- Снаряды ---
+//
+// Тринадцать видов сводятся к трём формам: шар, вытянутая капсула по
+// направлению полёта и плоский диск. Различать их по классу можно смело:
+// у проекта нет сборки, имена классов доживают до браузера неизменными —
+// на этом же правиле стоит и всё остальное в репозитории.
+//
+// Незнакомый снаряд получает обычный шарик: новое оружие не должно ронять
+// объёмный режим, оно должно в нём просто выглядеть скромно.
+const SHOTS = {
+  Bullet: { form: 'ball', color: '#4fb3ff' },
+  FlameBolt: { form: 'ball', color: '#ff7a2b' },
+  IceShard: { form: 'dart', color: '#8fe3ff' },
+  PiercingBullet: { form: 'dart', color: '#ffe14d' },
+  Rocket: { form: 'dart', color: '#c9d8e8' },
+  Lob: { form: 'ball', color: '#e0453f' },
+  ArcLob: { form: 'ball', color: '#e0453f' },
+  GiftLob: { form: 'cube', color: '#e0453f' },
+  CakeLob: { form: 'cube', color: '#ffb6d5' },
+  WebGlob: { form: 'ball', color: '#f2f2f2' },
+  Boomerang: { form: 'disc', color: '#ffd93d' },
+  Bubble: { form: 'ball', color: '#bfe6ff' },
+  Batmobile: { form: 'cube', color: '#2a2750' },
+  Bee: { form: 'ball', color: '#ffd93d' },
+  SpiderMinion: { form: 'ball', color: '#2a2320' },
+};
+
+export function buildShot(shot, materialFor) {
+  const spec = SHOTS[shot.constructor?.name] || { form: 'ball', color: '#4fb3ff' };
+  const node = new Group();
+  const material = materialFor(spec.color);
+
+  if (spec.form === 'dart') {
+    // Капсула лежит вдоль +z, чтобы её можно было развернуть по скорости
+    // одним углом, как и персонажа.
+    const dart = cylinder(0.5, 2.2, material, 0, 0, 0);
+    dart.rotation.x = Math.PI / 2;
+    node.add(dart);
+    node.add(cone(0.5, 0.9, material, 0, 0, 1.5, Math.PI / 2));
+  } else if (spec.form === 'cube') {
+    node.add(box(1.6, 1.6, 1.6, 0.3, material, 0, 0, 0));
+  } else if (spec.form === 'disc') {
+    const disc = cylinder(1, 0.3, material, 0, 0, 0);
+    node.add(disc);
+  } else {
+    node.add(ball(1, material, 0, 0, 0));
+  }
+
+  return {
+    node,
+    kind: 'shot',
+    tick: (entity, phase) => {
+      // Летящее разворачиваем по скорости, вертящееся — крутим. Скорости у
+      // навесных снарядов нет вовсе, и тогда просто оставляем как есть.
+      if (spec.form === 'dart' && (entity.vx || entity.vy)) {
+        node.rotation.y = Math.atan2(entity.vx, entity.vy);
+      } else if (spec.form === 'disc' || spec.form === 'cube') {
+        node.rotation.y = phase * 6;
+      }
+    },
+  };
 }
 
 // --- Детали ---

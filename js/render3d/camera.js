@@ -20,7 +20,10 @@ export class Camera3D {
 
     this.raycaster = new Raycaster();
     this.pointer = new Vector2();
+    // Два вектора, а не один на оба преобразования: держать в одной ячейке
+    // то точку пола, то точку экрана — верный способ однажды прочитать не то.
     this.hit = new Vector3();
+    this.screen = new Vector3();
   }
 
   get yaw() { return this.math.yaw; }
@@ -47,6 +50,20 @@ export class Camera3D {
     const target = this.math.targetPoint();
     this.camera.position.set(eye.x, eye.y, eye.z);
     this.camera.lookAt(target.x, target.y, target.z);
+  }
+
+  // Точка мира — в экранные пиксели. behind означает «за спиной камеры»: у
+  // такой точки проекция зеркалится, и пользоваться ею как экранной нельзя,
+  // её надо разворачивать вручную.
+  project(worldX, worldY, arena) {
+    const p = this.screen.set(worldX, 0, worldY).project(this.camera);
+    const behind = p.z > 1;
+    return {
+      x: (p.x * 0.5 + 0.5) * arena.width,
+      y: (-p.y * 0.5 + 0.5) * arena.height,
+      behind,
+      onScreen: !behind && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1,
+    };
   }
 
   // Экранная точка (в тех же CSS-пикселях, что и арена) — в точку на полу.
