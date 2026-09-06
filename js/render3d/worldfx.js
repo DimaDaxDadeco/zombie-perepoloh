@@ -25,14 +25,14 @@
 
 import {
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, CanvasTexture, LinearFilter,
-  PlaneGeometry, BoxGeometry, CylinderGeometry, ConeGeometry, Color, DoubleSide, Vector3,
+  PlaneGeometry, BoxGeometry, CylinderGeometry, ConeGeometry, RingGeometry,
+  Color, DoubleSide, Vector3,
 } from 'three';
 import { CONFIG } from '../config.js';
 import {
   drawCatchBubble, drawTornado, drawBossRage, drawBossBones,
   drawArmorShield, drawDownedTimer, drawAbilitySparks, drawAbilityEffect,
-  drawWeaponInHand, drawPlayerMarker, drawStinkCloud, drawMoleMound, drawSmokePuff, drawWeb,
-  drawLoot, drawThiefMask,
+  drawWeaponInHand, drawMoleMound, drawSmokePuff, drawWeb, drawLoot, drawThiefMask,
 } from '../render/sprites.js';
 import { stickerTexture, StickerPool, step } from './sticker.js';
 
@@ -44,6 +44,11 @@ const FLAME_GEOMETRY = new ConeGeometry(0.3, 1, 6);
 const ICE_GEOMETRY = new BoxGeometry(1, 1, 1);
 const BLADE_GEOMETRY = new CylinderGeometry(1, 1, 0.25, 12);
 const BEAM_GEOMETRY = new CylinderGeometry(1, 1, 1, 8);
+// Кольцо у ног и облако вони. Объёмом, а не в общем холсте наземных
+// эффектов: они есть в КАЖДОМ кадре, и ради них холст пришлось бы грузить в
+// видеопамять постоянно — а он затем и заведён, чтобы включаться редко.
+const RING_GEOMETRY = new RingGeometry(0.78, 1, 28);
+const DISC_GEOMETRY = new RingGeometry(0, 1, 24);
 
 export class WorldFx {
   constructor(scene, spec) {
@@ -98,8 +103,25 @@ export class WorldFx {
       );
     }
 
+    // Облако вони Хэнки: постоянная аура, по которой видно, докуда достаёт.
+    if (player.stinkRadius) {
+      this.flat(DISC_GEOMETRY, '#9ccc65', player.x, player.y, player.stinkRadius, 0.18);
+    }
+    // Кольцо цвета игрока. Вдвоём без него нельзя отличить своего героя.
+    if (player.color) {
+      this.flat(RING_GEOMETRY, player.color, player.x, player.y, r * 1.25, 0.85);
+    }
+
     this.abilityFx(player);
     this.weaponFx(player);
+  }
+
+  // Плоский круг на земле: кладём кольцо и приподнимаем над полом, иначе оно
+  // спорит с ним за глубину и мерцает.
+  flat(geometry, color, x, z, radius, opacity) {
+    const mesh = this.solid.show(geometry, color, x, GROUND_LIFT * 2, z,
+      radius, radius, radius, true, opacity);
+    if (mesh) mesh.rotation.x = -Math.PI / 2;
   }
 
   abilityFx(player) {
@@ -460,20 +482,6 @@ class GroundDecals {
       }
       if (enemy.underground) drawBurrowMark(ctx, enemy);
     }
-    for (const player of world.players) {
-      if (player.stinkRadius) {
-        ctx.save();
-        ctx.translate(player.x, player.y);
-        drawStinkCloud(ctx, player.stinkRadius, player.glowPhase);
-        ctx.restore();
-      }
-      if (player.color) {
-        ctx.save();
-        ctx.translate(player.x, player.y);
-        drawPlayerMarker(ctx, player.radius, player.color);
-        ctx.restore();
-      }
-    }
     drawSlashes(ctx, world.particles?.slashes);
 
     this.texture.needsUpdate = true;
@@ -516,7 +524,6 @@ function drawBurrowMark(ctx, enemy) {
 function hasGroundFx(world) {
   for (const player of world.players) {
     if (player.ability?.isActive) return true;
-    if (player.stinkRadius || player.color) return true;
     for (const weapon of player.weapons) {
       if (weapon.drawGround || weapon.patches?.length) return true;
     }
