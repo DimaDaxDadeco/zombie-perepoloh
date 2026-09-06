@@ -479,9 +479,9 @@ const SHOTS = {
   ArcLob: { color: '#e0453f', build: tomato, spins: true },
   GiftLob: { color: '#e0453f', build: gift, spins: true },
   CakeLob: { color: '#ffb6d5', build: cake, spins: true },
-  WebGlob: { color: '#f2f2f2', alpha: 0.75, build: blob, spins: true },
+  WebGlob: { color: '#f2f2f2', alpha: 0.8, build: webWad, spins: true },
   Boomerang: { color: '#ffd93d', build: boomerang, spins: true },
-  Bubble: { color: '#bfe6ff', alpha: 0.42, build: blob },
+  Bubble: { color: '#bfe6ff', alpha: 0.42, build: soapBubble },
   Bee: { color: '#ffd93d', build: bee },
   SpiderMinion: { color: '#2a2320', build: spider },
   Batmobile: { color: '#2a2750', build: car },
@@ -516,21 +516,37 @@ function drop(node, material, stretch) {
 
 // Морковка: рыжий конус носом вперёд и зелёная ботва сзади.
 function carrot(node, material, paint) {
-  const body = cone(0.75, 2.6, material, 0, 0, 0.2, Math.PI / 2);
-  node.add(body);
-  const leaves = paint('#5a9c3a');
+  node.add(cone(0.78, 2.6, material, 0, 0, 0.2, Math.PI / 2));
+  // Поперечные рёбра: без них конус читается как морковка только по цвету.
+  const ridge = paint('#e07020');
+  for (let i = 0; i < 3; i++) {
+    const r = 0.6 - i * 0.14;
+    const ring = cylinder(r, 0.12, ridge, 0, 0, -0.4 + i * 0.62);
+    ring.rotation.x = Math.PI / 2;
+    node.add(ring);
+  }
+  // Ботва торчит пучком назад и вверх — по ней морковка и опознаётся.
+  const leaves = paint('#4f9c34');
   for (let i = -1; i <= 1; i++) {
-    const leaf = cone(0.28, 1, leaves, i * 0.3, 0.25, -1.2, Math.PI / 2 - i * 0.25);
+    const leaf = cone(0.3, 1.5, leaves, i * 0.34, 0.45, -1.5);
+    leaf.rotation.x = 0.6;
+    leaf.rotation.z = -i * 0.5;
     node.add(leaf);
   }
 }
 
 // Помидор: красный шар, зелёная звёздочка-чашелистик сверху.
 function tomato(node, material, paint) {
-  node.add(ball(1, material, 0, 0, 0));
-  const cap = flat(starShape(0.6), paint('#5a9c3a'), 0, 0.95, 0);
-  cap.rotation.x = -Math.PI / 2;   // чашелистик лежит на макушке, а не стоит
+  const body = ball(1, material, 0, 0, 0);
+  body.scale.y = 0.88;             // помидор приплюснут, а не идеальный шар
+  node.add(body);
+  const green = paint('#4f9c34');
+  const cap = flat(starShape(0.62), green, 0, 0.8, 0);
+  cap.rotation.x = -Math.PI / 2;
   node.add(cap);
+  // Черенок торчит вверх: чашелистик лежит плашмя и с уровня земли не виден,
+  // а по черенку помидор узнаётся с любой стороны.
+  node.add(cylinder(0.12, 0.5, green, 0, 1.05, 0));
 }
 
 // Язык пламени: два конуса, светлое ядро внутри тёмного.
@@ -540,32 +556,55 @@ function flame(node, material, paint) {
 }
 
 // Ледяной шип.
-function spike(node, material) {
-  node.add(cone(0.6, 2.6, material, 0, 0, 0, Math.PI / 2));
+// Ледяной шип: длинная грань и два коротких скола по бокам — так он
+// читается кристаллом, а не морковкой другого цвета.
+function spike(node, material, paint) {
+  node.add(cone(0.55, 2.6, material, 0, 0, 0.2, Math.PI / 2));
+  const pale = paint('#ffffff', 0.85);
+  for (const side of [-1, 1]) {
+    const chip = cone(0.26, 1.1, pale, side * 0.42, 0, -0.4, Math.PI / 2);
+    chip.rotation.z = side * 0.4;
+    node.add(chip);
+  }
 }
 
 // Пчела: полосатое тельце и прозрачные крылышки.
 function bee(node, material, paint) {
-  node.add(ball(0.9, material, 0, 0, 0));
-  const stripes = paint('#2a2320');
-  node.add(ball(0.92, stripes, 0, 0, -0.35));
-  node.add(ball(0.7, stripes, 0, 0, 0.55));
-  const wing = paint('#e8f4ff', 0.55);
+  // Брюшко жёлтое, полоска одна и узкая, голова чёрная: широкие полосы
+  // съедали весь жёлтый, и пчела читалась просто тёмной кляксой.
+  const dark = paint('#2a2320');
+  node.add(ball(0.85, material, 0, 0, -0.45));
+  node.add(ball(0.8, material, 0, 0, 0.15));
+  const stripe = ball(0.86, dark, 0, 0, -0.15);
+  stripe.scale.z = 0.28;
+  node.add(stripe);
+  node.add(ball(0.62, dark, 0, 0, 0.8));
+  node.add(cone(0.16, 0.6, dark, 0, 0, -1.15, -Math.PI / 2));   // жало
+  const wing = paint('#e8f4ff', 0.7);
   for (const side of [-1, 1]) {
-    const w = box(1.1, 0.08, 0.6, 0.3, wing, side * 0.8, 0.5, -0.1);
-    w.rotation.z = -side * 0.4;
+    const w = box(1.2, 0.08, 0.7, 0.35, wing, side * 0.8, 0.55, -0.2);
+    w.rotation.z = -side * 0.45;
     node.add(w);
   }
 }
 
 // Паучок: тёмное тельце и лапки веером.
-function spider(node, material) {
-  node.add(ball(0.9, material, 0, 0, 0));
+function spider(node, material, paint) {
+  // Брюшко и головогрудь порознь, лапки коленом вверх, красная метка на
+  // спине: сплошной чёрный шар с тонкими палочками читался просто кляксой.
+  node.add(ball(0.85, material, 0, 0, -0.35));
+  node.add(ball(0.55, material, 0, 0, 0.6));
+  node.add(flat(starShape(0.3, 4, 0.35), paint('#e0453f'), 0, 0.7, -0.35));
+  node.children[2].rotation.x = -Math.PI / 2;
+  // Лапки светлее тельца: сплошным чёрным паучок сливается и с ночной
+  // ареной, и с собственной тенью.
+  const limb = paint('#6b6258');
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const leg = box(0.14, 0.14, 1.1, 0.07, material,
-      Math.cos(a) * 0.9, -0.2, Math.sin(a) * 0.9);
+    const leg = box(0.16, 0.16, 1.4, 0.08, limb,
+      Math.cos(a) * 0.75, 0.15, Math.sin(a) * 0.75);
     leg.rotation.y = -a;
+    leg.rotation.x = -0.5;
     node.add(leg);
   }
 }
@@ -604,6 +643,42 @@ function car(node, material) {
 
 function blob(node, material) {
   node.add(ball(1, material, 0, 0, 0));
+}
+
+// Мыльный пузырь: прозрачный шар, светлый ободок и блик. Голый шар читался
+// как ком ваты — узнаваемым его делает именно блик.
+function soapBubble(node, material, paint) {
+  node.add(ball(1, material, 0, 0, 0));
+  // Ободок голубее самого пузыря и заметно плотнее: прозрачный шар без
+  // очерченного края читается облачком, а не пузырём.
+  const rim = ball(1.05, paint('#7fd8ff', 0.75), 0, 0, 0);
+  rim.scale.set(1, 1, 0.1);
+  node.add(rim);
+  const rim2 = ball(1.05, paint('#7fd8ff', 0.75), 0, 0, 0);
+  rim2.scale.set(0.1, 1, 1);
+  node.add(rim2);
+  node.add(ball(0.24, paint('#ffffff', 0.95), -0.38, 0.42, 0.72));
+}
+
+// Ком паутины: приплюснутый шар и нити крест-накрест поверх него.
+function webWad(node, material, paint) {
+  const wad = ball(0.9, material, 0, 0, 0);
+  wad.scale.set(1, 0.75, 1);
+  node.add(wad);
+  // Нити СЕРО-ГОЛУБЫЕ, а не белые: белым по белому кому паутины не видно
+  // вовсе, и снаряд опять превращается в кружок.
+  const thread = paint('#8fa3b8');
+  for (let i = 0; i < 3; i++) {
+    const strand = box(2.3, 0.13, 0.13, 0.06, thread, 0, 0, 0);
+    strand.rotation.y = (i / 3) * Math.PI;
+    strand.rotation.z = 0.3;
+    node.add(strand);
+  }
+  for (const [r, y] of [[0.75, 0.28], [1.05, -0.05]]) {
+    const ring = cylinder(r, 0.11, thread, 0, y, 0);
+    ring.rotation.x = Math.PI / 2;
+    node.add(ring);
+  }
 }
 
 // --- Детали ---
