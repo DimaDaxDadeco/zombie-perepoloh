@@ -33,6 +33,30 @@ const DEFAULT_COLOR = '#c8c8c8';
 const HEADING_MIN_STEP = 0.05;
 const HEADING_LERP = 0.25;
 
+// Как выглядит попадание, заморозка и горение. Цвета и доли — те же, что в
+// drawZombie: белая вспышка, слабая синева (сильная сливает зомби с глыбой),
+// оранжевая подпалина.
+const HURT_COLOR = '#ffffff';
+const GHOST_OPACITY = 0.4;
+const MOOD_TINT = {
+  frozen: { color: '#7fd8ff', amount: 0.3 },
+  burning: { color: '#ff7a2b', amount: 0.4 },
+};
+
+// Порядок важен: попадание перекрывает всё остальное — это самый громкий
+// сигнал, и ребёнок должен видеть именно его.
+function moodOf(entity) {
+  if (entity.hurtTimer > 0) return 'hurt';
+  if (entity.isFrozen) return 'frozen';
+  if (entity.isBurning) return 'burning';
+  if (entity.downed) return 'ghost';
+  return 'normal';
+}
+
+function blinking(entity) {
+  return entity.invulnTimer > 0 && Math.floor(entity.invulnTimer * 10) % 2 === 0;
+}
+
 export class Scene3D {
   constructor(canvas) {
     this.spec = CONFIG.render3d;
@@ -308,7 +332,34 @@ export class Scene3D {
     } else if (figure.parts) {
       figure.node.rotation.y = this.headingOf(entity, figure);
       poseFigure(figure, entity.walkPhase || 0);
+      this.applyMood(figure, moodOf(entity));
+      // Мигание неуязвимости: в плоской игре герой полупрозрачен через кадр,
+      // здесь просто пропадает. Для ребёнка это одно и то же — «меня сейчас
+      // не укусят», — а прозрачность целой фигурки стоит перебора материалов
+      // на каждом мигании.
+      figure.node.visible = !blinking(entity);
     }
+  }
+
+  // Настроение фигурки: белая вспышка от попадания, синева заморозки,
+  // подпалина, призрак упавшего. Меняем материалы только когда настроение
+  // ДЕЙСТВИТЕЛЬНО сменилось: обход дерева каждый кадр на полсотни фигурок
+  // стоит дороже самой отрисовки.
+  applyMood(figure, mood) {
+    if (figure.mood === mood) return;
+    figure.mood = mood;
+    figure.node.traverse((part) => {
+      if (!part.isMesh) return;
+      if (!part.userData.base) part.userData.base = part.material;
+      const base = part.userData.base;
+      if (mood === 'normal') { part.material = base; return; }
+      const color = `#${base.color.getHexString()}`;
+      part.material = mood === 'hurt'
+        ? this.materialFor(HURT_COLOR)
+        : mood === 'ghost'
+          ? this.materialFor(color, GHOST_OPACITY)
+          : this.materialFor(mixColor(color, MOOD_TINT[mood].color, MOOD_TINT[mood].amount));
+    });
   }
 
   // Насколько увеличить дальнюю фигурку, чтобы она осталась заметной.

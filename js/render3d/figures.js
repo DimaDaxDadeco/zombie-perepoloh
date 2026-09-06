@@ -475,7 +475,7 @@ const SHOTS = {
   WebGlob: { form: 'ball', color: '#f2f2f2', alpha: 0.75 },
   Boomerang: { form: 'disc', color: '#ffd93d' },
   Bubble: { form: 'ball', color: '#bfe6ff', alpha: 0.42 },
-  Batmobile: { form: 'cube', color: '#2a2750' },
+  Batmobile: { form: 'car', color: '#2a2750' },
   Bee: { form: 'ball', color: '#ffd93d' },
   SpiderMinion: { form: 'ball', color: '#2a2320' },
 };
@@ -492,6 +492,11 @@ export function buildShot(shot, materialFor) {
     dart.rotation.x = Math.PI / 2;
     node.add(dart);
     node.add(cone(0.5, 0.9, material, 0, 0, 1.5, Math.PI / 2));
+  } else if (spec.form === 'car') {
+    // Бэтмобиль: длинный низкий корпус и кабина. Кубиком он читался как
+    // ящик, а это машина Бэтмена — ребёнок её ждёт.
+    node.add(box(1.6, 0.8, 3.2, 0.3, material, 0, 0, 0));
+    node.add(box(1.1, 0.7, 1.3, 0.25, material, 0, 0.6, -0.2));
   } else if (spec.form === 'cube') {
     node.add(box(1.6, 1.6, 1.6, 0.3, material, 0, 0, 0));
   } else if (spec.form === 'disc') {
@@ -507,7 +512,7 @@ export function buildShot(shot, materialFor) {
     tick: (entity, phase) => {
       // Летящее разворачиваем по скорости, вертящееся — крутим. Скорости у
       // навесных снарядов нет вовсе, и тогда просто оставляем как есть.
-      if (spec.form === 'dart' && (entity.vx || entity.vy)) {
+      if ((spec.form === 'dart' || spec.form === 'car') && (entity.vx || entity.vy)) {
         node.rotation.y = Math.atan2(entity.vx, entity.vy);
       } else if (spec.form === 'disc' || spec.form === 'cube') {
         node.rotation.y = phase * 6;
