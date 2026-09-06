@@ -23,7 +23,11 @@ const CELL = 190;          // ширина пары «плоский + объё�
 const ROW = 210;
 const RADIUS = 34;         // крупнее боевого: на стенде важны детали
 const SHOT_RADIUS = 16;    // снаряды в бою мелкие, здесь тоже крупнее
-const SHOT_TILT = 0.5;     // наклон к зрителю, примерно как у игровой камеры
+// Наклон к зрителю. Величина не случайная: игровая камера смотрит на поле
+// примерно под этим углом, и снаряды, лежащие плашмя (снежинка, бумеранг),
+// видны в бою именно так. При маленьком наклоне стенд показывал их ребром —
+// то есть врал ровно про те снаряды, ради которых он и заведён.
+const SHOT_TILT = 0.95;
 
 // Снаряды и то, из чего они летят. Имя — оружия, а не класса: сверять надо с
 // тем, что ребёнок видит в слоте.
@@ -140,7 +144,7 @@ export function mount(root) {
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
 
-    for (const figure of figures) holder.remove(figure.node);
+    for (const figure of figures) holder.remove(figure.holder || figure.node);
     sun.target.position.set(width / 2, -height / 2, 0);
     figures = list.map((item, i) => {
       const figure = item.kind === 'shot'
@@ -152,17 +156,27 @@ export function mount(root) {
       // Ноги на той же линии, что у плоского соседа: фигурка слеплена
       // ступнями на нуле, поэтому линия и есть её позиция.
       const lift = item.kind === 'shot' ? SHOT_RADIUS * 2 : 0;
-      figure.node.position.set(col * CELL + CELL * 0.72, -(row * ROW + ROW * 0.58) + lift, 0);
-      // Снаряды разворачиваем боком и наклоняем к зрителю. Боком — потому
-      // что в лоб морковка, шип и капля схлопываются в кружок; с наклоном —
-      // потому что стенд смотрит строго перпендикулярно, а игровая камера
-      // сверху, и без наклона не видно ни ботвы у морковки, ни чашелистика у
-      // помидора. Порядок YXZ: сначала развернуть, потом наклонить.
-      if (item.kind === 'shot') {
-        figure.node.rotation.order = 'YXZ';
-        figure.node.rotation.set(-SHOT_TILT, Math.PI / 2, 0);
+      const at = [col * CELL + CELL * 0.72, -(row * ROW + ROW * 0.58) + lift, 0];
+
+      if (item.kind !== 'shot') {
+        figure.node.position.set(...at);
+        holder.add(figure.node);
+        return figure;
       }
-      holder.add(figure.node);
+
+      // Снаряд разворачиваем боком и наклоняем к зрителю ДВУМЯ узлами, а не
+      // одним поворотом. Порядок здесь решает всё: сначала разворот вокруг
+      // своей оси (в лоб морковка и капля схлопываются в кружок), и только
+      // потом наклон вокруг экранной горизонтали (иначе плоская снежинка
+      // встаёт ребром и превращается в палочку). Одним Euler это выражается
+      // мутно, вложенными узлами — однозначно.
+      const tilt = new Group();
+      tilt.position.set(...at);
+      tilt.rotation.x = SHOT_TILT;   // плюс: верх наклоняется К зрителю, как при взгляде сверху
+      figure.node.rotation.y = Math.PI / 2;
+      tilt.add(figure.node);
+      holder.add(tilt);
+      figure.holder = tilt;
       return figure;
     });
     return { list, perRow };

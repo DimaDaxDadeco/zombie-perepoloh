@@ -473,7 +473,7 @@ const SHOTS = {
   Bullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1) },
   PiercingBullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1.7) },
   FlameBolt: { color: '#ff7a2b', build: flame, spins: false },
-  IceShard: { color: '#8fe3ff', build: spike },
+  IceShard: { color: '#eafaff', build: snowflake, spins: true },
   Rocket: { color: '#ff8a3b', build: carrot },
   Lob: { color: '#e0453f', build: tomato, spins: true },
   ArcLob: { color: '#e0453f', build: tomato, spins: true },
@@ -501,7 +501,9 @@ export function buildShot(shot, materialFor) {
     tick: (entity, phase) => {
       // Летящее разворачиваем по скорости, вертящееся крутим. У навесных
       // скорости нет вовсе — тогда оставляем как есть.
-      if (spec.spins) node.rotation.y = phase * 6;
+      // Своё вращение у снаряда важнее общего: снежинка крутится по
+      // собственному spin, и в плоской версии по нему же.
+      if (spec.spins) node.rotation.y = entity.spin ?? phase * 6;
       else if (entity.vx || entity.vy) node.rotation.y = Math.atan2(entity.vx, entity.vy);
     },
   };
@@ -556,16 +558,31 @@ function flame(node, material, paint) {
 }
 
 // Ледяной шип.
-// Ледяной шип: длинная грань и два коротких скола по бокам — так он
-// читается кристаллом, а не морковкой другого цвета.
-function spike(node, material, paint) {
-  node.add(cone(0.55, 2.6, material, 0, 0, 0.2, Math.PI / 2));
-  const pale = paint('#ffffff', 0.85);
-  for (const side of [-1, 1]) {
-    const chip = cone(0.26, 1.1, pale, side * 0.42, 0, -0.4, Math.PI / 2);
-    chip.rotation.z = side * 0.4;
-    node.add(chip);
+// Снежинка: шесть лучей с ответвлениями и льдинка в центре. Ровно то, что
+// рисует плоская версия, — там это шестилучевая звезда, и заменять её шипом
+// значило бы менять сам предмет, а не только его подачу.
+//
+// Лежит ПЛАШМЯ, в плоскости земли: камера смотрит сверху, и поставленная
+// ребром снежинка превращается в палочку.
+function snowflake(node, material, paint) {
+  const arm = 0.16;
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI;
+    const beam = box(2.4, arm, arm, arm / 2, material, 0, 0, 0);
+    beam.rotation.y = angle;
+    node.add(beam);
+    // Ответвления у концов: без них шесть лучей читаются звёздочкой, а не
+    // снежинкой.
+    for (const end of [-1, 1]) {
+      for (const side of [-1, 1]) {
+        const twig = box(0.7, arm * 0.8, arm * 0.8, arm / 2, material,
+          Math.cos(angle) * end * 0.85, 0, -Math.sin(angle) * end * 0.85);
+        twig.rotation.y = angle + side * 0.9;
+        node.add(twig);
+      }
+    }
   }
+  node.add(ball(0.42, paint('#7fd8ff'), 0, 0, 0));
 }
 
 // Пчела: полосатое тельце и прозрачные крылышки.
@@ -590,22 +607,27 @@ function bee(node, material, paint) {
 
 // Паучок: тёмное тельце и лапки веером.
 function spider(node, material, paint) {
-  // Брюшко и головогрудь порознь, лапки коленом вверх, красная метка на
-  // спине: сплошной чёрный шар с тонкими палочками читался просто кляксой.
-  node.add(ball(0.85, material, 0, 0, -0.35));
-  node.add(ball(0.55, material, 0, 0, 0.6));
-  node.add(flat(starShape(0.3, 4, 0.35), paint('#e0453f'), 0, 0.7, -0.35));
-  node.children[2].rotation.x = -Math.PI / 2;
-  // Лапки светлее тельца: сплошным чёрным паучок сливается и с ночной
-  // ареной, и с собственной тенью.
-  const limb = paint('#6b6258');
+  // Тельце нарочно МЕЛЬЧЕ лап: у паука узнаётся не туловище, а размах ног, и
+  // крупный шар их просто съедает. Лапы светлее и с коленом.
+  node.add(ball(0.6, material, 0, 0.1, -0.3));
+  node.add(ball(0.38, material, 0, 0.1, 0.45));
+  const mark = flat(starShape(0.24, 4, 0.35), paint('#e0453f'), 0, 0.6, -0.3);
+  mark.rotation.x = -Math.PI / 2;
+  node.add(mark);
+
+  const limb = paint('#8a7f70');
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const leg = box(0.16, 0.16, 1.4, 0.08, limb,
-      Math.cos(a) * 0.75, 0.15, Math.sin(a) * 0.75);
-    leg.rotation.y = -a;
-    leg.rotation.x = -0.5;
-    node.add(leg);
+    const hip = new Group();
+    hip.position.set(Math.cos(a) * 0.45, 0.15, Math.sin(a) * 0.45);
+    hip.rotation.y = -a;
+    // Бедро вверх, голень вниз — характерный паучий излом.
+    const thigh = box(0.13, 0.13, 0.9, 0.06, limb, 0, 0.28, 0.4);
+    thigh.rotation.x = -0.7;
+    const shin = box(0.11, 0.11, 0.95, 0.05, limb, 0, 0.1, 0.95);
+    shin.rotation.x = 0.8;
+    hip.add(thigh, shin);
+    node.add(hip);
   }
 }
 
@@ -635,10 +657,21 @@ function cake(node, material, paint) {
   node.add(ball(0.28, paint('#e0453f'), 0, 0.8, 0));
 }
 
-// Бэтмобиль: длинный низкий корпус и кабина.
-function car(node, material) {
-  node.add(box(1.6, 0.8, 3.2, 0.3, material, 0, 0, 0));
-  node.add(box(1.1, 0.7, 1.3, 0.25, material, 0, 0.6, -0.2));
+// Бэтмобиль: длинный корпус, кабина, острый нос и колёса. Колёса тут не
+// украшение — без них скруглённый корпус читается просто тёмным бруском, а
+// это машина Бэтмена, ребёнок её ждёт.
+function car(node, material, paint) {
+  node.add(box(1.5, 0.7, 3.2, 0.12, material, 0, 0.1, 0));
+  node.add(box(1.05, 0.6, 1.2, 0.12, material, 0, 0.65, -0.25));
+  node.add(cone(0.6, 1, material, 0, 0.1, 1.8, Math.PI / 2));   // нос
+  const tyre = paint('#141220');
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const wheel = cylinder(0.42, 0.3, tyre, sx * 0.78, -0.15, sz * 1);
+      wheel.rotation.z = Math.PI / 2;
+      node.add(wheel);
+    }
+  }
 }
 
 function blob(node, material) {
