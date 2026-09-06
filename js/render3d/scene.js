@@ -10,34 +10,33 @@
 // считает буфер видеокарты. Что действительно приходится повторять — это
 // СПИСОК того, что вообще показывается; за этим следит `collect()`.
 //
-// ПЕРВЫЙ ЭТАП. Все персонажи здесь — капсулы цвета своей одежды. Настоящие
-// фигурки по look приедут отдельным шагом (см. docs/render3d.md): сначала надо
-// понять, играется ли вообще объёмный режим, и только потом вкладываться в
-// десять героев, семнадцать зомби и двенадцать боссов.
+// ФИГУРКИ. Персонажей лепит figures.js по тому же полю look, что и 2D.
+// Сцена только ставит их на место, поворачивает и качает ногами; ни одной
+// пропорции здесь нет — иначе они разошлись бы с двумерными.
 
 import {
   Scene, WebGLRenderer, Color, Fog, Mesh,
-  CapsuleGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry,
+  SphereGeometry, PlaneGeometry, CylinderGeometry, BoxGeometry,
   MeshLambertMaterial, DirectionalLight, HemisphereLight, PCFSoftShadowMap,
 } from 'three';
 import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
+import { buildFigure, poseFigure } from './figures.js';
 
-// Заготовки геометрии: радиус ровно единица, масштаб задаётся у меша. Так на
-// всю игру приходится по одной геометрии на форму, а не по одной на зомби.
-//
-// Полная высота капсулы — это длина цилиндра плюс два полушария, поэтому
-// цилиндру достаётся figureHeightFactor минус два. Тогда после умножения на
-// игровой радиус фигурка ровно во столько раз выше своего радиуса, во сколько
-// сказано в конфиге, и её центр всегда на половине этой высоты.
-const FIGURE_HEIGHT = CONFIG.render3d.figureHeightFactor;
-const UNIT_CAPSULE = new CapsuleGeometry(1, Math.max(0, FIGURE_HEIGHT - 2), 4, 12);
+// Заготовки геометрии для того, что ещё не стало фигуркой: радиус ровно
+// единица, масштаб задаётся у меша.
 const UNIT_SPHERE = new SphereGeometry(1, 12, 10);
+const UNIT_BOX = new BoxGeometry(1.4, 2, 1.4);
 // Плоские объекты: место доставки и прочее, по чему герой пробегает насквозь.
 const DISC_HEIGHT = 0.12;
 const UNIT_DISC = new CylinderGeometry(1, 1, DISC_HEIGHT, 20);
 
 const DEFAULT_COLOR = '#c8c8c8';
+
+// Ниже этого шага за кадр поворот не пересчитывается: стоящая фигурка иначе
+// вертится от миллиметровых толчков расталкивания.
+const HEADING_MIN_STEP = 0.05;
+const HEADING_LERP = 0.25;
 
 export class Scene3D {
   constructor(canvas) {
@@ -59,6 +58,7 @@ export class Scene3D {
     this.buildLights();
 
     this.themeId = null;
+    this.theme = null;
   }
 
   // --- Постоянная обстановка ---
@@ -117,6 +117,7 @@ export class Scene3D {
     this.ground.position.set(arena.width / 2, 0, arena.height / 2);
 
     this.frameLight();
+    this.updateFog();
   }
 
   // Тень должна накрывать всё поле: у направленного света объём тени задаётся
@@ -147,12 +148,24 @@ export class Scene3D {
   applyTheme(theme) {
     if (!theme || theme.id === this.themeId) return;
     this.themeId = theme.id;
+    this.theme = theme;
     this.ground.material = this.materialFor(theme.ground);
     this.scene.background = new Color(theme.sky);
-    // Туман того же цвета, что небо: дальний край поля растворяется в
-    // горизонте вместо того, чтобы обрываться ровной линией.
-    const unit = Math.max(this.arena.width, this.arena.height) || 1;
-    this.scene.fog = new Fog(new Color(theme.sky), unit * 0.8, unit * 1.9);
+    this.updateFog();
+  }
+
+  // Туман того же цвета, что небо: дальний край поля растворяется в горизонте
+  // вместо того, чтобы обрываться ровной линией.
+  //
+  // Дальность считается от размера арены, поэтому пересчитывать её надо и при
+  // смене темы, и при смене размера окна. Забыть второе легко, а последствие
+  // громкое: арена, посчитанная нулевой (окно ещё не измерено), даёт туман в
+  // полторы единицы, и весь мир превращается в ровную заливку цвета неба.
+  updateFog() {
+    if (!this.theme) return;
+    const unit = Math.max(this.arena.width, this.arena.height);
+    if (!unit) return;
+    this.scene.fog = new Fog(new Color(this.theme.sky), unit * 0.8, unit * 1.9);
   }
 
   // --- Кадр ---
@@ -184,43 +197,74 @@ export class Scene3D {
   // состав — меняется и Round.draw; расхождение этих двух списков и есть
   // главный способ сломать объёмный режим незаметно.
   collect(world) {
-    for (const player of world.players) this.place(player, figureSpec(player));
-    for (const enemy of world.enemies) this.place(enemy, figureSpec(enemy));
-    for (const pet of world.pets) this.place(pet, figureSpec(pet));
-    for (const prop of world.props) this.place(prop, figureSpec(prop));
+    for (const player of world.players) this.place(player, HERO_SPEC);
+    for (const enemy of world.enemies) this.place(enemy, ENEMY_SPEC);
+    for (const pet of world.pets) this.place(pet, petSpec(pet));
+    for (const prop of world.props) this.place(prop, propSpec(prop));
     for (const pickup of world.pickups) this.place(pickup, ballSpec(pickup));
     for (const shot of world.projectiles) this.place(shot, ballSpec(shot));
   }
 
-  // Ставит меш сущности на место, создавая его при первой встрече. Ключ —
-  // сам объект сущности: он живёт ровно столько же, сколько нужен меш.
+  // Ставит фигурку на место, слепив её при первой встрече. Ключ — сам объект
+  // сущности: он живёт ровно столько же, сколько нужна фигурка.
   place(entity, spec) {
     if (!entity || entity.alive === false) return;
     this.seen.add(entity);
 
     let figure = this.figures.get(entity);
     if (!figure) {
-      figure = this.build(spec);
+      figure = this.create(entity, spec);
       this.figures.set(entity, figure);
       this.scene.add(figure.node);
     }
-    if (figure.color !== spec.color) {
-      figure.color = spec.color;
-      figure.node.material = this.materialFor(spec.color);
-    }
 
     const radius = entity.radius || spec.radius;
-    figure.node.position.set(entity.x, (radius * spec.heightFactor) / 2, entity.y);
     figure.node.scale.setScalar(radius);
+    figure.node.position.set(entity.x, spec.lift * radius, entity.y);
+
+    if (figure.parts) {
+      figure.node.rotation.y = this.headingOf(entity, figure);
+      poseFigure(figure, entity.walkPhase || 0);
+    }
   }
 
-  build(spec) {
-    const node = new Mesh(spec.shape, this.materialFor(spec.color));
-    node.castShadow = true;
-    // Плоские объекты (место доставки) тень не отбрасывают, но принимают:
-    // иначе герой, стоящий на светящемся круге, парит над ним.
-    node.receiveShadow = true;
-    return { node, color: spec.color };
+  create(entity, spec) {
+    if (spec.shape) {
+      const node = new Mesh(spec.shape, this.materialFor(spec.color));
+      node.castShadow = true;
+      node.receiveShadow = true;
+      return { node };
+    }
+    const figure = buildFigure(entity.look, spec.kind, (color) => this.materialFor(color));
+    figure.node.traverse((part) => {
+      if (!part.isMesh) return;
+      part.castShadow = true;
+      part.receiveShadow = true;
+    });
+    figure.heading = 0;
+    figure.lastX = entity.x;
+    figure.lastY = entity.y;
+    return figure;
+  }
+
+  // Куда фигурка смотрит. Считаем по фактическому смещению за кадр, а не по
+  // полю сущности: facing в игре хранит только «влево или вправо» — этого
+  // хватало плоской картинке, но в объёме персонаж от такого ходит боком.
+  // Угол сглаживаем, иначе толпа дёргается при каждом расталкивании.
+  headingOf(entity, figure) {
+    const dx = entity.x - figure.lastX;
+    const dy = entity.y - figure.lastY;
+    figure.lastX = entity.x;
+    figure.lastY = entity.y;
+    if (Math.hypot(dx, dy) > HEADING_MIN_STEP) {
+      const wanted = Math.atan2(dx, dy);
+      let delta = wanted - figure.heading;
+      // Кратчайшая дуга: без этого разворот через северный полюс идёт длинным
+      // путём и фигурка крутится волчком.
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      figure.heading += delta * HEADING_LERP;
+    }
+    return figure.heading;
   }
 
   // Убираем то, чего в мире больше нет. Проходом по всему кэшу, а не по
@@ -250,23 +294,28 @@ function shakeOf(world) {
   return [(Math.random() - 0.5) * amount * 2, (Math.random() - 0.5) * amount * 2];
 }
 
-// Заготовка фигурки: капсула цвета одежды. Цвет ищем в look — том же поле, по
-// которому 2D рисует персонажа, — чтобы Халк остался зелёным, а Соник синим
-// даже на этапе капсул.
+// Что и как ставить. Фигурки описываются видом (его разбирает figures.js), а
+// то, что фигуркой ещё не стало, — готовой геометрией.
 //
-// Наземные пропы (место доставки) — не капсула, а лепёшка: герой должен
-// пробегать по ним насквозь, а торчащий столб он бы огибал.
-function figureSpec(entity) {
-  const look = entity.look || {};
-  if (entity.layer === 'ground') {
-    return { shape: UNIT_DISC, color: look.clothes || '#ffd93d', radius: CONFIG.player.radius, heightFactor: DISC_HEIGHT };
+// lift — насколько поднять над полом в долях радиуса. У фигурок ноль: они
+// слеплены стоящими на нуле. У шарика половина его высоты, иначе он утонет.
+const HERO_SPEC = { kind: 'hero', radius: CONFIG.player.radius, lift: 0 };
+const ENEMY_SPEC = { kind: 'zombie', radius: CONFIG.player.radius, lift: 0 };
+
+// Питомец-друг — тот же герой: в 2D его рисует drawHero, и look у него
+// геройский. Пёс и дрон идут по своим формам.
+function petSpec(pet) {
+  return { kind: pet.id === 'friend' ? 'hero' : 'zombie', radius: CONFIG.player.radius, lift: 0 };
+}
+
+// Пропы целей фигурками пока не стали: клетка, костёр, подарок и место
+// доставки — следующий шаг. Наземные лежат лепёшкой, остальные стоят коробкой.
+function propSpec(prop) {
+  const look = prop.look || {};
+  if (prop.layer === 'ground') {
+    return { shape: UNIT_DISC, color: look.clothes || '#ffd93d', radius: CONFIG.player.radius, lift: DISC_HEIGHT / 2 };
   }
-  return {
-    shape: UNIT_CAPSULE,
-    color: look.shirt || look.clothes || look.skin || DEFAULT_COLOR,
-    radius: CONFIG.player.radius,
-    heightFactor: FIGURE_HEIGHT,
-  };
+  return { shape: UNIT_BOX, color: look.clothes || look.shirt || '#c98b3a', radius: CONFIG.player.radius, lift: 1 };
 }
 
 function ballSpec(entity) {
@@ -274,6 +323,6 @@ function ballSpec(entity) {
     shape: UNIT_SPHERE,
     color: entity.type === 'money' ? '#7bd67b' : '#ffd93d',
     radius: 8,
-    heightFactor: 2,
+    lift: 1,
   };
 }
