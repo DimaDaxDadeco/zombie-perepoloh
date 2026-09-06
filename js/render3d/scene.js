@@ -16,20 +16,16 @@
 
 import {
   Scene, WebGLRenderer, Color, Fog, Mesh,
-  SphereGeometry, PlaneGeometry, CylinderGeometry, BoxGeometry,
+  SphereGeometry, PlaneGeometry,
   MeshLambertMaterial, DirectionalLight, HemisphereLight, PCFSoftShadowMap,
 } from 'three';
 import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
-import { buildFigure, poseFigure } from './figures.js';
+import { buildFigure, buildProp, buildPickup, poseFigure } from './figures.js';
 
-// Заготовки геометрии для того, что ещё не стало фигуркой: радиус ровно
+// Заготовка для того, что ещё не стало фигуркой, — снарядов: радиус ровно
 // единица, масштаб задаётся у меша.
 const UNIT_SPHERE = new SphereGeometry(1, 12, 10);
-const UNIT_BOX = new BoxGeometry(1.4, 2, 1.4);
-// Плоские объекты: место доставки и прочее, по чему герой пробегает насквозь.
-const DISC_HEIGHT = 0.12;
-const UNIT_DISC = new CylinderGeometry(1, 1, DISC_HEIGHT, 20);
 
 const DEFAULT_COLOR = '#c8c8c8';
 
@@ -59,6 +55,9 @@ export class Scene3D {
 
     this.themeId = null;
     this.theme = null;
+    // Общее время сцены: по нему трепещет пламя и трясётся подарок. Своё, а
+    // не игровое, — это украшение, и на симуляцию оно не влияет.
+    this.phase = 0;
   }
 
   // --- Постоянная обстановка ---
@@ -171,6 +170,7 @@ export class Scene3D {
   // --- Кадр ---
 
   update(dt, world) {
+    this.phase += dt;
     if (!world) return;
     this.camera.follow(world.player, dt);
     this.camera.setShake(...shakeOf(world));
@@ -200,8 +200,8 @@ export class Scene3D {
     for (const player of world.players) this.place(player, HERO_SPEC);
     for (const enemy of world.enemies) this.place(enemy, ENEMY_SPEC);
     for (const pet of world.pets) this.place(pet, petSpec(pet));
-    for (const prop of world.props) this.place(prop, propSpec(prop));
-    for (const pickup of world.pickups) this.place(pickup, ballSpec(pickup));
+    for (const prop of world.props) this.place(prop, PROP_SPEC);
+    for (const pickup of world.pickups) this.place(pickup, PICKUP_SPEC);
     for (const shot of world.projectiles) this.place(shot, ballSpec(shot));
   }
 
@@ -222,7 +222,9 @@ export class Scene3D {
     figure.node.scale.setScalar(radius);
     figure.node.position.set(entity.x, spec.lift * radius, entity.y);
 
-    if (figure.parts) {
+    if (figure.tick) {
+      figure.tick(entity, this.phase);
+    } else if (figure.parts) {
       figure.node.rotation.y = this.headingOf(entity, figure);
       poseFigure(figure, entity.walkPhase || 0);
     }
@@ -235,7 +237,12 @@ export class Scene3D {
       node.receiveShadow = true;
       return { node };
     }
-    const figure = buildFigure(entity.look, spec.kind, (color) => this.materialFor(color));
+    const paint = (color) => this.materialFor(color);
+    const figure = spec.kind === 'prop'
+      ? (buildProp(entity, paint) || buildFigure(entity.look, 'zombie', paint))
+      : spec.kind === 'pickup'
+        ? buildPickup(entity.type, paint)
+        : buildFigure(entity.look, spec.kind, paint);
     figure.node.traverse((part) => {
       if (!part.isMesh) return;
       part.castShadow = true;
@@ -302,27 +309,18 @@ function shakeOf(world) {
 const HERO_SPEC = { kind: 'hero', radius: CONFIG.player.radius, lift: 0 };
 const ENEMY_SPEC = { kind: 'zombie', radius: CONFIG.player.radius, lift: 0 };
 
+const PROP_SPEC = { kind: 'prop', radius: CONFIG.player.radius, lift: 0 };
+// Медалька и монетка висят над травой, иначе плоский кружок в ней тонет.
+const PICKUP_SPEC = { kind: 'pickup', radius: 10, lift: 1.1 };
+
 // Питомец-друг — тот же герой: в 2D его рисует drawHero, и look у него
-// геройский. Пёс и дрон идут по своим формам.
+// геройский. Пёс идёт зверем, дрон — своей формой.
 function petSpec(pet) {
-  return { kind: pet.id === 'friend' ? 'hero' : 'zombie', radius: CONFIG.player.radius, lift: 0 };
+  const kind = pet.id === 'friend' ? 'hero' : (pet.id === 'drone' ? 'drone' : 'zombie');
+  return { kind, radius: CONFIG.player.radius, lift: 0 };
 }
 
-// Пропы целей фигурками пока не стали: клетка, костёр, подарок и место
-// доставки — следующий шаг. Наземные лежат лепёшкой, остальные стоят коробкой.
-function propSpec(prop) {
-  const look = prop.look || {};
-  if (prop.layer === 'ground') {
-    return { shape: UNIT_DISC, color: look.clothes || '#ffd93d', radius: CONFIG.player.radius, lift: DISC_HEIGHT / 2 };
-  }
-  return { shape: UNIT_BOX, color: look.clothes || look.shirt || '#c98b3a', radius: CONFIG.player.radius, lift: 1 };
-}
-
-function ballSpec(entity) {
-  return {
-    shape: UNIT_SPHERE,
-    color: entity.type === 'money' ? '#7bd67b' : '#ffd93d',
-    radius: 8,
-    lift: 1,
-  };
+// Снаряды пока шарики: формы под каждый из тринадцати видов — следующий шаг.
+function ballSpec() {
+  return { shape: UNIT_SPHERE, color: '#4fb3ff', radius: 7, lift: 1 };
 }

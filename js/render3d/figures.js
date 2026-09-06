@@ -45,6 +45,7 @@ const DARK = '#2a2320';
 // список подвижных частей. materialFor приходит снаружи, чтобы материалы
 // кэшировались один раз на всю игру, а не на каждого зомби.
 export function buildFigure(look = {}, kind, materialFor) {
+  if (kind === 'drone') return buildDrone(look, materialFor);
   if (look.shape === 'beast') return buildBeast(look, materialFor);
   if (look.shape === 'balloon') return buildBalloon(look, materialFor);
   if (look.shape === 'snow') return buildSnowman(look, materialFor);
@@ -151,6 +152,10 @@ function buildZombie(look, materialFor) {
   // Глаза врастопырку и разного размера — это зомби и в 2D, и здесь.
   addEyes(head, 0.5, 0.15, materialFor, { skew: true });
   if (look.helmet) addHelmet(head, look.helmet, materialFor);
+  // Шляпа босса приходит СТРОКОЙ (cylinder, crown и прочие), а у героя это
+  // объект с цветом и буквой. По типу их и различаем: заводить второе поле
+  // ради объёмного режима значило бы трогать конфиг игры.
+  if (typeof look.hat === 'string') addBossHat(head, look, materialFor);
   if (look.mask) addMask(head, look.mask, materialFor);
   if (look.beard) node.add(box(0.5, 0.32, 0.2, 0.1, materialFor(look.beard), 0, up(-0.45), 0.36));
   parts.head = head;
@@ -281,6 +286,162 @@ function buildHankey(look, materialFor) {
   return { node, parts: { legs: [], arms: [], head }, kind: 'hankey' };
 }
 
+
+// Дрон-питомец: корпус, глаз и винт. Ног нет, поэтому висит над землёй.
+function buildDrone(look, materialFor) {
+  const node = new Group();
+  const body = materialFor(look.body || '#8fa3b8');
+  node.add(ball(0.5, body, 0, 1.2, 0));
+  node.add(ball(0.2, materialFor(look.eye || '#4fc3f7'), 0, 1.2, 0.42));
+  const rotor = cylinder(0.62, 0.05, materialFor('#cfd8e3'), 0, 1.72, 0);
+  node.add(rotor);
+  return { node, parts: { legs: [], arms: [], rotor, float: true }, kind: 'drone' };
+}
+
+// --- Объекты целей ---
+//
+// Клетка, костёр, подарок и место доставки. Каждый строится в тех же долях
+// радиуса, что и персонажи, и каждый отдаёт tick — свою маленькую анимацию:
+// клетка открывается, костёр горит, подарок трясётся. В 2D это делают
+// drawCage, drawCampfire и drawGiftBox, читая те же поля пропа.
+
+export function buildProp(prop, materialFor) {
+  if (prop.layer === 'ground') return buildDropZone(materialFor);
+  if ('heat' in prop) return buildCampfire(materialFor);
+  if ('carrier' in prop) return buildGift(materialFor);
+  if ('progress' in prop) return buildCage(prop, materialFor);
+  return null;
+}
+
+function buildCage(prop, materialFor) {
+  const node = new Group();
+  const bars = new Group();
+  const metal = materialFor('#b9c4d0');
+  const BAR_COUNT = 10;
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const a = (i / BAR_COUNT) * Math.PI * 2;
+    bars.add(cylinder(0.05, 1.7, metal, Math.cos(a) * 0.95, 0.85, Math.sin(a) * 0.95));
+  }
+  bars.add(torusRing(0.95, 0.06, metal, 1.7));
+  bars.add(torusRing(0.95, 0.06, metal, 0.06));
+  node.add(bars);
+
+  // Внутри сидит друг — ради него клетку и открывают. Строим его тем же
+  // конструктором героя: в 2D клетка тоже получает геройский look.
+  const friend = buildFigure(prop.look || {}, 'hero', materialFor);
+  friend.node.scale.setScalar(0.55);
+  node.add(friend.node);
+
+  return {
+    node,
+    parts: { legs: [], arms: [] },
+    kind: 'cage',
+    tick: () => {
+      // Прутья поднимаются по мере накопления прогресса, а не разом в конце:
+      // ребёнок должен видеть, что стояние рядом работает.
+      bars.position.y = (prop.open ? 1 : prop.progress || 0) * 2.4;
+      bars.visible = bars.position.y < 2.35;
+    },
+  };
+}
+
+function buildCampfire(materialFor) {
+  const node = new Group();
+  const wood = materialFor('#8a5a2b');
+  for (let i = 0; i < 3; i++) {
+    const log = box(0.22, 1.5, 0.22, 0.1, wood, 0, 0.12, 0);
+    log.rotation.z = Math.PI / 2;
+    log.rotation.y = (i / 3) * Math.PI;
+    node.add(log);
+  }
+  const flame = cone(0.55, 1.3, materialFor('#ff8a2b'), 0, 0.85, 0);
+  const core = cone(0.3, 0.8, materialFor('#ffe14d'), 0, 0.6, 0);
+  node.add(flame, core);
+  return {
+    node,
+    parts: { legs: [], arms: [] },
+    kind: 'campfire',
+    tick: (prop, phase) => {
+      // Пламя живёт от heat: потухающий костёр оседает, и это единственное,
+      // по чему нечитающий ребёнок понимает, что его тушат.
+      const heat = Math.max(0, Math.min(1, prop.heat ?? 1));
+      const flicker = 1 + Math.sin(phase * 9) * 0.08;
+      flame.scale.set(heat * flicker, heat * flicker, heat * flicker);
+      core.scale.setScalar(heat * flicker);
+      flame.visible = heat > 0.02;
+      core.visible = flame.visible;
+    },
+  };
+}
+
+function buildGift(materialFor) {
+  const node = new Group();
+  const boxMat = materialFor('#e0453f');
+  const ribbon = materialFor('#ffd93d');
+  node.add(box(1.4, 1.3, 1.4, 0.14, boxMat, 0, 0.65, 0));
+  node.add(box(0.26, 1.36, 1.46, 0.05, ribbon, 0, 0.65, 0));
+  const across = box(0.26, 1.36, 1.46, 0.05, ribbon, 0, 0.65, 0);
+  across.rotation.y = Math.PI / 2;
+  node.add(across);
+  for (const side of [-1, 1]) node.add(ball(0.22, ribbon, side * 0.2, 1.42, 0));
+  return {
+    node,
+    parts: { legs: [], arms: [] },
+    kind: 'gift',
+    // Подарок зовёт тряской, а не свечением: так решено ещё в плоской версии.
+    tick: (prop, phase) => {
+      const shake = prop.carrier ? 0 : Math.sin(phase * 7) * 0.09;
+      node.rotation.z = shake;
+    },
+  };
+}
+
+function buildDropZone(materialFor) {
+  const node = new Group();
+  const ring = torusRing(0.9, 0.1, materialFor('#ffd93d'), 0.06);
+  node.add(ring);
+  return {
+    node,
+    parts: { legs: [], arms: [] },
+    kind: 'dropzone',
+    tick: (prop, phase) => {
+      const pulse = 1 + Math.sin(phase * 3) * 0.06;
+      ring.scale.set(pulse, 1, pulse);
+    },
+  };
+}
+
+// --- Добыча ---
+
+export function buildPickup(type, materialFor) {
+  const node = new Group();
+  if (type === 'money') {
+    node.add(box(1.6, 0.9, 0.12, 0.1, materialFor('#7bd67b'), 0, 0, 0));
+    node.add(flat(starShape(0.28, 4, 0.4), materialFor('#e8f7e8'), 0, 0, 0.08));
+  } else {
+    node.add(cylinder(0.9, 0.16, materialFor('#ffd93d'), 0, 0, 0));
+    node.add(flat(starShape(0.55), materialFor('#fff3b0'), 0, 0, 0.1));
+    node.children[1].rotation.x = Math.PI / 2;
+    node.children[0].rotation.x = Math.PI / 2;
+  }
+  return { node, parts: { legs: [], arms: [] }, kind: 'pickup' };
+}
+
+// Кольцо из тонкого цилиндра-обода. Настоящий тор Three умеет, но кольцо из
+// плоского цилиндра дешевле и в мультяшной картинке неотличимо.
+function torusRing(radius, thickness, material, y) {
+  const ring = new Group();
+  const SEGMENTS = 16;
+  for (let i = 0; i < SEGMENTS; i++) {
+    const a = (i / SEGMENTS) * Math.PI * 2;
+    const piece = box(radius * 0.42, thickness, thickness, thickness / 2, material,
+      Math.cos(a) * radius, y, Math.sin(a) * radius);
+    piece.rotation.y = -a;
+    ring.add(piece);
+  }
+  return ring;
+}
+
 // --- Детали ---
 
 function addEyes(head, headRadius, eyeRadius, materialFor, { skew = false } = {}) {
@@ -361,6 +522,53 @@ function addBeanie(head, hat, materialFor) {
   const mat = materialFor(hat.color || DARK);
   head.add(squash(halfBall(0.57, mat, 0, 0.18, 0), 0.72));
   head.add(box(0.86, 0.09, 0.46, 0.04, mat, 0, 0.2, 0.38));
+}
+
+// Шляпы боссов. Список закрытый, как и причёски: незнакомая шляпа должна
+// оставить босса простоволосым, а не уронить сцену.
+function addBossHat(head, look, materialFor) {
+  const mat = materialFor(look.accent || DARK);
+  switch (look.hat) {
+    case 'tophat':
+      head.add(cylinder(0.42, 0.85, mat, 0, 0.78, 0));
+      head.add(cylinder(0.7, 0.08, mat, 0, 0.38, 0));
+      break;
+    case 'crown': {
+      head.add(cylinder(0.46, 0.3, mat, 0, 0.55, 0));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        head.add(cone(0.1, 0.28, mat, Math.cos(a) * 0.4, 0.8, Math.sin(a) * 0.4));
+      }
+      break;
+    }
+    case 'headband':
+      head.add(cylinder(0.53, 0.16, materialFor(look.headbandColor || '#e03b3b'), 0, 0.3, 0));
+      break;
+    case 'skullhat':
+      head.add(squash(halfBall(0.55, mat, 0, 0.2, 0), 0.7));
+      head.add(ball(0.14, materialFor('#fff6e0'), 0, 0.62, 0.3));
+      break;
+    case 'wig':
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        head.add(ball(0.22, mat, Math.cos(a) * 0.36, 0.42, Math.sin(a) * 0.36));
+      }
+      break;
+    case 'hood':
+      head.add(squash(halfBall(0.62, mat, 0, 0.1, 0), 1.1));
+      break;
+    case 'bulb':
+      head.add(ball(0.3, materialFor('#ffe14d'), 0, 0.75, 0));
+      head.add(cylinder(0.14, 0.2, mat, 0, 0.52, 0));
+      break;
+    case 'bun':
+      head.add(ball(0.26, mat, 0, 0.62, -0.1));
+      break;
+    case 'beanie':
+    default:
+      head.add(squash(halfBall(0.56, mat, 0, 0.18, 0), 0.72));
+      break;
+  }
 }
 
 function addHelmet(head, color, materialFor) {
