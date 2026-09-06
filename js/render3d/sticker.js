@@ -76,7 +76,7 @@ export class StickerPool {
   // sprites.js: увеличивать его «чтобы эффект влез» не надо, запас на выход
   // за радиус уже заложен в PADDING. Подогнанный руками множитель раздувает
   // эффект и закрывает им персонажа. y — высота над землёй.
-  show(texture, x, y, z, radius, { opacity = 1, flip = false, spin = 0 } = {}) {
+  show(texture, x, y, z, radius, { opacity = 1, flip = false, flipY = false, spin = 0 } = {}) {
     if (this.used >= this.limit) return null;
     const sprite = this.items[this.used] || this.make();
     this.used += 1;
@@ -87,7 +87,14 @@ export class StickerPool {
     sprite.material.rotation = spin;
     sprite.material.needsUpdate = true;
     sprite.position.set(x, y, z);
-    sprite.scale.set(radius * STICKER_SPAN * (flip ? -1 : 1), radius * STICKER_SPAN, 1);
+    // Отражение делается масштабом ДО поворота, поэтому зеркалит по
+    // собственной оси наклейки, а не по экранной, — ровно как ctx.scale(1,-1)
+    // после ctx.rotate в плоской версии.
+    sprite.scale.set(
+      radius * STICKER_SPAN * (flip ? -1 : 1),
+      radius * STICKER_SPAN * (flipY ? -1 : 1),
+      1,
+    );
     return sprite;
   }
 

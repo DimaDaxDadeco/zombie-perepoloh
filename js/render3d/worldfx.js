@@ -66,7 +66,9 @@ export class WorldFx {
     this.ground.setArena(arena);
   }
 
-  update(world) {
+  update(world, camera, arena) {
+    this.camera = camera;
+    this.arena = arena;
     this.stickers.reset();
     this.solid.reset();
 
@@ -176,9 +178,33 @@ export class WorldFx {
         (ctx, R) => drawWeaponInHand(ctx, {
           id: weapon.id, stars: weapon.stars, angle: 0, recoil: 0, x: 0, y: 0, radius: R,
         }));
-      const aimsLeft = Math.abs(weapon.aimAngle) > Math.PI / 2;
-      this.stickers.show(texture, player.x, r * HERO_MID, player.y, r, { flip: aimsLeft });
+      // Ствол разворачивается на цель, как в 2D. Угол берём ЭКРАННЫЙ, а не
+      // мировой: камеру можно повернуть и наклонить, и мировой угол на
+      // наклоненном поле смотрит совсем не туда, куда летит пуля.
+      const spin = this.screenAngle(player, weapon.aimAngle);
+      this.stickers.show(texture, player.x, r * HERO_MID, player.y, r, {
+        spin,
+        // Вверх ногами ствол смотреться не должен: при стрельбе назад
+        // отражаем его по своей оси, а не разворачиваем целиком.
+        flipY: Math.abs(spin) > Math.PI / 2,
+      });
     }
+  }
+
+  // Куда смотрит прицел С ТОЧКИ ЗРЕНИЯ ЗРИТЕЛЯ. Считаем проекцией двух
+  // мировых точек, а не поворотом вектора: перспектива сжимает глубину, и
+  // честный угол получается только через саму камеру.
+  screenAngle(from, aim) {
+    if (!this.camera || !this.arena?.width) return 0;
+    const reach = from.radius * 2;
+    const a = this.camera.project(from.x, from.y, this.arena);
+    const b = this.camera.project(
+      from.x + Math.cos(aim) * reach,
+      from.y + Math.sin(aim) * reach,
+      this.arena,
+    );
+    // У наклейки ось y смотрит вверх, у экрана — вниз, отсюда минус.
+    return Math.atan2(-(b.y - a.y), b.x - a.x);
   }
 
   weaponOwnFx(weapon, player) {

@@ -455,70 +455,155 @@ function torusRing(radius, thickness, material, y) {
 
 // --- Снаряды ---
 //
-// Тринадцать видов сводятся к трём формам: шар, вытянутая капсула по
-// направлению полёта и плоский диск. Различать их по классу можно смело:
-// у проекта нет сборки, имена классов доживают до браузера неизменными —
-// на этом же правиле стоит и всё остальное в репозитории.
+// У каждого оружия свой снаряд, и по нему выстрел узнаётся: из морковной
+// ракеты летит морковка, из помидорной пушки помидор, из улья пчела. В
+// плоской игре это так и есть, и терять примету в объёме нельзя — ребёнок
+// различает оружие именно по тому, что из него вылетает.
 //
-// Незнакомый снаряд получает обычный шарик: новое оружие не должно ронять
-// объёмный режим, оно должно в нём просто выглядеть скромно.
+// Различать по классу можно смело: у проекта нет сборки, имена классов
+// доживают до браузера неизменными. Незнакомый снаряд получает синий шарик —
+// новое оружие не должно ронять объёмный режим, только выглядеть скромно.
+//
+// Каждый строитель работает в единичном радиусе и смотрит в +z: масштаб и
+// поворот по скорости ставит buildShot.
 const SHOTS = {
-  Bullet: { form: 'ball', color: '#4fb3ff' },
-  FlameBolt: { form: 'ball', color: '#ff7a2b' },
-  IceShard: { form: 'dart', color: '#8fe3ff' },
-  PiercingBullet: { form: 'dart', color: '#ffe14d' },
-  Rocket: { form: 'dart', color: '#c9d8e8' },
-  Lob: { form: 'ball', color: '#e0453f' },
-  ArcLob: { form: 'ball', color: '#e0453f' },
-  GiftLob: { form: 'cube', color: '#e0453f' },
-  CakeLob: { form: 'cube', color: '#ffb6d5' },
-  WebGlob: { form: 'ball', color: '#f2f2f2', alpha: 0.75 },
-  Boomerang: { form: 'disc', color: '#ffd93d' },
-  Bubble: { form: 'ball', color: '#bfe6ff', alpha: 0.42 },
-  Batmobile: { form: 'car', color: '#2a2750' },
-  Bee: { form: 'ball', color: '#ffd93d' },
-  SpiderMinion: { form: 'ball', color: '#2a2320' },
+  // Растяжение капли передаём явно у обоих: строителю всегда приходит
+  // (узел, материал, краска), и число третьим аргументом молча превратилось
+  // бы в функцию — меш вышел бы с координатами NaN и просто не нарисовался.
+  Bullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1) },
+  PiercingBullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1.7) },
+  FlameBolt: { color: '#ff7a2b', build: flame, spins: false },
+  IceShard: { color: '#8fe3ff', build: spike },
+  Rocket: { color: '#ff8a3b', build: carrot },
+  Lob: { color: '#e0453f', build: tomato, spins: true },
+  ArcLob: { color: '#e0453f', build: tomato, spins: true },
+  GiftLob: { color: '#e0453f', build: gift, spins: true },
+  CakeLob: { color: '#ffb6d5', build: cake, spins: true },
+  WebGlob: { color: '#f2f2f2', alpha: 0.75, build: blob, spins: true },
+  Boomerang: { color: '#ffd93d', build: boomerang, spins: true },
+  Bubble: { color: '#bfe6ff', alpha: 0.42, build: blob },
+  Bee: { color: '#ffd93d', build: bee },
+  SpiderMinion: { color: '#2a2320', build: spider },
+  Batmobile: { color: '#2a2750', build: car },
 };
 
-export function buildShot(shot, materialFor) {
-  const spec = SHOTS[shot.constructor?.name] || { form: 'ball', color: '#4fb3ff' };
-  const node = new Group();
-  const material = materialFor(spec.color, spec.alpha ?? 1);
+const DEFAULT_SHOT = { color: '#4fb3ff', build: blob };
 
-  if (spec.form === 'dart') {
-    // Капсула лежит вдоль +z, чтобы её можно было развернуть по скорости
-    // одним углом, как и персонажа.
-    const dart = cylinder(0.5, 2.2, material, 0, 0, 0);
-    dart.rotation.x = Math.PI / 2;
-    node.add(dart);
-    node.add(cone(0.5, 0.9, material, 0, 0, 1.5, Math.PI / 2));
-  } else if (spec.form === 'car') {
-    // Бэтмобиль: длинный низкий корпус и кабина. Кубиком он читался как
-    // ящик, а это машина Бэтмена — ребёнок её ждёт.
-    node.add(box(1.6, 0.8, 3.2, 0.3, material, 0, 0, 0));
-    node.add(box(1.1, 0.7, 1.3, 0.25, material, 0, 0.6, -0.2));
-  } else if (spec.form === 'cube') {
-    node.add(box(1.6, 1.6, 1.6, 0.3, material, 0, 0, 0));
-  } else if (spec.form === 'disc') {
-    const disc = cylinder(1, 0.3, material, 0, 0, 0);
-    node.add(disc);
-  } else {
-    node.add(ball(1, material, 0, 0, 0));
-  }
+export function buildShot(shot, materialFor) {
+  const spec = SHOTS[shot.constructor?.name] || DEFAULT_SHOT;
+  const node = new Group();
+  const paint = (color, alpha) => materialFor(color, alpha ?? spec.alpha ?? 1);
+  spec.build(node, paint(spec.color), paint);
 
   return {
     node,
     kind: 'shot',
     tick: (entity, phase) => {
-      // Летящее разворачиваем по скорости, вертящееся — крутим. Скорости у
-      // навесных снарядов нет вовсе, и тогда просто оставляем как есть.
-      if ((spec.form === 'dart' || spec.form === 'car') && (entity.vx || entity.vy)) {
-        node.rotation.y = Math.atan2(entity.vx, entity.vy);
-      } else if (spec.form === 'disc' || spec.form === 'cube') {
-        node.rotation.y = phase * 6;
-      }
+      // Летящее разворачиваем по скорости, вертящееся крутим. У навесных
+      // скорости нет вовсе — тогда оставляем как есть.
+      if (spec.spins) node.rotation.y = phase * 6;
+      else if (entity.vx || entity.vy) node.rotation.y = Math.atan2(entity.vx, entity.vy);
     },
   };
+}
+
+// Капля воды: шарик с оттянутым назад хвостиком.
+function drop(node, material, stretch) {
+  node.add(ball(1, material, 0, 0, 0));
+  const tail = cone(0.85, 1.6 * stretch, material, 0, 0, -0.9 * stretch, -Math.PI / 2);
+  node.add(tail);
+}
+
+// Морковка: рыжий конус носом вперёд и зелёная ботва сзади.
+function carrot(node, material, paint) {
+  const body = cone(0.75, 2.6, material, 0, 0, 0.2, Math.PI / 2);
+  node.add(body);
+  const leaves = paint('#5a9c3a');
+  for (let i = -1; i <= 1; i++) {
+    const leaf = cone(0.28, 1, leaves, i * 0.3, 0.25, -1.2, Math.PI / 2 - i * 0.25);
+    node.add(leaf);
+  }
+}
+
+// Помидор: красный шар, зелёная звёздочка-чашелистик сверху.
+function tomato(node, material, paint) {
+  node.add(ball(1, material, 0, 0, 0));
+  const cap = flat(starShape(0.6), paint('#5a9c3a'), 0, 0.95, 0);
+  cap.rotation.x = -Math.PI / 2;   // чашелистик лежит на макушке, а не стоит
+  node.add(cap);
+}
+
+// Язык пламени: два конуса, светлое ядро внутри тёмного.
+function flame(node, material, paint) {
+  node.add(cone(0.9, 2.2, material, 0, 0, 0, Math.PI / 2));
+  node.add(cone(0.5, 1.4, paint('#ffe14d'), 0, 0, 0.2, Math.PI / 2));
+}
+
+// Ледяной шип.
+function spike(node, material) {
+  node.add(cone(0.6, 2.6, material, 0, 0, 0, Math.PI / 2));
+}
+
+// Пчела: полосатое тельце и прозрачные крылышки.
+function bee(node, material, paint) {
+  node.add(ball(0.9, material, 0, 0, 0));
+  const stripes = paint('#2a2320');
+  node.add(ball(0.92, stripes, 0, 0, -0.35));
+  node.add(ball(0.7, stripes, 0, 0, 0.55));
+  const wing = paint('#e8f4ff', 0.55);
+  for (const side of [-1, 1]) {
+    const w = box(1.1, 0.08, 0.6, 0.3, wing, side * 0.8, 0.5, -0.1);
+    w.rotation.z = -side * 0.4;
+    node.add(w);
+  }
+}
+
+// Паучок: тёмное тельце и лапки веером.
+function spider(node, material) {
+  node.add(ball(0.9, material, 0, 0, 0));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const leg = box(0.14, 0.14, 1.1, 0.07, material,
+      Math.cos(a) * 0.9, -0.2, Math.sin(a) * 0.9);
+    leg.rotation.y = -a;
+    node.add(leg);
+  }
+}
+
+// Бумеранг: два колена под углом.
+function boomerang(node, material) {
+  for (const side of [-1, 1]) {
+    const arm = box(0.5, 0.3, 2, 0.15, material, side * 0.55, 0, 0);
+    arm.rotation.y = side * 0.6;
+    node.add(arm);
+  }
+}
+
+// Подарок: коробка с лентой. Тот же силуэт, что у ноши на арене.
+function gift(node, material, paint) {
+  node.add(box(1.6, 1.5, 1.6, 0.16, material, 0, 0, 0));
+  const ribbon = paint('#ffd93d');
+  node.add(box(0.3, 1.56, 1.66, 0.06, ribbon, 0, 0, 0));
+  const across = box(0.3, 1.56, 1.66, 0.06, ribbon, 0, 0, 0);
+  across.rotation.y = Math.PI / 2;
+  node.add(across);
+}
+
+// Торт: розовый корж и вишенка.
+function cake(node, material, paint) {
+  node.add(cylinder(1, 1.1, material, 0, 0, 0));
+  node.add(cylinder(1.05, 0.3, paint('#ffffff'), 0, 0.5, 0));
+  node.add(ball(0.28, paint('#e0453f'), 0, 0.8, 0));
+}
+
+// Бэтмобиль: длинный низкий корпус и кабина.
+function car(node, material) {
+  node.add(box(1.6, 0.8, 3.2, 0.3, material, 0, 0, 0));
+  node.add(box(1.1, 0.7, 1.3, 0.25, material, 0, 0.6, -0.2));
+}
+
+function blob(node, material) {
+  node.add(ball(1, material, 0, 0, 0));
 }
 
 // --- Детали ---

@@ -15,8 +15,8 @@
 // пропорции здесь нет — иначе они разошлись бы с двумерными.
 
 import {
-  Scene, WebGLRenderer, Color, Fog, Mesh,
-  PlaneGeometry,
+  Scene, WebGLRenderer, Color, Fog, Mesh, Group,
+  PlaneGeometry, BoxGeometry,
   MeshLambertMaterial, DirectionalLight, HemisphereLight, PointLight, PCFShadowMap,
 } from 'three';
 import { CONFIG } from '../config.js';
@@ -76,6 +76,7 @@ export class Scene3D {
     this.seen = new Set();        // кто попался в этом кадре
 
     this.buildGround();
+    this.buildBorder();
     this.buildLights();
     this.effects = new Effects(this.scene);
     this.decor = new Decor(this.scene, (color) => this.materialFor(color));
@@ -91,6 +92,52 @@ export class Scene3D {
   }
 
   // --- Постоянная обстановка ---
+
+  // Бортик по краю арены: четыре бруска, ровно по тем границам, о которые
+  // бьётся герой. Он же и объясняет ребёнку, почему тот дальше не идёт.
+  buildBorder() {
+    this.border = new Group();
+    this.borderBars = [];
+    for (let i = 0; i < 4; i++) {
+      const bar = new Mesh(new BoxGeometry(1, 1, 1), this.materialFor(DEFAULT_COLOR));
+      bar.castShadow = true;
+      bar.receiveShadow = true;
+      this.borderBars.push(bar);
+      this.border.add(bar);
+    }
+    this.scene.add(this.border);
+  }
+
+  frameBorder() {
+    const { width, height } = this.arena;
+    if (!width || !height) return;
+    const h = this.spec.borderHeight;
+    const t = this.spec.borderThickness;
+    // Длинные стороны заходят за короткие, чтобы в углах не оставалось щели.
+    const places = [
+      [width / 2, h / 2, -t / 2, width + t * 2, h, t],
+      [width / 2, h / 2, height + t / 2, width + t * 2, h, t],
+      [-t / 2, h / 2, height / 2, t, h, height],
+      [width + t / 2, h / 2, height / 2, t, h, height],
+    ];
+    places.forEach(([x, y, z, sx, sy, sz], i) => {
+      const bar = this.borderBars[i];
+      bar.position.set(x, y, z);
+      bar.scale.set(sx, sy, sz);
+    });
+  }
+
+  paintBorder() {
+    if (!this.theme) return;
+    // Темнее пола, но того же семейства: бортик — край этой же лужайки, а не
+    // чужой предмет. Ночью уходит в синеву вместе с землёй.
+    const base = mixColor(this.theme.accent, '#000000', 0.25);
+    const color = this.night
+      ? mixColor(base, this.spec.night.sky, this.spec.night.groundMix)
+      : base;
+    const material = this.materialFor(color);
+    for (const bar of this.borderBars) bar.material = material;
+  }
 
   buildGround() {
     // Пол лежит в плоскости XZ, поэтому плоскость приходится класть: она
@@ -144,6 +191,7 @@ export class Scene3D {
       this.lamp.intensity = on ? night.lampIntensity : 0;
       this.applySky(on ? night.sky : this.theme?.sky);
       this.paintGround();
+      this.paintBorder();
     }
     if (!on) return;
     const hero = world.player;
@@ -190,6 +238,7 @@ export class Scene3D {
     this.ground.position.set(arena.width / 2, 0, arena.height / 2);
 
     this.frameLight();
+    this.frameBorder();
     this.updateFog();
     this.fx.setArena(arena);
   }
@@ -224,6 +273,7 @@ export class Scene3D {
     this.themeId = theme.id;
     this.theme = theme;
     this.paintGround();
+    this.paintBorder();
     if (!this.night) this.applySky(theme.sky);
     this.updateFog();
   }
@@ -291,7 +341,7 @@ export class Scene3D {
     this.collect(world);
     this.sweep();
     this.effects.update(world.particles);
-    this.fx.update(world);
+    this.fx.update(world, this.camera, this.arena);
 
     this.camera.sync();
     this.renderer.render(this.scene, this.camera.camera);
