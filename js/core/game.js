@@ -58,10 +58,22 @@ const MAX_FRAME_DELTA = 0.05; // сек: защита от «скачка» по
 const FIREWORK_INTERVAL = 0.35;
 
 export class Game {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+  // Холстов три, и это не роскошь. Один canvas отдаёт либо 2D-контекст, либо
+  // WebGL — тот, что запросили первым, — поэтому у обычного и объёмного
+  // режимов холсты разные, а лишний прячется. Третий, прозрачный, держит HUD:
+  // благодаря ему js/screens/hud.js работает в обоих режимах без единой правки.
+  constructor(worldCanvas, sceneCanvas, hudCanvas) {
+    this.canvas = worldCanvas;
+    this.sceneCanvas = sceneCanvas;
+    this.hudCanvas = hudCanvas;
+    this.worldCtx = worldCanvas.getContext('2d');
+    // this.ctx — холст HUD: на нём и сердечки, и всё, что рисуется в экранных
+    // координатах поверх мира.
+    this.ctx = hudCanvas.getContext('2d');
     this.arena = { width: 0, height: 0 };
+    // Сцена объёмного режима. null означает «играем в 2D»; создаётся лениво
+    // при первом включении, потому что тянет за собой Three.
+    this.scene3d = null;
 
     this.storage = new Storage();
     this.album = new Album(this.storage);
@@ -99,6 +111,8 @@ export class Game {
     this.setupPauseButton();
     this.setupFavicon();
     this.setupResize();
+    this.setupViewControl();
+    this.applyViewMode();
     // Первый клик разблокирует звук — требование браузеров.
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
   }
@@ -184,6 +198,7 @@ export class Game {
       pause: new PauseScreen('pause-overlay', {
         onResume: () => this.togglePause(),
         onMenu: () => this.goToMenu(),
+        onToggleView: () => this.toggleView(),
         onSpeak: (text) => this.speech.speak(text),
       }),
     };
@@ -267,10 +282,39 @@ export class Game {
     if (this.state === GameState.PLAYING) {
       // Героя передаём как точку отсчёта: на планшете направление считается
       // от него к пальцу, и без этого он бы просто стоял.
-      this.round.update(dt, this.round.players.map((p, i) => this.input.getDirection(i, p)));
+      const directions = this.round.players.map((p, i) => this.aim(this.input.getDirection(i, p)));
+      this.round.update(dt, directions);
+      this.scene3d?.update(dt, this.round);
     } else if (this.state === GameState.ROUND_END) {
       this.updateVictoryFireworks(dt);
     }
+  }
+
+  // Имя вышедшего босса в объёмном режиме. Надпись экранная, а не мировая:
+  // выдавленная в объём, она вставала бы поперёк поля и закрывала самого
+  // босса. Развилка здесь повторяет ту, что в конце Round.draw, — это
+  // единственное место, где две отрисовки знают об одном и том же, и при
+  // правке баннера поправить придётся оба.
+  drawBanner3d(ctx) {
+    const world = this.round;
+    // Проверяем не только таймер, но и сам текст. По задумке они меняются
+    // вместе, и в 2D проверки нет — но состояние «таймер ещё тикает, текста
+    // уже нет» приводит к падению кадра, а падение кадра для ребёнка это
+    // застывшая картинка без всякого объяснения.
+    if (world.bossPhase === 'intro' && world.bossType) {
+      world.drawBanner(ctx, world.bossType.name);
+    } else if (world.bannerTimer > 0 && world.bannerText) {
+      world.drawBanner(ctx, world.bannerText, world.bannerTimer);
+    }
+  }
+
+  // Направление от стрелок — в мировое. В 2D это тождество; в объёмном
+  // режиме камеру можно повернуть мышкой, и тогда «вперёд» для ребёнка — это
+  // от камеры, а не вверх по карте. Преобразование стоит ЗДЕСЬ, а не в Round:
+  // симуляция про камеру не знает и знать не должна.
+  aim(direction) {
+    if (!this.scene3d || (direction.x === 0 && direction.y === 0)) return direction;
+    return this.scene3d.camera.worldDirection(direction);
   }
 
   updateVictoryFireworks(dt) {
@@ -289,8 +333,16 @@ export class Game {
   draw() {
     const { ctx, arena } = this;
     this.syncTouch();
+    // HUD живёт на своём холсте и рисуется поверх мира, поэтому его надо
+    // чистить самим: раньше это делала заливка фона в Round.draw.
+    ctx.clearRect(0, 0, arena.width, arena.height);
     if (this.round) {
-      this.round.draw(ctx);
+      if (this.scene3d) {
+        this.scene3d.draw(this.round);
+        this.drawBanner3d(ctx);
+      } else {
+        this.round.draw(this.worldCtx);
+      }
       if (this.state === GameState.PLAYING || this.state === GameState.PAUSED) {
         this.hud.draw(ctx, {
           players: this.round.players,
@@ -312,7 +364,7 @@ export class Game {
         });
       }
     } else {
-      this.drawMenuBackdrop(ctx, arena);
+      this.drawMenuBackdrop(this.worldCtx, arena);
     }
   }
 
@@ -584,6 +636,9 @@ export class Game {
       },
       ...options,
     });
+    // Камеру объёмного режима ставим на героя сразу: иначе она первую секунду
+    // едет к нему из середины прошлого раунда.
+    this.scene3d?.snap(this.round);
     this.audio.startMusic();
     this.announceRound();
   }
@@ -764,7 +819,7 @@ export class Game {
     if (this.state === GameState.PLAYING) {
       this.state = GameState.PAUSED;
       this.audio.stopMusic();
-      this.screens.pause.render(this.round?.player.weapons);
+      this.screens.pause.render(this.round?.player.weapons, Boolean(this.scene3d));
     } else if (this.state === GameState.PAUSED) {
       this.state = GameState.PLAYING;
       this.screens.pause.hide();
@@ -918,14 +973,121 @@ export class Game {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
-    this.canvas.width = width * ratio;
-    this.canvas.height = height * ratio;
-    this.canvas.style.width = `${width}px`;
-    this.canvas.style.height = `${height}px`;
-    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    for (const [canvas, ctx] of [[this.canvas, this.worldCtx], [this.hudCanvas, this.ctx]]) {
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+    // Холст сцены размер себе ставит сам: Three знает про свой pixelRatio и
+    // перетирает width/height при setSize.
+    this.sceneCanvas.style.width = `${width}px`;
+    this.sceneCanvas.style.height = `${height}px`;
 
     this.arena.width = width;
     this.arena.height = height;
     this.round?.onArenaResize(this.arena);
+    this.scene3d?.setArena(this.arena);
+    // Поле изменилось — камере незачем доезжать до героя через пол-экрана.
+    this.scene3d?.snap(this.round);
+  }
+
+  // --- Объёмный режим ---
+
+  // Включает то, что записано в сохранении, с поправкой на адрес страницы:
+  // ?view=3d и ?view=2d нужны, чтобы посмотреть режим, не трогая сохранение
+  // ребёнка. Сцена создаётся лениво — Three грузится только тому, кто её
+  // включил.
+  applyViewMode() {
+    const forced = new URLSearchParams(window.location.search).get('view');
+    const wanted = forced === '3d' || (forced !== '2d' && this.storage.data.view3d);
+    if (wanted) this.enableView3d();
+    else this.disableView3d();
+  }
+
+  async enableView3d() {
+    if (this.scene3d) return;
+    try {
+      const { Scene3D } = await import('../render3d/scene.js');
+      this.scene3d = new Scene3D(this.sceneCanvas);
+    } catch (error) {
+      // Не поднялся WebGL — играем в 2D и говорим об этом в консоль, а не
+      // чёрным экраном. Для ребёнка это должно выглядеть как «объём просто
+      // не включился», а не как сломанная игра.
+      console.warn('Объёмный режим недоступен, играем в 2D:', error);
+      this.scene3d = null;
+      this.syncViewCanvases();
+      return;
+    }
+    this.scene3d.setArena(this.arena);
+    this.scene3d.snap(this.round);
+    this.syncViewCanvases();
+  }
+
+  disableView3d() {
+    this.scene3d?.dispose();
+    this.scene3d = null;
+    // Камеру повернули, потом вышли в 2D — направление ввода обязано
+    // вернуться к экранному само, и оно возвращается: aim() без сцены отдаёт
+    // вектор как есть.
+    this.syncViewCanvases();
+  }
+
+  syncViewCanvases() {
+    const on = Boolean(this.scene3d);
+    this.canvas.classList.toggle('canvas-off', on);
+    this.sceneCanvas.classList.toggle('canvas-off', !on);
+    // Палец на планшете указывает точку на земле, а не на экране: при
+    // повёрнутой камере это разные точки. Луч не попал в пол (ткнули в небо) —
+    // отдаём прежнее тождество, чтобы герой не дёргался.
+    this.touch.mapPoint = on
+      ? (x, y) => this.scene3d?.camera.unproject(x, y, this.arena) || { x, y }
+      : (x, y) => ({ x, y });
+  }
+
+  async toggleView() {
+    const on = !this.scene3d;
+    this.storage.data.view3d = on;
+    this.storage.save();
+    if (on) await this.enableView3d();
+    else this.disableView3d();
+    // Кнопка на паузе должна сразу показать новое состояние.
+    if (this.state === GameState.PAUSED) {
+      this.screens.pause.render(this.round?.player.weapons, Boolean(this.scene3d));
+    }
+  }
+
+  // Мышь крутит камеру: зажал и повёл. Именно с зажатой кнопкой, а не
+  // просто движением, — иначе камера уезжала бы от случайного касания
+  // трекпада, пока ребёнок целится.
+  setupViewControl() {
+    const canvas = this.sceneCanvas;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    canvas.addEventListener('pointerdown', (event) => {
+      if (!this.scene3d) return;
+      dragging = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      if (!dragging || !this.scene3d) return;
+      this.scene3d.camera.rotateBy(event.clientX - lastX, event.clientY - lastY);
+      lastX = event.clientX;
+      lastY = event.clientY;
+    });
+    const stop = () => { dragging = false; };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+
+    canvas.addEventListener('wheel', (event) => {
+      if (!this.scene3d) return;
+      event.preventDefault();
+      this.scene3d.camera.raiseBy(Math.sign(event.deltaY) * CONFIG.render3d.wheelStep);
+    }, { passive: false });
   }
 }

@@ -60,6 +60,9 @@ export class TouchControls {
     this.onPause = onPause;
     this.moveId = null;      // pointerId ведущего пальца
     this.abilityId = null;   // и пальца на кнопке способности
+    // Экранная точка -> точка арены. Тождество, пока мир плоский; объёмный
+    // режим подменяет её обратным лучом камеры (см. toArena).
+    this.mapPoint = (x, y) => ({ x, y });
 
     this.root = document.getElementById('touch-controls') || this.createRoot();
     this.field = this.root.querySelector('#touch-field');
@@ -136,9 +139,14 @@ export class TouchControls {
   // туда innerWidth/innerHeight), а devicePixelRatio учтён только в
   // ctx.setTransform — поэтому домножать на него здесь НЕЛЬЗЯ, это ровно та
   // ошибка, ради которой контролы и сделаны на DOM.
+  //
+  // В объёмном режиме экранная точка перестаёт совпадать с мировой: камеру
+  // можно повернуть. Поэтому перевод вынесен в подменяемый mapPoint — Game
+  // кладёт туда обратный луч камеры, а по умолчанию это тождество, то есть
+  // ровно прежнее поведение.
   toArena(clientX, clientY) {
     const rect = this.field.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    return this.mapPoint(clientX - rect.left, clientY - rect.top);
   }
 
   // Метка под пальцем: ребёнок видит, куда тянет. Заодно она объясняет, почему

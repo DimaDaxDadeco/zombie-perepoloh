@@ -11,8 +11,15 @@
   <link rel="icon" href="data:,">
 </head>
 <body>
-  <!-- Игровой мир -->
+  <!-- Игровой мир. Холста два, потому что один и тот же canvas не может
+       отдать и 2D-контекст, и WebGL: браузер выдаёт только тот, что запросили
+       первым. Поэтому обычный режим рисует на #game-canvas, объёмный — на
+       #scene-canvas, а лишний прячется. -->
   <canvas id="game-canvas"></canvas>
+  <canvas id="scene-canvas" class="canvas-off"></canvas>
+  <!-- Сердечки, шкалы и счётчики. Отдельным холстом, чтобы объёмный режим мог
+       забрать нижний под себя целиком, не переписывая HUD. -->
+  <canvas id="hud-canvas"></canvas>
 
   <!-- Кнопки доступны всегда, поверх любого экрана -->
   <!-- Содержимое кнопок ставит код: значки рисует js/render/icons.js, а не
@@ -42,6 +49,17 @@
   <div id="story-overlay" class="overlay hidden"></div>
   <div id="pause-overlay" class="overlay hidden"></div>
   <div id="confirm-overlay" class="overlay hidden"></div>
+
+  <!-- Объёмный режим (docs/render3d.md). Единственная внешняя библиотека в
+       проекте, поэтому она лежит в репозитории и грузится с диска: игра
+       обязана работать без интернета. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js"
+      }
+    }
+  </script>
 
   <script type="module" src="js/main.js"></script>
 </body>

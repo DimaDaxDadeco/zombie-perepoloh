@@ -33,10 +33,26 @@ html, body {
   -webkit-user-select: none;
 }
 
-#game-canvas {
+#game-canvas, #scene-canvas {
   display: block;
   position: absolute;
   inset: 0;
+}
+
+/* Незанятый холст мира. Именно display: none, а не прозрачность: спрятанный
+   так холст браузер не композитит вовсе. */
+.canvas-off { display: none; }
+
+/* HUD рисуется на отдельном прозрачном холсте поверх мира. Так объёмный режим
+   может занять #game-canvas под WebGL, а сердечки и шкалы остаются обычным
+   2D-рисованием и не переписываются вовсе. Пальцу этот холст не мешает:
+   pointer-events он не ловит, тач-контролы лежат выше. */
+#hud-canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Значки интерфейса — в отдельном файле css/icons.css: его подключают и
@@ -511,7 +527,7 @@ html, body {
 
 /* Никаких системных жестов поверх игры: ни зума по двойному тапу, ни
    прокрутки резинкой. */
-html, body, #game-canvas, #touch-controls { touch-action: none; }
+html, body, #game-canvas, #scene-canvas, #hud-canvas, #touch-controls { touch-action: none; }
 
 #touch-controls {
   position: absolute;
