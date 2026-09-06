@@ -23,6 +23,7 @@ import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
 import { buildFigure, buildProp, buildPickup, buildShot, poseFigure } from './figures.js';
 import { Effects } from './effects.js';
+import { Decor } from './decor.js';
 
 const DEFAULT_COLOR = '#c8c8c8';
 
@@ -50,6 +51,7 @@ export class Scene3D {
     this.buildGround();
     this.buildLights();
     this.effects = new Effects(this.scene);
+    this.decor = new Decor(this.scene, (color) => this.materialFor(color));
 
     this.themeId = null;
     this.theme = null;
@@ -237,6 +239,7 @@ export class Scene3D {
   draw(world) {
     if (!world) return;
     this.applyTheme(world.background?.theme);
+    this.decor.sync(world.background);
     this.setNight(world.modifier?.id === 'night', world);
 
     this.seen.clear();
