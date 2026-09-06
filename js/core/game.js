@@ -127,6 +127,7 @@ export class Game {
         onShop: () => this.openShop(GameState.MENU),
         onAlbum: () => this.openAlbum(),
         onCampaign: () => this.openCampaign(),
+        onToggleView: () => this.toggleView(),
       }),
       players: new PlayersScreen('players-overlay', {
         onPick: (count) => this.choosePlayers(count),
@@ -200,7 +201,6 @@ export class Game {
       pause: new PauseScreen('pause-overlay', {
         onResume: () => this.togglePause(),
         onMenu: () => this.goToMenu(),
-        onToggleView: () => this.toggleView(),
         onSpeak: (text) => this.speech.speak(text),
       }),
     };
@@ -428,7 +428,7 @@ export class Game {
     this.chapter = null;
     this.audio.stopMusic();
     this.hideAllScreens();
-    this.screens.menu.render(this.storage.data, this.storage);
+    this.screens.menu.render(this.storage.data, this.storage, Boolean(this.scene3d));
   }
 
   // «Продолжить» — сразу в бой с сохранённым героем, оружием и раундом.
@@ -852,7 +852,7 @@ export class Game {
     if (this.state === GameState.PLAYING) {
       this.state = GameState.PAUSED;
       this.audio.stopMusic();
-      this.screens.pause.render(this.round?.player.weapons, Boolean(this.scene3d));
+      this.screens.pause.render(this.round?.player.weapons);
     } else if (this.state === GameState.PAUSED) {
       this.state = GameState.PLAYING;
       this.screens.pause.hide();
@@ -1056,6 +1056,7 @@ export class Game {
     this.scene3d.setArena(this.arena);
     this.scene3d.snap(this.round);
     this.syncViewCanvases();
+    this.refreshMenu();
   }
 
   disableView3d() {
@@ -1065,6 +1066,15 @@ export class Game {
     // вернуться к экранному само, и оно возвращается: aim() без сцены отдаёт
     // вектор как есть.
     this.syncViewCanvases();
+    this.refreshMenu();
+  }
+
+  // Меню рисуется в start() сразу, а сцена приезжает асинхронным импортом —
+  // и подпись на кнопке успевала соврать. Перерисовываем меню, когда режим
+  // на самом деле встал.
+  refreshMenu() {
+    if (this.state !== GameState.MENU) return;
+    this.screens.menu.render(this.storage.data, this.storage, Boolean(this.scene3d));
   }
 
   syncViewCanvases() {
@@ -1087,7 +1097,7 @@ export class Game {
     else this.disableView3d();
     // Кнопка на паузе должна сразу показать новое состояние.
     if (this.state === GameState.PAUSED) {
-      this.screens.pause.render(this.round?.player.weapons, Boolean(this.scene3d));
+      this.screens.pause.render(this.round?.player.weapons);
     }
   }
 

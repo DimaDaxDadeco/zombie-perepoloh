@@ -21,13 +21,14 @@ import { icon } from '../render/icons.js';
 const HERO_PREVIEW_SIZE = 130;
 
 export class MenuScreen extends Overlay {
-  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum, onCampaign }) {
+  constructor(rootId, { onContinue, onNewGame, onShop, onAlbum, onCampaign, onToggleView }) {
     super(rootId);
     this.onContinue = onContinue;
     this.onNewGame = onNewGame;
     this.onShop = onShop;
     this.onAlbum = onAlbum;
     this.onCampaign = onCampaign;
+    this.onToggleView = onToggleView;
     this.buttons = [];
     this.selected = 0;
 
@@ -37,7 +38,11 @@ export class MenuScreen extends Overlay {
     });
   }
 
-  render(save, storage) {
+  // view3d — объёмный режим (docs/render3d.md). Переключатель стоит ИМЕННО
+  // здесь, до боя: менять вид посреди раунда — значит на пару кадров
+  // подменить ребёнку всю картинку, пока за ним бежит толпа. Выбор вида —
+  // это настройка, а не игровое действие.
+  render(save, storage, view3d = false) {
     const character = CONFIG.characters.find((c) => c.id === save.character);
     // Уровень сложности в HUD намеренно не показывается (он не меняется по
     // ходу боя), но в строке фактов о сохранении он на месте — взрослому
@@ -85,6 +90,7 @@ export class MenuScreen extends Overlay {
           ${canContinue ? `<button class="btn btn--secondary" data-action="new">${icon('ui-spark')} Новая игра</button>` : ''}
           <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин</button>
           <button class="btn btn--secondary" data-action="album">${icon('ui-album')} Альбом ${albumOpen(save)}</button>
+          <button class="btn btn--secondary" data-action="view">${icon('ui-cube')} Объём: ${view3d ? 'да' : 'нет'}</button>
         </div>
         <p class="hint">Выбирай стрелками, нажимай пробел. В бою бегай стрелками —
            оружие стреляет само!</p>
@@ -97,6 +103,7 @@ export class MenuScreen extends Overlay {
     this.on('[data-action="shop"]', this.onShop);
     this.on('[data-action="album"]', this.onAlbum);
     this.on('[data-action="campaign"]', this.onCampaign);
+    this.on('[data-action="view"]', this.onToggleView);
 
     // Курсор стоит на обычной игре: это по-прежнему главное действие меню, и
     // «нажал не глядя» обязано остаться безопасным.

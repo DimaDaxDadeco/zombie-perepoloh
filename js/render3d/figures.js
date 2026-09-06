@@ -472,9 +472,9 @@ const SHOTS = {
   ArcLob: { form: 'ball', color: '#e0453f' },
   GiftLob: { form: 'cube', color: '#e0453f' },
   CakeLob: { form: 'cube', color: '#ffb6d5' },
-  WebGlob: { form: 'ball', color: '#f2f2f2' },
+  WebGlob: { form: 'ball', color: '#f2f2f2', alpha: 0.75 },
   Boomerang: { form: 'disc', color: '#ffd93d' },
-  Bubble: { form: 'ball', color: '#bfe6ff' },
+  Bubble: { form: 'ball', color: '#bfe6ff', alpha: 0.42 },
   Batmobile: { form: 'cube', color: '#2a2750' },
   Bee: { form: 'ball', color: '#ffd93d' },
   SpiderMinion: { form: 'ball', color: '#2a2320' },
@@ -483,7 +483,7 @@ const SHOTS = {
 export function buildShot(shot, materialFor) {
   const spec = SHOTS[shot.constructor?.name] || { form: 'ball', color: '#4fb3ff' };
   const node = new Group();
-  const material = materialFor(spec.color);
+  const material = materialFor(spec.color, spec.alpha ?? 1);
 
   if (spec.form === 'dart') {
     // Капсула лежит вдоль +z, чтобы её можно было развернуть по скорости
@@ -603,18 +603,24 @@ function addBeanie(head, hat, materialFor) {
 
 // Шляпы боссов. Список закрытый, как и причёски: незнакомая шляпа должна
 // оставить босса простоволосым, а не уронить сцену.
+//
+// Цвета взяты из drawBossHat числами, а не из look.accent: у 2D почти каждая
+// шляпа красится своим цветом (цилиндр тёмный с лентой цвета акцента, парик
+// рыжий с чёрным котелком, череп костяной), и общий акцент превращал их все
+// в одинаковые купола.
 function addBossHat(head, look, materialFor) {
-  const mat = materialFor(look.accent || DARK);
+  const accent = materialFor(look.accent || DARK);
   switch (look.hat) {
     case 'tophat':
-      head.add(cylinder(0.42, 0.85, mat, 0, 0.78, 0));
-      head.add(cylinder(0.7, 0.08, mat, 0, 0.38, 0));
+      head.add(cylinder(0.42, 0.85, materialFor('#2b2b3d'), 0, 0.78, 0));
+      head.add(cylinder(0.7, 0.08, materialFor('#2b2b3d'), 0, 0.38, 0));
+      head.add(cylinder(0.44, 0.16, accent, 0, 0.44, 0));   // лента
       break;
     case 'crown': {
-      head.add(cylinder(0.46, 0.3, mat, 0, 0.55, 0));
+      head.add(cylinder(0.46, 0.3, accent, 0, 0.55, 0));
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2;
-        head.add(cone(0.1, 0.28, mat, Math.cos(a) * 0.4, 0.8, Math.sin(a) * 0.4));
+        head.add(cone(0.1, 0.28, accent, Math.cos(a) * 0.4, 0.8, Math.sin(a) * 0.4));
       }
       break;
     }
@@ -622,28 +628,39 @@ function addBossHat(head, look, materialFor) {
       head.add(cylinder(0.53, 0.16, materialFor(look.headbandColor || '#e03b3b'), 0, 0.3, 0));
       break;
     case 'skullhat':
-      head.add(squash(halfBall(0.55, mat, 0, 0.2, 0), 0.7));
-      head.add(ball(0.14, materialFor('#fff6e0'), 0, 0.62, 0.3));
-      break;
-    case 'wig':
-      for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * Math.PI * 2;
-        head.add(ball(0.22, mat, Math.cos(a) * 0.36, 0.42, Math.sin(a) * 0.36));
+      // Запасной череп надет шапкой: костяной шар с двумя тёмными глазницами.
+      head.add(ball(0.34, materialFor('#f3efe0'), 0, 0.72, 0));
+      for (const side of [-1, 1]) {
+        head.add(ball(0.08, materialFor('#3b3b46'), side * 0.12, 0.74, 0.28));
       }
       break;
+    case 'wig':
+      // Рыжие кудри и крошечный котелок поверх них.
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        head.add(ball(0.24, materialFor('#ff8a2b'), Math.cos(a) * 0.36, 0.44, Math.sin(a) * 0.36));
+      }
+      head.add(cylinder(0.34, 0.06, materialFor('#2b2b3d'), 0, 0.72, 0));
+      head.add(cylinder(0.22, 0.26, materialFor('#2b2b3d'), 0, 0.86, 0));
+      head.add(ball(0.1, materialFor('#4fb3ff'), 0.26, 0.86, 0.12));
+      break;
     case 'hood':
-      head.add(squash(halfBall(0.62, mat, 0, 0.1, 0), 1.1));
+      // Капюшон комбинезона обтягивает голову — цветом одежды, а не акцентом.
+      head.add(squash(halfBall(0.64, materialFor(look.clothes), 0, 0.06, 0), 1.15));
       break;
     case 'bulb':
-      head.add(ball(0.3, materialFor('#ffe14d'), 0, 0.75, 0));
-      head.add(cylinder(0.14, 0.2, mat, 0, 0.52, 0));
+      head.add(cylinder(0.06, 0.3, materialFor('#8a8a9c'), 0, 0.6, 0));
+      head.add(ball(0.28, materialFor('#fff36b'), 0, 0.9, 0));
       break;
     case 'bun':
-      head.add(ball(0.26, mat, 0, 0.62, -0.1));
+      // Пучок с бантом: волосы темнее кожи, бант цвета акцента.
+      head.add(ball(0.26, materialFor(shade(look.skin, -0.35)), 0, 0.62, -0.1));
+      head.add(ball(0.13, accent, 0, 0.78, 0.02));
       break;
     case 'beanie':
     default:
-      head.add(squash(halfBall(0.56, mat, 0, 0.18, 0), 0.72));
+      head.add(squash(halfBall(0.57, materialFor('#c94f8a'), 0, 0.18, 0), 0.72));
+      head.add(ball(0.14, materialFor('#ffd93d'), 0, 0.5, 0));   // помпон
       break;
   }
 }

@@ -24,6 +24,7 @@ import { Camera3D } from './camera.js';
 import { buildFigure, buildProp, buildPickup, buildShot, poseFigure } from './figures.js';
 import { Effects } from './effects.js';
 import { Decor } from './decor.js';
+import { WorldFx } from './worldfx.js';
 
 const DEFAULT_COLOR = '#c8c8c8';
 
@@ -54,6 +55,7 @@ export class Scene3D {
     this.buildLights();
     this.effects = new Effects(this.scene);
     this.decor = new Decor(this.scene, (color) => this.materialFor(color));
+    this.fx = new WorldFx(this.scene, this.spec);
 
     this.themeId = null;
     this.theme = null;
@@ -127,13 +129,23 @@ export class Scene3D {
     this.lamp.position.set(hero.x, this.lamp.distance * 0.45, hero.y);
   }
 
-  materialFor(color) {
-    const key = String(color || DEFAULT_COLOR);
+  // opacity < 1 — для того немногого, что и в плоской игре просвечивает:
+  // мыльный пузырь, ледяная глыба. Ключ кэша включает прозрачность, иначе
+  // первый же прозрачный материал сделал бы полупрозрачным весь свой цвет.
+  materialFor(color, opacity = 1) {
+    const key = `${color || DEFAULT_COLOR}|${opacity}`;
     let material = this.materials.get(key);
     if (!material) {
       // Lambert, а не Standard: металлов и шероховатостей в мультяшной игре
       // нет, а на планшете он заметно дешевле.
-      material = new MeshLambertMaterial({ color: new Color(key) });
+      material = new MeshLambertMaterial({ color: new Color(color || DEFAULT_COLOR) });
+      if (opacity < 1) {
+        material.transparent = true;
+        material.opacity = opacity;
+        // Без записи глубины: иначе пузырь вырезает дырку в зомби, который
+        // сквозь него виден.
+        material.depthWrite = false;
+      }
       this.materials.set(key, material);
     }
     return material;
@@ -155,6 +167,7 @@ export class Scene3D {
 
     this.frameLight();
     this.updateFog();
+    this.fx.setArena(arena);
   }
 
   // Тень должна накрывать всё поле: у направленного света объём тени задаётся
@@ -254,6 +267,7 @@ export class Scene3D {
     this.collect(world);
     this.sweep();
     this.effects.update(world.particles);
+    this.fx.update(world);
 
     this.camera.sync();
     this.renderer.render(this.scene, this.camera.camera);
@@ -313,7 +327,7 @@ export class Scene3D {
   }
 
   create(entity, spec) {
-    const paint = (color) => this.materialFor(color);
+    const paint = (color, opacity) => this.materialFor(color, opacity);
     const figure = spec.kind === 'prop'
       ? (buildProp(entity, paint) || buildFigure(entity.look, 'zombie', paint))
       : spec.kind === 'pickup'
