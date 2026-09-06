@@ -26,7 +26,7 @@
 import {
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, CanvasTexture, LinearFilter,
   PlaneGeometry, BoxGeometry, CylinderGeometry, ConeGeometry, RingGeometry,
-  Color, DoubleSide, Vector3,
+  Sprite, SpriteMaterial, Color, DoubleSide, Vector3,
 } from 'three';
 import { CONFIG } from '../config.js';
 import {
@@ -34,6 +34,7 @@ import {
   drawArmorShield, drawDownedTimer, drawAbilitySparks, drawAbilityEffect,
   drawWeaponInHand, drawMoleMound, drawSmokePuff, drawWeb, drawLoot, drawThiefMask,
 } from '../render/sprites.js';
+import { drawEntrance } from '../systems/particles.js';
 import { stickerTexture, StickerPool, step } from './sticker.js';
 
 // Насколько высоко над полом лежит слой наземных эффектов. Больше нуля, иначе
@@ -56,6 +57,7 @@ export class WorldFx {
     this.spec = spec;
 
     this.ground = new GroundDecals(scene, spec);
+    this.entrances = new EntranceScreens(scene, spec);
     this.stickers = new StickerPool(scene, spec.maxStickers);
     this.solid = new SolidPool(scene);
   }
@@ -69,10 +71,10 @@ export class WorldFx {
     this.solid.reset();
 
     this.ground.update(world);
+    this.entrances.update(world.particles?.entrances);
     for (const player of world.players) this.heroFx(player);
     for (const enemy of world.enemies) this.enemyFx(enemy);
     this.boltsFx(world.particles?.bolts);
-    this.entranceFx(world.particles?.entrances);
 
     this.stickers.finish();
     this.solid.finish();
@@ -227,22 +229,6 @@ export class WorldFx {
     }
   }
 
-  // Появление босса. У каждого свой вид, и по нему выход читается ещё до
-  // того, как босса видно, — значит терять его нельзя. Рисуем наклейкой той
-  // же функцией частиц, что и плоская версия.
-  entranceFx(entrances) {
-    if (!entrances?.length) return;
-    for (const item of entrances) {
-      const life = clamp01(item.life / (item.maxLife || 1));
-      this.stickers.show(
-        stickerTexture(`entrance:${item.kind}:${step(1 - life, 10)}`,
-          (ctx, R) => drawEntranceMark(ctx, R, item.kind, 1 - life)),
-        item.x, item.radius * 0.9, item.y, item.radius,
-        { opacity: Math.min(1, life * 2) },
-      );
-    }
-  }
-
   // Молния: ломаная из отрезков. Единственная частица, которую нельзя ни
   // положить на землю, ни повесить наклейкой — она бьёт сверху и соединяет
   // две точки, а такое честнее нарисовать объёмом.
@@ -371,33 +357,6 @@ function clamp01(value) {
   return Math.min(1, Math.max(0, value || 0));
 }
 
-// Появление босса. Своей функции для одной частицы в sprites.js нет — там
-// это ветка внутри Particles.draw, которая рисует все виды разом. Поэтому
-// здесь общая для всех воронка: расходящееся кольцо и подсветка пятна, куда
-// он встанет. Вид сохраняется цветом, а не формой: разбирать десять веток
-// ради полусекундного эффекта не стоит того.
-const ENTRANCE_COLORS = {
-  slam: '#8a5a2b', swirl: '#c77dff', rush: '#4fb3ff', ice: '#8fe3ff',
-  fire: '#ff7a2b', bones: '#f3efe0', balloons: '#ff6b9d', whistle: '#ffd93d',
-  thread: '#e8ecff', spark: '#ffe14d',
-};
-
-function drawEntranceMark(ctx, R, kind, grow) {
-  const color = ENTRANCE_COLORS[kind] || '#ffd93d';
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = R * 0.16;
-  ctx.beginPath();
-  ctx.arc(0, 0, R * (0.25 + grow * 0.85), 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(0, 0, R * 0.9 * (1 - grow * 0.4), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
 // Полоса здоровья босса. Своя, а не из sprites.js: там она рисуется в
 // экранных пикселях от позиции босса, а наклейке нужна картинка вокруг нуля.
 function drawBossHealth(ctx, R, share) {
@@ -408,6 +367,70 @@ function drawBossHealth(ctx, R, share) {
   ctx.fillStyle = share > 0.35 ? '#ff4d6d' : '#ffd93d';
   ctx.fillRect(-w / 2 + 2, -h / 2 + 2, (w - 4) * share, h - 4);
 }
+
+// --- Появление босса ---
+
+// Выход босса: десять разных эффектов, и по ним он узнаётся ещё до того, как
+// его видно. Рисуются НАСТОЯЩЕЙ функцией из particles.js — своя копия десяти
+// эффектов разошлась бы с оригиналом на первой же правке.
+//
+// Почему билборд, а не наземный слой: почти все они РИСУЮТ ВВЕРХ — ледяной
+// столб, языки пламени, взлетающие шарики. Положенные плашмя, они
+// превращаются в длинный след по траве. Их место — экранная плоскость, как и
+// в 2D, где частицы идут поверх персонажей.
+//
+// Холст перерисовывается каждый кадр, зато только пока эффект жив: полторы
+// секунды раз в раунд. Печь его ступенями было бы дешевле, но выход босса —
+// это зрелище, и дёрганая анимация тут заметнее всего.
+class EntranceScreens {
+  constructor(scene, spec) {
+    this.spec = spec;
+    this.items = [];
+    this.scene = scene;
+  }
+
+  update(entrances) {
+    const count = Math.min(entrances?.length || 0, this.spec.maxEntrances);
+    for (let i = 0; i < count; i++) this.paint(this.item(i), entrances[i]);
+    for (let i = count; i < this.items.length; i++) this.items[i].sprite.visible = false;
+  }
+
+  item(index) {
+    if (this.items[index]) return this.items[index];
+    const size = this.spec.entranceSize;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const texture = new CanvasTexture(canvas);
+    texture.generateMipmaps = false;
+    texture.minFilter = LinearFilter;
+    const sprite = new Sprite(new SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+    this.scene.add(sprite);
+    const made = { canvas, ctx: canvas.getContext('2d'), texture, sprite };
+    this.items[index] = made;
+    return made;
+  }
+
+  paint(item, entrance) {
+    const { ctx, canvas, texture, sprite } = item;
+    const span = entrance.radius * ENTRANCE_SPAN;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const scale = canvas.width / (span * 2);
+    ctx.setTransform(scale, 0, 0, scale, canvas.width / 2, canvas.height / 2);
+    // Координаты обнуляем: холст и так центрирован на эффекте.
+    drawEntrance(ctx, { ...entrance, x: 0, y: 0 });
+    texture.needsUpdate = true;
+
+    sprite.visible = true;
+    sprite.position.set(entrance.x, entrance.radius * HERO_MID, entrance.y);
+    sprite.scale.set(span * 2, span * 2, 1);
+  }
+}
+
+// Запас вокруг эффекта: ледяной столб и шарики уходят далеко вверх от
+// собственного радиуса.
+const ENTRANCE_SPAN = 3;
 
 // --- Наземные эффекты ---
 
@@ -489,19 +512,25 @@ class GroundDecals {
   }
 }
 
-// Взмах светового меча: дуга вокруг героя. Данные лежат в частицах, но
-// Particles.draw рисует всё разом, а нам нужна только эта их часть.
+// Взмах светового меча: дуга вокруг героя. Своя копия, а не общая функция:
+// в Particles.draw это восемь строк внутри общего прохода по всем видам
+// частиц, вытаскивать их наружу ради одного вызова незачем. Числа взяты
+// оттуда один в один — цвета, толщины и то, как дуга расширяется, гаснув.
 function drawSlashes(ctx, slashes) {
   if (!slashes?.length) return;
-  for (const slash of slashes) {
-    const fade = Math.max(0, slash.life / 0.22);
+  for (const s of slashes) {
+    const t = 1 - s.life / s.maxLife;
     ctx.save();
-    ctx.globalAlpha = fade;
-    ctx.strokeStyle = '#bfe6ff';
-    ctx.lineWidth = 7;
+    ctx.globalAlpha = (1 - t) * 0.9;
     ctx.lineCap = 'round';
+    ctx.strokeStyle = '#7fe3ff';
+    ctx.lineWidth = 16;
     ctx.beginPath();
-    ctx.arc(slash.x, slash.y, slash.reach, slash.angle - slash.arc / 2, slash.angle + slash.arc / 2);
+    ctx.arc(s.x, s.y, s.reach * (0.75 + t * 0.25),
+      s.angle - s.arc / 2, s.angle + s.arc / 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
     ctx.stroke();
     ctx.restore();
   }
