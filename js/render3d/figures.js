@@ -15,7 +15,7 @@
 // константы FLOOR_* рядом с пропорциями.
 
 import {
-  Group, Mesh, SphereGeometry, CylinderGeometry, ConeGeometry,
+  Group, Mesh, SphereGeometry, CylinderGeometry, ConeGeometry, Shape,
 } from 'three';
 import { roundedRect, starShape, boltShape, extrude } from './shapes.js';
 
@@ -38,6 +38,7 @@ const ARM_SWING = 0.35;
 const BODY_WIDTH = { normal: 1, thin: 0.82, fat: 1.28 };
 const EYE_WHITE = '#ffffff';
 const DARK = '#2a2320';
+const DEFAULT_SKIN = '#c8c8c8';
 
 // --- Сборка ---
 
@@ -46,7 +47,11 @@ const DARK = '#2a2320';
 // кэшировались один раз на всю игру, а не на каждого зомби.
 export function buildFigure(look = {}, kind, materialFor) {
   if (kind === 'drone') return buildDrone(look, materialFor);
-  if (look.shape === 'beast') return buildBeast(look, materialFor);
+  // Форму зверя задаёт ЛИБО look.shape (так помечены зомби-звери), ЛИБО вид,
+  // переданный снаружи. Второе — ради собаки-питомца: у неё в look только
+  // beast, без shape, потому что в плоской игре форму знает сам класс питомца
+  // и признак ему не нужен. Без этой ветки собака выходила человеком.
+  if (kind === 'beast' || look.shape === 'beast') return buildBeast(look, materialFor);
   if (look.shape === 'balloon') return buildBalloon(look, materialFor);
   if (look.shape === 'snow') return buildSnowman(look, materialFor);
   if (look.shape === 'golem') return buildGolem(look, materialFor);
@@ -64,7 +69,11 @@ function buildHero(look, materialFor) {
 
   const legW = 0.35 * build;
   const legX = 0.45 * build - legW / 2;
-  const legMat = materialFor(look.pants);
+  // У героев одежда лежит в shirt/pants, а у спасённого друга — в clothes:
+  // его look собран как у питомца. Без запасного варианта он выходил серым.
+  const shirtColor = look.shirt || look.clothes || DEFAULT_SKIN;
+  const pantsColor = look.pants || shade(shirtColor, -0.25);
+  const legMat = materialFor(pantsColor);
   const shoeMat = look.shoes ? materialFor(look.shoes) : null;
   for (const side of [-1, 1]) {
     // Бедро — отдельный узел: шаг это поворот ноги в бедре, а не сдвиг всей
@@ -78,7 +87,7 @@ function buildHero(look, materialFor) {
   }
 
   const bodyW = 1 * build;
-  node.add(box(bodyW, 1.0, BODY_DEPTH, 0.3, materialFor(look.shirt), 0, up(0.1), 0));
+  node.add(box(bodyW, 1.0, BODY_DEPTH, 0.3, materialFor(shirtColor), 0, up(0.1), 0));
 
   if (look.cape) {
     const cape = box(bodyW * 0.95, 1.15, FLAT_DEPTH, 0.2, materialFor(look.cape),
@@ -157,7 +166,15 @@ function buildZombie(look, materialFor) {
   // Шляпа босса приходит СТРОКОЙ (cylinder, crown и прочие), а у героя это
   // объект с цветом и буквой. По типу их и различаем: заводить второе поле
   // ради объёмного режима значило бы трогать конфиг игры.
-  if (typeof look.hat === 'string') addBossHat(head, look, materialFor);
+  if (typeof look.hat === 'string') {
+    addBossHat(head, look, materialFor);
+    // Эмблема на груди, паучьи лапы за спиной и маска на лице. Без них
+    // четверо боссов с бабочкой отличались бы только цветом, а в плоской
+    // версии у каждого своя примета.
+    addBossChest(node, look, 0.96 * width, up(0.05), materialFor);
+    if (look.back === 'spiderlegs') addSpiderLegs(node, look, up(0.1), materialFor);
+    if (look.face) addMask(head, look.accent || DARK, materialFor);
+  }
   if (look.mask) addMask(head, look.mask, materialFor);
   if (look.beard) node.add(box(0.5, 0.32, 0.2, 0.1, materialFor(look.beard), 0, up(-0.45), 0.36));
   parts.head = head;
@@ -192,20 +209,46 @@ function buildBeast(look, materialFor) {
   const head = new Group();
   head.position.set(0, 0.92, 0.68);
   head.add(ball(0.4, skin));
-  head.add(box(0.3, 0.24, 0.3, 0.1, skin, 0, -0.1, 0.32));   // морда
-  const ear = look.beast === 'cat' ? 0.3 : 0.22;
-  for (const side of [-1, 1]) {
-    head.add(cone(0.15, ear, skin, side * 0.22, 0.36, -0.04));
-  }
+  // Морда: у крота она длиннее всех, у кота почти нет.
+  const snout = { mole: 0.5, cat: 0.18 }[look.beast] ?? 0.34;
+  head.add(box(0.3, 0.24, snout, 0.1, skin, 0, -0.1, 0.28 + snout / 2));
+  head.add(ball(0.09, materialFor(DARK), 0, -0.06, 0.32 + snout));   // нос
+  addBeastEars(head, look.beast, skin);
   addEyes(head, 0.4, 0.12, materialFor);
   parts.head = head;
   node.add(head);
+
+  // Ошейник — примета домашней собаки, а не зомби-пса: в плоской версии он
+  // тоже отличает питомца от врага той же формы.
+  if (look.collar) {
+    const collar = cylinder(0.34, 0.14, materialFor(look.collar), 0, 0.9, 0.35);
+    collar.rotation.x = Math.PI / 2;
+    node.add(collar);
+  }
 
   // Хвост торчит назад и вверх — по нему зверь читается со спины, когда морды
   // не видно вовсе.
   node.add(box(0.14, 0.14, 0.5, 0.06, skin, 0, 0.9, -0.72));
   parts.stride = 1;
   return { node, parts, kind: 'beast' };
+}
+
+// Уши: у кота торчком, у собаки висят, у крота почти нет. По ним зверь и
+// различается — тело у всех троих одно.
+function addBeastEars(head, beast, material) {
+  for (const side of [-1, 1]) {
+    if (beast === 'cat') {
+      const ear = cone(0.16, 0.34, material, side * 0.22, 0.38, -0.02);
+      ear.rotation.z = -side * 0.15;
+      head.add(ear);
+    } else if (beast === 'mole') {
+      head.add(ball(0.1, material, side * 0.3, 0.24, -0.06));
+    } else {
+      const ear = box(0.16, 0.42, 0.22, 0.09, material, side * 0.34, 0.12, -0.04);
+      ear.rotation.z = -side * 0.35;
+      head.add(ear);
+    }
+  }
 }
 
 function buildBalloon(look, materialFor) {
@@ -306,6 +349,16 @@ function buildDrone(look, materialFor) {
 // радиуса, что и персонажи, и каждый отдаёт tick — свою маленькую анимацию:
 // клетка открывается, костёр горит, подарок трясётся. В 2D это делают
 // drawCage, drawCampfire и drawGiftBox, читая те же поля пропа.
+
+// Треугольник для половинки бабочки.
+function triangleShape(size) {
+  const shape = new Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(size, size * 0.8);
+  shape.lineTo(size, -size * 0.8);
+  shape.closePath();
+  return shape;
+}
 
 export function buildProp(prop, materialFor) {
   if (prop.layer === 'ground') return buildDropZone(materialFor);
@@ -857,6 +910,62 @@ function addBossHat(head, look, materialFor) {
       head.add(squash(halfBall(0.57, materialFor('#c94f8a'), 0, 0.18, 0), 0.72));
       head.add(ball(0.14, materialFor('#ffd93d'), 0, 0.5, 0));   // помпон
       break;
+  }
+}
+
+// Эмблемы на груди боссов. Семь видов, и каждый — примета своего: бабочка у
+// толстяка в цилиндре, номер у спортсмена, рёбра у костяного, помпоны у
+// клоуна, паук, молния, крест лекаря.
+function addBossChest(node, look, bodyW, y, materialFor) {
+  const accent = materialFor(look.accent || '#ffd93d');
+  const z = BODY_DEPTH / 2;
+  switch (look.chest) {
+    case 'bowtie': {
+      for (const side of [-1, 1]) {
+        const wing = flat(triangleShape(0.34), accent, side * 0.2, y, z);
+        wing.rotation.z = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        node.add(wing);
+      }
+      node.add(ball(0.1, accent, 0, y, z + 0.05));
+      break;
+    }
+    case 'number':
+      node.add(flat(roundedRect(0.46 * bodyW, 0.34, 0.08), materialFor('#ffffff'), 0, y, z));
+      break;
+    case 'ribs':
+      for (let i = -1; i <= 1; i++) {
+        node.add(flat(roundedRect(0.62 * bodyW, 0.1, 0.05), materialFor('#f3efe0'), 0, y + i * 0.22, z));
+      }
+      break;
+    case 'pompoms':
+      for (let i = -1; i <= 1; i++) node.add(ball(0.16, accent, 0, y + i * 0.3, z + 0.06));
+      break;
+    case 'spider':
+      node.add(flat(starShape(0.3, 8, 0.3), materialFor(DARK), 0, y, z));
+      break;
+    case 'bolt':
+      node.add(flat(boltShape(0.3), accent, 0, y, z));
+      break;
+    case 'badge':
+      node.add(flat(roundedRect(0.42, 0.14, 0.05), materialFor('#ffffff'), 0, y, z));
+      node.add(flat(roundedRect(0.14, 0.42, 0.05), materialFor('#ffffff'), 0, y, z));
+      break;
+    default:
+      break;
+  }
+}
+
+// Паучьи лапы за спиной: четыре дуги, торчащие вверх и в стороны. Это
+// единственное, чем босс-паук отличается силуэтом, а не раскраской.
+function addSpiderLegs(node, look, y, materialFor) {
+  const limb = materialFor(look.clothes || DARK);
+  for (const side of [-1, 1]) {
+    for (const pair of [0, 1]) {
+      const leg = box(0.16, 1.5, 0.16, 0.08, limb,
+        side * (0.55 + pair * 0.2), y + 0.6, -BODY_DEPTH / 2 - 0.1);
+      leg.rotation.z = side * (0.5 + pair * 0.35);
+      node.add(leg);
+    }
   }
 }
 

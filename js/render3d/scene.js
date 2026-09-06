@@ -432,13 +432,14 @@ export class Scene3D {
 
   create(entity, spec) {
     const paint = (color, opacity) => this.materialFor(color, opacity);
+    const look = lookOf(entity);
     const figure = spec.kind === 'prop'
       ? (buildProp(entity, paint) || buildFigure(entity.look, 'zombie', paint))
       : spec.kind === 'pickup'
         ? buildPickup(entity.type, paint)
         : spec.kind === 'shot'
           ? buildShot(entity, paint)
-          : buildFigure(entity.look, spec.kind, paint);
+          : buildFigure(look, spec.kind, paint);
     figure.node.traverse((part) => {
       if (!part.isMesh) return;
       part.castShadow = true;
@@ -558,11 +559,21 @@ const PROP_SPEC = { kind: 'prop', radius: CONFIG.player.radius, lift: 0 };
 // Медалька и монетка висят над травой, иначе плоский кружок в ней тонет.
 const PICKUP_SPEC = { kind: 'pickup', radius: 10, lift: 1.1 };
 
+// Где у сущности лежит внешность. У героя и зомби это своё поле look, а у
+// питомца — spec.look: класс питомца в плоской версии берёт её оттуда сам, и
+// поля look у него просто нет. Без этой развилки собака красилась цветом по
+// умолчанию и выходила серой.
+function lookOf(entity) {
+  return entity.look || entity.spec?.look || entity.type?.look || {};
+}
+
 // Питомец-друг — тот же герой: в 2D его рисует drawHero, и look у него
-// геройский. Пёс идёт зверем, дрон — своей формой.
+// геройский. Пёс — зверь, дрон — своя форма. Вид передаём явно: у собаки в
+// look нет shape, и без этого она выходила человеком.
+const PET_KINDS = { friend: 'hero', drone: 'drone', dog: 'beast' };
+
 function petSpec(pet) {
-  const kind = pet.id === 'friend' ? 'hero' : (pet.id === 'drone' ? 'drone' : 'zombie');
-  return { kind, radius: CONFIG.player.radius, lift: 0 };
+  return { kind: PET_KINDS[pet.id] || 'zombie', radius: CONFIG.player.radius, lift: 0 };
 }
 
 // Снаряд летит на уровне груди, а не по траве: в 2D высоты нет вовсе, и без
