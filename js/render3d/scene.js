@@ -17,7 +17,7 @@
 import {
   Scene, WebGLRenderer, Color, Fog, Mesh,
   PlaneGeometry,
-  MeshLambertMaterial, DirectionalLight, HemisphereLight, PointLight, PCFSoftShadowMap,
+  MeshLambertMaterial, DirectionalLight, HemisphereLight, PointLight, PCFShadowMap,
 } from 'three';
 import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
@@ -39,7 +39,9 @@ export class Scene3D {
 
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // PCF, а не PCFSoft: мягкий вариант в Three объявлен устаревшим и молча
+    // подменяется этим же.
+    this.renderer.shadowMap.type = PCFShadowMap;
 
     this.scene = new Scene();
     this.camera = new Camera3D(this.spec);
@@ -56,6 +58,7 @@ export class Scene3D {
     this.themeId = null;
     this.theme = null;
     this.sky = null;
+    this.checked = null;   // мир, для которого уже проверен состав списков
     // Общее время сцены: по нему трепещет пламя и трясётся подарок. Своё, а
     // не игровое, — это украшение, и на симуляцию оно не влияет.
     this.phase = 0;
@@ -242,6 +245,11 @@ export class Scene3D {
     this.decor.sync(world.background);
     this.setNight(world.modifier?.id === 'night', world);
 
+    if (world !== this.checked) {
+      this.checked = world;
+      this.warnAboutMissed(world);
+    }
+
     this.seen.clear();
     this.collect(world);
     this.sweep();
@@ -253,7 +261,8 @@ export class Scene3D {
 
   // Единственное место, где перечислено, что вообще видно в мире. Меняется
   // состав — меняется и Round.draw; расхождение этих двух списков и есть
-  // главный способ сломать объёмный режим незаметно.
+  // главный способ сломать объёмный режим незаметно. За этим следит
+  // warnAboutMissed ниже.
   collect(world) {
     for (const player of world.players) this.place(player, HERO_SPEC);
     for (const enemy of world.enemies) this.place(enemy, ENEMY_SPEC);
@@ -276,7 +285,7 @@ export class Scene3D {
       this.scene.add(figure.node);
     }
 
-    const radius = entity.radius || spec.radius;
+    const radius = (entity.radius || spec.radius) * this.readableBoost(entity);
     figure.node.scale.setScalar(radius);
     figure.node.position.set(entity.x, spec.lift * radius, entity.y);
 
@@ -286,6 +295,21 @@ export class Scene3D {
       figure.node.rotation.y = this.headingOf(entity, figure);
       poseFigure(figure, entity.walkPhase || 0);
     }
+  }
+
+  // Насколько увеличить дальнюю фигурку, чтобы она осталась заметной.
+  //
+  // Опорное расстояние — до героя: он всегда в центре кадра, и всё, что
+  // дальше него, шло бы на убыль. Ближе героя не уменьшаем вовсе: враг,
+  // подошедший вплотную, обязан выглядеть большим — это и есть тревога.
+  readableBoost(entity) {
+    const eye = this.camera.math.eyePoint();
+    const focus = this.camera.math.focus;
+    const ref = Math.hypot(eye.x - focus.x, eye.y, eye.z - focus.y) || 1;
+    const dist = Math.hypot(eye.x - entity.x, eye.y, eye.z - entity.y);
+    if (dist <= ref) return 1;
+    const boost = (dist / ref) ** this.spec.distanceCompensation;
+    return Math.min(this.spec.maxDistanceBoost, boost);
   }
 
   create(entity, spec) {
@@ -363,6 +387,29 @@ export class Scene3D {
       marks.push({ dx: dx / len, dy: dy / len, boss: Boolean(enemy.isBoss) });
     }
     return marks;
+  }
+
+  // Сторож против расхождения рендереров.
+  //
+  // Однажды кто-то заведёт в Round новый список — скажем, ловушки, — добавит
+  // его в Round.draw и забудет здесь. В плоском режиме ловушки будут, в
+  // объёмном их не будет, и заметит это ребёнок, а не автотест: node-тесты
+  // рисование не вызывают вовсе, а глазами обычно смотрят один режим.
+  //
+  // Поэтому раз за раунд проходим по самому миру и ищем списки сущностей,
+  // которых нет в collect(). Проверка стоит один кадр из тысяч и говорит в
+  // консоль — там же, где разработчик и смотрит.
+  warnAboutMissed(world) {
+    const known = new Set(['players', 'enemies', 'pets', 'props', 'pickups', 'projectiles']);
+    for (const [name, value] of Object.entries(world)) {
+      if (known.has(name) || !Array.isArray(value) || !value.length) continue;
+      const looksDrawable = value.every((item) => item
+        && typeof item.x === 'number' && typeof item.y === 'number'
+        && typeof item.draw === 'function');
+      if (!looksDrawable) continue;
+      console.warn(`Объёмный режим не показывает world.${name}:`
+        + ' список появился в Round, но не в Scene3D.collect (см. docs/render3d.md).');
+    }
   }
 
   dispose() {

@@ -103,7 +103,7 @@ function buildHero(look, materialFor) {
   head.position.set(0, up(-0.85), 0);
   head.add(ball(0.52, materialFor(look.skin)));
   addEyes(head, 0.52, 0.16, materialFor);
-  addHair(head, look, materialFor);
+  addHair(head, look.hairStyle, look.hair, materialFor);
   if (look.hat) addBeanie(head, look.hat, materialFor);
   parts.head = head;
   node.add(head);
@@ -147,7 +147,9 @@ function buildZombie(look, materialFor) {
     head.add(cylinder(0.07, 0.2, materialFor('#5a8a3a'), 0, 0.6, 0));
   } else {
     head.add(ball(0.5, materialFor(look.skin)));
-    addHair(head, look, materialFor);
+    // Волосы зомби темнее его кожи, а лысина седая — ровно как в drawZombieHair.
+    addHair(head, look.hair, look.hair === 'bald' ? '#dfe3e0' : shade(look.skin, -0.35),
+      materialFor);
   }
   // Глаза врастопырку и разного размера — это зомби и в 2D, и здесь.
   addEyes(head, 0.5, 0.15, materialFor, { skew: true });
@@ -530,12 +532,15 @@ function addEyes(head, headRadius, eyeRadius, materialFor, { skew = false } = {}
   }
 }
 
-// Причёски. Те же восемь вариантов, что в 2D: список закрытый, и незнакомое
-// значение должно оставлять героя лысым, а не ронять сцену.
-function addHair(head, look, materialFor) {
-  const style = look.hairStyle;
-  const color = look.hair;
-  if (!color || style === 'none') return;
+// Причёски. Те же варианты, что в 2D: список закрытый, и незнакомое значение
+// должно оставлять персонажа лысым, а не ронять сцену.
+//
+// Стиль и цвет приходят ОТДЕЛЬНО, и это не придирка: у героя look.hairStyle —
+// причёска, а look.hair — её цвет, а у зомби look.hair это САМА причёска, а
+// цвет считается от кожи. Один общий разбор look молча красил бы зомби в
+// цвет с именем «spiky».
+function addHair(head, style, color, materialFor) {
+  if (!style || !color || style === 'none') return;
   const mat = materialFor(color);
 
   switch (style) {
