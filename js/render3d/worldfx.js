@@ -37,6 +37,7 @@ import {
 } from '../render/sprites.js';
 import { drawEntrance } from '../systems/particles.js';
 import { stickerTexture, StickerPool, step } from './sticker.js';
+import { starShape, extrude } from './shapes.js';
 
 // Насколько высоко над полом лежит слой наземных эффектов. Больше нуля, иначе
 // он спорит с полом за глубину и мерцает полосами.
@@ -44,7 +45,10 @@ const GROUND_LIFT = 0.8;
 // Пламя и лёд на зомби — единственные статусы, которые лепятся объёмом.
 const FLAME_GEOMETRY = new ConeGeometry(0.3, 1, 6);
 const ICE_GEOMETRY = new BoxGeometry(1, 1, 1);
-const BLADE_GEOMETRY = new CylinderGeometry(1, 1, 0.25, 12);
+// Лопасти вертушки — четырёхлучевая звёздочка, как её рисует Spinner.draw:
+// там четыре лепестка вокруг центра, и плоский диск вместо них терял примету.
+// Лежит плашмя: камера смотрит сверху, поставленная ребром звезда исчезает.
+const BLADE_GEOMETRY = extrude(starShape(1, 4, 0.42), 0.3);
 const BEAM_GEOMETRY = new CylinderGeometry(1, 1, 1, 8);
 // Кольцо у ног и облако вони. Объёмом, а не в общем холсте наземных
 // эффектов: они есть в КАЖДОМ кадре, и ради них холст пришлось бы грузить в
@@ -239,22 +243,55 @@ export class WorldFx {
     // наклейка.
     if (typeof weapon.getBladePositions === 'function') {
       for (const blade of weapon.getBladePositions(player)) {
-        this.solid.show(BLADE_GEOMETRY, '#7fd8ff', blade.x, player.radius * 0.9, blade.y, 9, 9, 9);
+        const mesh = this.solid.show(BLADE_GEOMETRY, '#7fd8ff',
+          blade.x, player.radius * 0.9, blade.y, BLADE_SIZE, BLADE_SIZE, BLADE_SIZE);
+        if (!mesh) break;
+        // Сначала крутим звезду в её собственной плоскости, потом кладём
+        // плашмя: обратный порядок положил бы её на ребро.
+        mesh.rotation.z = (weapon.angle || 0) * 3;
+        mesh.rotation.x = -Math.PI / 2;
       }
     }
 
-    // Луч лазерных глаз: от каждого глаза в одну точку.
+    // Луч лазерных глаз.
+    //
+    // Точки глаз приходят из плоской версии мировыми координатами, но их
+    // вторая координата — это экранное «вверх», а не глубина. Взятая как
+    // глубина, она уводила начало луча ЗА голову, и лучи висели над героем.
+    // Поэтому подъём глаза считается той же формулой, что и вся геометрия
+    // фигурки: высота = низ ступней минус экранный y.
     if (weapon.beamOn && !player.downed && typeof weapon.eyes === 'function') {
+      const r = player.radius;
       const tip = {
         x: player.x + Math.cos(weapon.aimAngle) * weapon.beamLen,
-        y: player.y + Math.sin(weapon.aimAngle) * weapon.beamLen,
+        y: r * HERO_MID,
+        z: player.y + Math.sin(weapon.aimAngle) * weapon.beamLen,
       };
       const color = weapon.stat('beamColor');
-      const eyeY = player.radius * HERO_EYE;
-      for (const from of weapon.eyes(player)) {
-        this.beam(from, tip, eyeY, color);
+      for (const eye of weapon.eyes(player)) {
+        this.beam({
+          x: eye.x,
+          y: r * HERO_MID - (eye.y - player.y),
+          z: player.y,
+        }, tip, color);
       }
     }
+  }
+
+  // Луч — вытянутый цилиндр между двумя точками пространства.
+  beam(from, to, color) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const length = Math.hypot(dx, dy, dz) || 1;
+    const mesh = this.solid.show(BEAM_GEOMETRY, color,
+      (from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2,
+      BEAM_WIDTH, length, BEAM_WIDTH, true);
+    if (!mesh) return;
+    // Цилиндр рождается стоящим вдоль y: сначала разворачиваем по горизонтали,
+    // потом наклоняем на разницу высот.
+    mesh.rotation.set(0, Math.atan2(dx, dz), 0);
+    mesh.rotateX(Math.PI / 2 - Math.atan2(dy, Math.hypot(dx, dz)));
   }
 
   // Снаряды, у которых нет объёмной формы. Сейчас такой один — мыльный
@@ -282,32 +319,19 @@ export class WorldFx {
     for (const bolt of bolts) {
       const fade = Math.max(0, bolt.life / (bolt.maxLife || 1));
       for (let i = 1; i < bolt.points.length; i++) {
-        const from = bolt.points[i - 1];
-        const to = bolt.points[i];
-        const dx = to.x - from.x;
-        const dz = to.y - from.y;
+        const a = bolt.points[i - 1];
+        const b = bolt.points[i];
+        const dx = b.x - a.x;
+        const dz = b.y - a.y;
         const length = Math.hypot(dx, dz) || 1;
         const mesh = this.solid.show(BEAM_GEOMETRY, '#ffe14d',
-          (from.x + to.x) / 2, BOLT_HEIGHT, (from.y + to.y) / 2,
-          2.5, length, 2.5, true, fade);
+          (a.x + b.x) / 2, BOLT_HEIGHT, (a.y + b.y) / 2,
+          BOLT_WIDTH, length, BOLT_WIDTH, true, fade);
         if (!mesh) return;
         mesh.rotation.set(Math.PI / 2, 0, 0);
         mesh.rotateOnWorldAxis(UP, Math.atan2(dx, dz));
       }
     }
-  }
-
-  // Луч — вытянутый цилиндр от глаза до точки попадания.
-  beam(from, to, y, color) {
-    const dx = to.x - from.x;
-    const dz = to.y - from.y;
-    const length = Math.hypot(dx, dz) || 1;
-    const mesh = this.solid.show(BEAM_GEOMETRY, color,
-      (from.x + to.x) / 2, y, (from.y + to.y) / 2, 3, length, 3, true);
-    if (!mesh) return;
-    // Цилиндр рождается стоящим вдоль y: кладём его и разворачиваем по лучу.
-    mesh.rotation.set(Math.PI / 2, 0, 0);
-    mesh.rotateOnWorldAxis(UP, Math.atan2(dx, dz));
   }
 
   // --- Зомби ---
@@ -393,7 +417,6 @@ const UP = new Vector3(0, 1, 0);
 // радиуса. Совпадает с HERO_FLOOR из figures.js — там же и объяснено, почему
 // это единственная формула перевода.
 const HERO_MID = 1.1;
-const HERO_EYE = 1.95;
 // Молния идёт на уровне груди зомби: по земле она читается как трещина, а
 // высоко над головами — как чужой эффект.
 const BOLT_HEIGHT = 26;
@@ -402,6 +425,9 @@ const BOLT_HEIGHT = 26;
 // деревьев, хотя в плоской игре высоты нет вовсе и все летят «в одной
 // плоскости».
 const SHOT_HEIGHT = 24;
+const BLADE_SIZE = 11;   // радиус звёздочки-лопасти в единицах мира
+const BEAM_WIDTH = 3;
+const BOLT_WIDTH = 2.5;
 
 function clamp01(value) {
   return Math.min(1, Math.max(0, value || 0));
