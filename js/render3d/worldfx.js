@@ -33,6 +33,7 @@ import {
   drawCatchBubble, drawTornado, drawBossRage, drawBossBones,
   drawArmorShield, drawDownedTimer, drawAbilitySparks, drawAbilityEffect,
   drawWeaponInHand, drawMoleMound, drawSmokePuff, drawWeb, drawLoot, drawThiefMask,
+  drawSoapBubble,
 } from '../render/sprites.js';
 import { drawEntrance } from '../systems/particles.js';
 import { stickerTexture, StickerPool, step } from './sticker.js';
@@ -76,6 +77,7 @@ export class WorldFx {
     this.entrances.update(world.particles?.entrances);
     for (const player of world.players) this.heroFx(player);
     for (const enemy of world.enemies) this.enemyFx(enemy);
+    this.flatShotsFx(world.projectiles);
     this.boltsFx(world.particles?.bolts);
 
     this.stickers.finish();
@@ -255,6 +257,23 @@ export class WorldFx {
     }
   }
 
+  // Снаряды, у которых нет объёмной формы. Сейчас такой один — мыльный
+  // пузырь: он обязан выглядеть тем же, во что зомби попадает после
+  // попадания, а тот рисуется наклейкой из drawCatchBubble. Общий приём даёт
+  // общий вид, а две разные техники дали бы два разных предмета.
+  flatShotsFx(shots) {
+    if (!shots?.length) return;
+    for (const shot of shots) {
+      if (shot.constructor?.name !== 'Bubble') continue;
+      const wobble = shot.wobble || 0;
+      this.stickers.show(
+        stickerTexture(`soap:${step(wobble % 1, 8)}`,
+          (ctx, R) => drawSoapBubble(ctx, 0, 0, R, wobble)),
+        shot.x, SHOT_HEIGHT, shot.y, shot.radius,
+      );
+    }
+  }
+
   // Молния: ломаная из отрезков. Единственная частица, которую нельзя ни
   // положить на землю, ни повесить наклейкой — она бьёт сверху и соединяет
   // две точки, а такое честнее нарисовать объёмом.
@@ -378,6 +397,11 @@ const HERO_EYE = 1.95;
 // Молния идёт на уровне груди зомби: по земле она читается как трещина, а
 // высоко над головами — как чужой эффект.
 const BOLT_HEIGHT = 26;
+// Высота полёта снаряда — на уровне груди героя. Постоянная, а не доля
+// радиуса самого снаряда: у крупного пузыря доля забрасывала его выше
+// деревьев, хотя в плоской игре высоты нет вовсе и все летят «в одной
+// плоскости».
+const SHOT_HEIGHT = 24;
 
 function clamp01(value) {
   return Math.min(1, Math.max(0, value || 0));

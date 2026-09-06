@@ -215,6 +215,13 @@ export function mount(root) {
         item.shot.x = x;
         item.shot.y = y - SHOT_RADIUS * 2;
         item.shot.draw(ctx);
+        // У снаряда без объёмной формы (мыльный пузырь) объёмный режим
+        // показывает ту же плоскую картинку — рисуем её и в правой половине,
+        // иначе половина выглядит пустой, хотя в бою там всё на месте.
+        if (figures[i]?.flat) {
+          item.shot.x = col * CELL + CELL * 0.72;
+          item.shot.draw(ctx);
+        }
       } else {
         ctx.translate(x, y);
         drawShadow(ctx, RADIUS);

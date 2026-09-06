@@ -472,7 +472,7 @@ const SHOTS = {
   // бы в функцию — меш вышел бы с координатами NaN и просто не нарисовался.
   Bullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1) },
   PiercingBullet: { color: '#4fb3ff', build: (n, m) => drop(n, m, 1.7) },
-  FlameBolt: { color: '#ff7a2b', build: flame, spins: false },
+  FlameBolt: { color: '#ff7a2b', build: fireball, spins: false },
   IceShard: { color: '#eafaff', build: snowflake, spins: true },
   Rocket: { color: '#ff8a3b', build: carrot },
   Lob: { color: '#e0453f', build: tomato, spins: true },
@@ -481,7 +481,12 @@ const SHOTS = {
   CakeLob: { color: '#ffb6d5', build: cake, spins: true },
   WebGlob: { color: '#f2f2f2', alpha: 0.8, build: webWad, spins: true },
   Boomerang: { color: '#ffd93d', build: boomerang, spins: true },
-  Bubble: { color: '#bfe6ff', alpha: 0.42, build: soapBubble },
+  // Пузырь — единственный снаряд без объёмной формы: его рисует worldfx
+  // наклейкой, той же функцией drawSoapBubble, что и плоская игра. Иначе
+  // летящий пузырь и тот, в котором зомби оказывается после попадания,
+  // выглядят разными предметами — а связь между ними ребёнок должен видеть
+  // сразу.
+  Bubble: { flat: true },
   Bee: { color: '#ffd93d', build: bee },
   SpiderMinion: { color: '#2a2320', build: spider },
   Batmobile: { color: '#2a2750', build: car },
@@ -492,6 +497,7 @@ const DEFAULT_SHOT = { color: '#4fb3ff', build: blob };
 export function buildShot(shot, materialFor) {
   const spec = SHOTS[shot.constructor?.name] || DEFAULT_SHOT;
   const node = new Group();
+  if (spec.flat) return { node, kind: 'shot', flat: true };
   const paint = (color, alpha) => materialFor(color, alpha ?? spec.alpha ?? 1);
   spec.build(node, paint(spec.color), paint);
 
@@ -551,10 +557,16 @@ function tomato(node, material, paint) {
   node.add(cylinder(0.12, 0.5, green, 0, 1.05, 0));
 }
 
-// Язык пламени: два конуса, светлое ядро внутри тёмного.
-function flame(node, material, paint) {
-  node.add(cone(0.9, 2.2, material, 0, 0, 0, Math.PI / 2));
-  node.add(cone(0.5, 1.4, paint('#ffe14d'), 0, 0, 0.2, Math.PI / 2));
+// Огненный шар: раскалённое ядро в облаке пламени и короткий хвост следом.
+// Именно шар, а не язык пламени: конус читался наконечником стрелы, а из
+// огнемёта должен лететь огонь.
+function fireball(node, material, paint) {
+  node.add(ball(1, material, 0, 0, 0));
+  node.add(ball(0.68, paint('#ffb03b'), 0, 0, 0.08));
+  node.add(ball(0.38, paint('#ffe14d'), 0, 0, 0.14));
+  // Хвост: пламя тянется за шаром, и по нему видно, куда он летит.
+  const tail = cone(0.62, 1.5, paint('#ff7a2b', 0.7), 0, 0, -1, -Math.PI / 2);
+  node.add(tail);
 }
 
 // Ледяной шип.
@@ -676,21 +688,6 @@ function car(node, material, paint) {
 
 function blob(node, material) {
   node.add(ball(1, material, 0, 0, 0));
-}
-
-// Мыльный пузырь: прозрачный шар, светлый ободок и блик. Голый шар читался
-// как ком ваты — узнаваемым его делает именно блик.
-function soapBubble(node, material, paint) {
-  node.add(ball(1, material, 0, 0, 0));
-  // Ободок голубее самого пузыря и заметно плотнее: прозрачный шар без
-  // очерченного края читается облачком, а не пузырём.
-  const rim = ball(1.05, paint('#7fd8ff', 0.75), 0, 0, 0);
-  rim.scale.set(1, 1, 0.1);
-  node.add(rim);
-  const rim2 = ball(1.05, paint('#7fd8ff', 0.75), 0, 0, 0);
-  rim2.scale.set(0.1, 1, 1);
-  node.add(rim2);
-  node.add(ball(0.24, paint('#ffffff', 0.95), -0.38, 0.42, 0.72));
 }
 
 // Ком паутины: приплюснутый шар и нити крест-накрест поверх него.

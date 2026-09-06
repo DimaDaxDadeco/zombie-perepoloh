@@ -375,7 +375,10 @@ export class Scene3D {
 
     const radius = (entity.radius || spec.radius) * this.readableBoost(entity);
     figure.node.scale.setScalar(radius);
-    figure.node.position.set(entity.x, spec.lift * radius, entity.y);
+    // liftWorld — постоянная высота в единицах мира, lift — доля радиуса.
+    // Снарядам нужна первая: доля радиуса забрасывала крупный снаряд выше
+    // деревьев, хотя в плоской игре они все летят в одной плоскости.
+    figure.node.position.set(entity.x, spec.liftWorld ?? spec.lift * radius, entity.y);
 
     if (figure.tick) {
       figure.tick(entity, this.phase);
@@ -564,7 +567,7 @@ function petSpec(pet) {
 
 // Снаряд летит на уровне груди, а не по траве: в 2D высоты нет вовсе, и без
 // подъёма пуля катилась бы по земле.
-const SHOT_SPEC = { kind: 'shot', radius: 7, lift: 2.2 };
+const SHOT_SPEC = { kind: 'shot', radius: 7, liftWorld: 24 };
 
 // Смешать два шестнадцатеричных цвета. Своя копия, а не общая утилита: в
 // render3d это единственное место, где цвета смешиваются, а тянуть ради него
