@@ -8,6 +8,10 @@ const DEFAULT_SAVE = {
   bestRound: 1,
   totalZombies: 0,   // всего прогнано зомби за всё время
   soundOn: true,
+  // Объёмный режим (docs/render3d.md). По умолчанию выключен: обычный вид
+  // остаётся тем, к которому ребёнок привык, а объём — то, что он включает
+  // сам.
+  view3d: false,
   difficulty: 'easy',// уровень сложности; старые сохранения получают его сами
   playersCount: 1,   // 1 или 2 — игра вдвоём на одном экране
   character: null,   // id выбранного героя; null — выбор ещё не делали
@@ -35,7 +39,9 @@ const DEFAULT_SAVE = {
   campaign: { done: [], at: null },
 };
 
-const KEEP_ON_RESET = ['soundOn', 'album', 'achievements', 'heroesPlayed', 'campaign'];
+// Как и звук, вид — настройка показа, а не прогресс: «новая игра» стирает
+// монеты и раунд, но не то, как игра выглядит.
+const KEEP_ON_RESET = ['soundOn', 'view3d', 'album', 'achievements', 'heroesPlayed', 'campaign'];
 
 function toIdArray(value) {
   return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];

@@ -33,10 +33,26 @@ html, body {
   -webkit-user-select: none;
 }
 
-#game-canvas {
+#game-canvas, #scene-canvas {
   display: block;
   position: absolute;
   inset: 0;
+}
+
+/* Незанятый холст мира. Именно display: none, а не прозрачность: спрятанный
+   так холст браузер не композитит вовсе. */
+.canvas-off { display: none; }
+
+/* HUD рисуется на отдельном прозрачном холсте поверх мира. Так объёмный режим
+   может занять #game-canvas под WebGL, а сердечки и шкалы остаются обычным
+   2D-рисованием и не переписываются вовсе. Пальцу этот холст не мешает:
+   pointer-events он не ловит, тач-контролы лежат выше. */
+#hud-canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Значки интерфейса — в отдельном файле css/icons.css: его подключают и
@@ -493,6 +509,17 @@ html, body {
   background: var(--color-secondary);
 }
 
+/* Кнопка из одного значка — переключатель вида. Подписи на ней нет: слово
+   «Объём» нечитающий ребёнок не понимает, и работает только картинка, а
+   значок в 1.15em от обычного кегля для этого слишком мелкий. */
+.btn--icon {
+  font-size: 26px;
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* Кнопка необратимого действия: заметная, но подчёркнуто второстепенная
    рядом с большой безопасной кнопкой отмены */
 .btn--danger {
@@ -511,7 +538,7 @@ html, body {
 
 /* Никаких системных жестов поверх игры: ни зума по двойному тапу, ни
    прокрутки резинкой. */
-html, body, #game-canvas, #touch-controls { touch-action: none; }
+html, body, #game-canvas, #scene-canvas, #hud-canvas, #touch-controls { touch-action: none; }
 
 #touch-controls {
   position: absolute;

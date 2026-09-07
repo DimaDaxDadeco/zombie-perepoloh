@@ -14,6 +14,15 @@
     <p class="about" id="about"></p>
   </div>
   <div id="stand"></div>
+  <!-- Тот же import map, что в index.html: стенд объёмных фигурок поднимает
+       настоящий код сцены, а он импортирует Three по имени. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js"
+      }
+    }
+  </script>
   <script type="module" src="preview/shell.js"></script>
 </body>
 </html>
