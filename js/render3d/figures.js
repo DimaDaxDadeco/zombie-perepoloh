@@ -53,6 +53,11 @@ const ARM_REACH = 0.85;
 const CAPE_LINKS = 3;
 const CAPE_LINK_LEN = 0.52;
 
+// Зомби-шарик. Подъём такой, чтобы ножки болтались над землёй, но тень всё
+// ещё падала рядом: оторвался — но не улетел.
+const BALLOON_LIFT = 1.35;
+const BALLOON_STRING = 0.55;
+
 // Костёр. Все размеры — в радиусах пропа, как и везде.
 const GLOW_RADIUS = 1.7;    // тёплое пятно на земле, как в плоской версии
 const FLAME_TONGUES = 5;
@@ -322,22 +327,46 @@ function addBeastEars(head, beast, material) {
   }
 }
 
+// Зомби-шарик ЛЕТИТ. Раньше он стоял шаром на земле: подъёма у фигурки не
+// было вовсе, а плоская версия поднимает всю фигуру и вешает тельце на
+// ниточку — по этому тельцу и видно, что шар в воздухе, а не лежит.
+//
+// Подъём и покачивание — РАЗНЫЕ узлы: покачивание трогает poseFigure, и если
+// сложить их в один, шарик при первом же кадре осел бы на землю.
 function buildBalloon(look, materialFor) {
   const node = new Group();
+  const lift = new Group();
+  lift.position.y = BALLOON_LIFT;
+  node.add(lift);
   // Покачивание вешаем на ВНУТРЕННИЙ узел. Раньше оно двигало сам node, а его
   // позицией распоряжается сцена — шарик уезжал из своей клетки и на стенде
   // пропадал вовсе.
   const float = new Group();
-  node.add(float);
+  lift.add(float);
+
   const color = look.balloon || look.clothes || look.skin;
   float.add(ball(0.85, materialFor(color), 0, 1.15, 0));
-  float.add(cone(0.16, 0.3, materialFor(color), 0, 0.35, 0));
+  float.add(cone(0.16, 0.3, materialFor(color), 0, 0.35, 0));   // узелок
   const head = new Group();
   head.position.set(0, 1.3, 0);
   addEyes(head, 0.85, 0.16, materialFor);
   addMouth(head, 0.85, materialFor, { width: 0.3 });
   float.add(head);
-  return { node, parts: { legs: [], arms: [], head, float }, kind: 'balloon' };
+
+  // Ниточка и тельце-огрызок под ней. Ножки не шагают, а болтаются — вместе
+  // с ниточкой это и читается как «висит».
+  float.add(cylinder(0.03, BALLOON_STRING, materialFor('#3c322a'),
+    0, 0.2 - BALLOON_STRING / 2, 0));
+  const dangle = new Group();
+  dangle.position.y = 0.2 - BALLOON_STRING;
+  const skin = materialFor(shade(look.skin, -0.18));
+  dangle.add(box(0.52, 0.46, 0.34, 0.16, materialFor(look.clothes || look.skin), 0, -0.23, 0));
+  for (const side of [-1, 1]) {
+    dangle.add(box(0.18, 0.36, 0.2, 0.08, skin, side * 0.14, -0.64, 0));
+  }
+  float.add(dangle);
+
+  return { node, parts: { legs: [], arms: [], head, float, dangle }, kind: 'balloon' };
 }
 
 function buildSnowman(look, materialFor) {
@@ -1524,9 +1553,13 @@ export function poseFigure(figure, walkPhase) {
   });
   if (parts.float) {
     // Шарик не шагает, он покачивается. Двигаем внутренний узел: позиция
-    // самой фигурки принадлежит сцене.
+    // самой фигурки принадлежит сцене, а постоянный подъём — родительскому
+    // узлу, который здесь трогать нельзя.
     parts.float.position.y = Math.sin(walkPhase * 0.6) * 0.12;
   }
+  // Тельце на ниточке болтается от того же walkPhase, что у всех: отдельный
+  // таймер был бы лишней сущностью, и в плоской версии он тоже один.
+  if (parts.dangle) parts.dangle.rotation.z = Math.sin(walkPhase) * 0.25;
 }
 
 // --- Примитивы ---
