@@ -1625,6 +1625,13 @@ export function poseFigure(figure, walkPhase) {
 // нужно все три: каждый раз, когда кто-нибудь брал только первое, персонаж
 // выходил серым по умолчанию.
 export function lookOf(entity) {
+  // У БОССА вид лежит в type.look, и только там. Конструктор Boss зовёт
+  // конструктор зомби без look, тот подставляет вид первого обычного зомби —
+  // и поле look у босса есть, но врёт. Плоская версия его и не спрашивает:
+  // drawBoss рисует по this.type.look. Без этой строки все двенадцать боссов
+  // выходили одинаковыми фиолетовыми зомби: ни шляп, ни маски, ни каменного
+  // голема — стенд-то показывает их по type.look и потому был прав.
+  if (entity.isBoss && entity.type?.look) return entity.type.look;
   return entity.look || entity.spec?.look || entity.type?.look || {};
 }
 
