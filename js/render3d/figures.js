@@ -35,8 +35,8 @@ const FLAT_DEPTH = 0.12;
 // Размах шага и рук. Тот же источник, что в 2D: sin(walkPhase).
 const LEG_SWING = 0.5;
 const ARM_SWING = 0.35;
-const CAPE_FLARE = 0.22;   // насколько плащ откинут назад в покое
-const CAPE_WAVE = 0.17;
+const CAPE_FLARE = 0.3;    // насколько плащ откинут назад в покое
+const CAPE_WAVE = 0.16;    // строго меньше отклона — иначе плащ уйдёт в тело
 
 const BODY_WIDTH = { normal: 1, thin: 0.82, fat: 1.28 };
 const EYE_WHITE = '#ffffff';
@@ -45,6 +45,10 @@ const DEFAULT_SKIN = '#c8c8c8';
 // Рот — половинка тора: дуга, открытая вверх, читается улыбкой, вниз —
 // недовольством. Лежит в плоскости лица, поэтому смотрит туда же, куда глаза.
 const MOUTH_GEOMETRY = new TorusGeometry(1, 0.17, 5, 14, Math.PI);
+// Длина вытянутой руки зомби. Константой, а не числом по месту: за неё же
+// цепляется тросточка деда, и разъехавшись, они перестали бы быть рукой с
+// палкой.
+const ARM_REACH = 0.85;
 const CAPE_LINKS = 3;
 const CAPE_LINK_LEN = 0.52;
 
@@ -150,7 +154,7 @@ function buildZombie(look, materialFor) {
   for (const side of [-1, 1]) {
     const shoulder = new Group();
     shoulder.position.set(side * 0.34 * width, up(-0.15), BODY_DEPTH / 2);
-    const arm = box(0.24, 0.24, 0.85, 0.1, armMat, 0, 0, 0.42);
+    const arm = box(0.24, 0.24, ARM_REACH, 0.1, armMat, 0, 0, ARM_REACH / 2);
     shoulder.add(arm);
     parts.arms.push(shoulder);
     node.add(shoulder);
@@ -193,13 +197,21 @@ function buildZombie(look, materialFor) {
   if (look.mask) addMask(head, look.mask, materialFor);
   if (look.beard) node.add(box(0.5, 0.32, 0.2, 0.1, materialFor(look.beard), 0, up(-0.45), 0.36));
 
-  // Тросточка деда: палка сбоку и загнутая ручка. В плоской версии по ней он
-  // и опознаётся — без неё это просто зелёный старик.
+  // Тросточка деда — В РУКЕ, а не рядом. Берём ту же точку, где кончается
+  // вытянутая вперёд рука: иначе палка висит сбоку сама по себе, и видно,
+  // что дед её не держит.
   if (look.cane) {
     const wood = materialFor(look.cane);
-    node.add(cylinder(0.07, 1.5, wood, 0.95, up(0.5), 0.2));
-    const grip = new Mesh(new TorusGeometry(0.15, 0.07, 5, 10, Math.PI), wood);
-    grip.position.set(0.88, up(-0.22), 0.2);
+    const handX = 0.34 * width;
+    const handY = up(-0.15);
+    const handZ = BODY_DEPTH / 2 + ARM_REACH;
+    // Палка чуть наклонена вперёд — так стоит трость, на которую опираются.
+    const stick = cylinder(0.07, handY, wood, handX, handY / 2, handZ + 0.12);
+    stick.rotation.x = -0.1;
+    node.add(stick);
+    // Загнутая ручка обхватывает кисть сверху.
+    const grip = new Mesh(new TorusGeometry(0.16, 0.07, 5, 10, Math.PI), wood);
+    grip.position.set(handX - 0.14, handY + 0.02, handZ + 0.1);
     grip.rotation.z = -Math.PI / 2;
     node.add(grip);
   }
@@ -906,8 +918,13 @@ function addMouth(head, headRadius, materialFor, { tilt = 0, tooth = false, widt
   mouth.rotation.z = Math.PI + tilt;
   head.add(mouth);
   if (tooth) {
-    head.add(box(headRadius * 0.16, headRadius * 0.22, 0.1, 0.03,
-      materialFor('#ffffff'), 0, y + headRadius * 0.06, z + 0.02));
+    // Два зуба, а не один: одинокий читался как блик, а пара сразу говорит
+    // «щербатая ухмылка». Верхний крупнее — они и растут неровно.
+    const white = materialFor('#ffffff');
+    head.add(box(headRadius * 0.2, headRadius * 0.26, 0.12, 0.03, white,
+      -headRadius * 0.13, y + headRadius * 0.08, z + 0.03));
+    head.add(box(headRadius * 0.16, headRadius * 0.2, 0.12, 0.03, white,
+      headRadius * 0.15, y + headRadius * 0.05, z + 0.03));
   }
 }
 
@@ -1219,9 +1236,14 @@ export function poseFigure(figure, walkPhase) {
     parts.arms.forEach((arm, i) => { arm.rotation.x = swing * ARM_SWING * (i ? 1 : -1); });
   }
   // Волна по плащу: каждое звено отстаёт от предыдущего, и складка бежит
-  // сверху вниз. Постоянный отклон назад — чтобы плащ не прилипал к спине.
+  // сверху вниз.
+  //
+  // Угол ВСЕГДА положительный, и это не мелочь: при повороте вокруг x низ
+  // звена уходит назад только при плюсе, а при минусе — вперёд, сквозь
+  // героя. Поэтому размах волны заведомо меньше постоянного отклона, и плащ
+  // не может качнуться в тело.
   parts.cape?.forEach((link, i) => {
-    link.rotation.x = -CAPE_FLARE - Math.sin(walkPhase * 1.7 - i * 0.8) * CAPE_WAVE;
+    link.rotation.x = CAPE_FLARE + Math.sin(walkPhase * 1.7 - i * 0.8) * CAPE_WAVE;
   });
   if (parts.float) {
     // Шарик не шагает, он покачивается. Двигаем внутренний узел: позиция
