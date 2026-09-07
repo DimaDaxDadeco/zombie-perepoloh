@@ -465,8 +465,12 @@ export class Scene3D {
           : buildFigure(look, spec.kind, paint);
     figure.node.traverse((part) => {
       if (!part.isMesh) return;
-      part.castShadow = true;
-      part.receiveShadow = true;
+      // Светящееся тени не бросает и не принимает: пламя костра, помеченное
+      // флагом при сборке, иначе кладёт под себя чёрное пятно — а огонь сам
+      // источник света, а не предмет на свету.
+      const glow = part.userData.glow === true;
+      part.castShadow = !glow;
+      part.receiveShadow = !glow;
     });
     figure.heading = 0;
     figure.lastX = entity.x;

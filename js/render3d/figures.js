@@ -17,6 +17,7 @@
 import {
   Group, Mesh, SphereGeometry, CylinderGeometry, ConeGeometry, TorusGeometry,
   PlaneGeometry, CanvasTexture, MeshBasicMaterial, LinearFilter, Shape, DoubleSide,
+  AdditiveBlending, NormalBlending,
 } from 'three';
 import { roundedRect, starShape, boltShape, extrude } from './shapes.js';
 
@@ -51,6 +52,13 @@ const MOUTH_GEOMETRY = new TorusGeometry(1, 0.17, 5, 14, Math.PI);
 const ARM_REACH = 0.85;
 const CAPE_LINKS = 3;
 const CAPE_LINK_LEN = 0.52;
+
+// Костёр. Все размеры — в радиусах пропа, как и везде.
+const GLOW_RADIUS = 1.7;    // тёплое пятно на земле, как в плоской версии
+const FLAME_TONGUES = 5;
+const FLAME_BASE = 1.05;    // выше брёвен: пламя должно вырываться из шалаша
+const SPARKS = 7;
+const SPARK_RISE = 2.4;     // докуда искра успевает подняться, прежде чем гаснет
 
 // --- Сборка ---
 
@@ -471,18 +479,97 @@ function buildCage(prop, materialFor) {
   };
 }
 
+// Костёр — цель главы «Разожги костёр», и на него ребёнок смотрит всю главу.
+// Поэтому он собран подробнее прочих пропов: круг камней, брёвна шалашом с
+// обугленными концами, четыре языка пламени со своими фазами, жёлтое ядро и
+// белое сердце, искры и тёплый круг света на земле. Потухший костёр — угли
+// и дым: по ним видно, что его затушили, а не что он исчез.
+//
+// Пламя светится: у него MeshBasicMaterial и флаг glow, по которому scene.js
+// не даёт ему бросать тень. Огонь — источник света, а не предмет на свету.
 function buildCampfire(materialFor) {
   const node = new Group();
   const wood = materialFor('#8a5a2b');
-  for (let i = 0; i < 3; i++) {
-    const log = box(0.22, 1.5, 0.22, 0.1, wood, 0, 0.12, 0);
-    log.rotation.z = Math.PI / 2;
-    log.rotation.y = (i / 3) * Math.PI;
+  const char = materialFor('#4a3524');
+  const stone = materialFor('#8d9199');
+
+  // Тёплый круг на земле: он же показывает, докуда добираются зомби, — ровно
+  // как светлое пятно в плоской версии.
+  const glow = lightPool(GLOW_RADIUS);
+  node.add(glow);
+
+  // Круг камней: без него костёр читается просто кучей палок.
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2;
+    const rock = ball(0.2 + (i % 3) * 0.03, stone,
+      Math.cos(angle) * 0.95, -0.04, Math.sin(angle) * 0.95);
+    rock.scale.y = 0.65;
+    node.add(rock);
+  }
+
+  // Два бревна лежат крест-накрест, три стоят шалашом. Раньше все три лежали
+  // на одной высоте и получался плоский крест.
+  for (const angle of [0.5, -0.5]) {
+    const log = box(1.8, 0.24, 0.24, 0.11, wood, 0, 0.08, 0);
+    log.rotation.y = angle;
     node.add(log);
   }
-  const flame = cone(0.55, 1.3, materialFor('#ff8a2b'), 0, 0.85, 0);
-  const core = cone(0.3, 0.8, materialFor('#ffe14d'), 0, 0.6, 0);
-  node.add(flame, core);
+  for (let i = 0; i < 3; i++) {
+    const holder = new Group();
+    holder.rotation.y = (i / 3) * Math.PI * 2 + 0.4;
+    const log = box(0.2, 1.4, 0.2, 0.09, wood, 0.44, 0.58, 0);
+    log.rotation.z = 0.42;            // верхушка наклонена к центру
+    log.add(ball(0.13, char, 0, 0.72, 0));   // обугленный конец
+    holder.add(log);
+    node.add(holder);
+  }
+
+  // Языки пламени. Разной длины и с разным сдвигом фазы: одинаковые качаются
+  // синхронно, и костёр выглядит механизмом.
+  // Тело пламени: без него языки висят отдельными шпилями, как ёлочки.
+  const belly = ball(0.5, glowMaterial('#ff8a2b'), 0, 0.55, 0);
+  belly.scale.y = 0.6;
+  node.add(belly);
+
+  const tongues = [];
+  for (let i = 0; i < FLAME_TONGUES; i++) {
+    const angle = (i / FLAME_TONGUES) * Math.PI * 2;
+    const mesh = cone(0.32 - (i % 2) * 0.07, 1.3 + (i % 3) * 0.45,
+      glowMaterial(i % 2 ? '#ff5722' : '#ff8a2b'),
+      Math.cos(angle) * 0.17, FLAME_BASE, Math.sin(angle) * 0.17);
+    tongues.push({ mesh, phase: i * 1.7, base: mesh.position.y });
+    node.add(mesh);
+  }
+  const core = cone(0.24, 1.3, glowMaterial('#ffd93d'), 0, 0.85, 0);
+  const heart = ball(0.2, glowMaterial('#fff3c4'), 0, 0.42, 0);
+  node.add(core, heart);
+
+  // Искры: летят вверх и гаснут. Они и делают костёр живым, когда пламя уже
+  // не разглядеть — например, издалека.
+  const sparks = [];
+  for (let i = 0; i < SPARKS; i++) {
+    const mesh = ball(0.07, glowMaterial('#ffca62'), 0, 0, 0);
+    sparks.push({ mesh, seed: i / SPARKS, angle: i * 2.4 });
+    node.add(mesh);
+  }
+
+  // Потухший костёр: угли и дым.
+  const coals = [];
+  for (let i = 0; i < 3; i++) {
+    const coal = ball(0.2, glowMaterial('#c2451f'), (i - 1) * 0.34, 0.12, (i % 2) * 0.18);
+    coal.scale.y = 0.6;
+    coals.push(coal);
+    node.add(coal);
+  }
+  const smoke = [];
+  for (let i = 0; i < 3; i++) {
+    const puff = ball(0.1, materialFor('#e8eef0', 0.28), 0, 0, 0);
+    smoke.push({ mesh: puff, seed: i / 3 });
+    node.add(puff);
+  }
+
+  const fire = [belly, ...tongues.map((t) => t.mesh), core, heart, ...sparks.map((s) => s.mesh)];
+
   return {
     node,
     parts: { legs: [], arms: [] },
@@ -490,54 +577,93 @@ function buildCampfire(materialFor) {
     tick: (prop, phase) => {
       // Пламя живёт от heat: потухающий костёр оседает, и это единственное,
       // по чему нечитающий ребёнок понимает, что его тушат.
-      const heat = Math.max(0, Math.min(1, prop.heat ?? 1));
-      const flicker = 1 + Math.sin(phase * 9) * 0.08;
-      flame.scale.set(heat * flicker, heat * flicker, heat * flicker);
-      core.scale.setScalar(heat * flicker);
-      flame.visible = heat > 0.02;
-      core.visible = flame.visible;
+      const heat = clamp01(prop.heat ?? 1);
+      const burning = heat > 0.02;
+      for (const part of fire) part.visible = burning;
+      glow.visible = burning;
+      glow.scale.setScalar(0.55 + heat * 0.45);
+
+      tongues.forEach(({ mesh, phase: offset, base }) => {
+        const flicker = 0.8 + Math.sin(phase * 7 + offset) * 0.2;
+        mesh.scale.set(heat * flicker, heat * (0.75 + flicker * 0.45), heat * flicker);
+        mesh.position.y = base * heat;
+        // Наклон в две стороны с разными частотами: одна частота читается
+        // маятником, а пламя должно виться.
+        mesh.rotation.z = Math.sin(phase * 4.5 + offset) * 0.16;
+        mesh.rotation.x = Math.cos(phase * 3.7 + offset) * 0.16;
+      });
+      const beat = 0.85 + Math.sin(phase * 11) * 0.15;
+      belly.scale.set(heat * beat, heat * 0.6 * beat, heat * beat);
+      core.scale.setScalar(heat * beat);
+      heart.scale.setScalar(heat * (1.1 - beat * 0.2));
+
+      sparks.forEach(({ mesh, seed, angle }) => {
+        const rise = (phase * 0.5 + seed) % 1;          // 0 у огня, 1 у вершины
+        mesh.position.set(
+          Math.cos(angle + rise * 3) * (0.12 + rise * 0.28),
+          0.9 + rise * SPARK_RISE * heat,
+          Math.sin(angle + rise * 3) * (0.12 + rise * 0.28),
+        );
+        mesh.scale.setScalar(heat * (1 - rise));         // к вершине искра гаснет
+      });
+
+      // Угли и дым — только у затухающего: у горящего они внутри пламени и
+      // видны быть не должны.
+      const dying = heat < 0.3;
+      for (const coal of coals) coal.visible = dying;
+      smoke.forEach(({ mesh, seed }) => {
+        mesh.visible = dying;
+        const rise = (phase * 0.22 + seed) % 1;
+        mesh.position.set(Math.sin(rise * 4 + seed * 6) * 0.18, 0.45 + rise * 1.1, 0);
+        mesh.scale.setScalar(0.6 + rise * 1.2);
+      });
     },
   };
 }
 
-function buildGift(materialFor) {
-  const node = new Group();
-  const boxMat = materialFor('#e0453f');
-  const ribbon = materialFor('#ffd93d');
-  node.add(box(1.4, 1.3, 1.4, 0.14, boxMat, 0, 0.65, 0));
-  node.add(box(0.26, 1.36, 1.46, 0.05, ribbon, 0, 0.65, 0));
-  const across = box(0.26, 1.36, 1.46, 0.05, ribbon, 0, 0.65, 0);
-  across.rotation.y = Math.PI / 2;
-  node.add(across);
-  for (const side of [-1, 1]) node.add(ball(0.22, ribbon, side * 0.2, 1.42, 0));
-  return {
-    node,
-    parts: { legs: [], arms: [] },
-    kind: 'gift',
-    // Подарок зовёт тряской, а не свечением: так решено ещё в плоской версии.
-    tick: (prop, phase) => {
-      const shake = prop.carrier ? 0 : Math.sin(phase * 7) * 0.09;
-      node.rotation.z = shake;
-    },
-  };
+// Светящийся материал: не затеняется и не бросает тень (флаг читает
+// scene.js). Огонь, ядро, искры — всё, что само источник света.
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
 }
 
-function buildDropZone(materialFor) {
-  const node = new Group();
-  const ring = torusRing(0.9, 0.1, materialFor('#ffd93d'), 0.06);
-  node.add(ring);
-  return {
-    node,
-    parts: { legs: [], arms: [] },
-    kind: 'dropzone',
-    tick: (prop, phase) => {
-      const pulse = 1 + Math.sin(phase * 3) * 0.06;
-      ring.scale.set(pulse, 1, pulse);
-    },
-  };
+function glowMaterial(color, opacity = 1, add = false) {
+  const material = new MeshBasicMaterial({
+    color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1,
+    // Складывающее смешивание для света: обычная прозрачность красит траву
+    // жёлтым, а свет должен её ПОДСВЕЧИВАТЬ.
+    blending: add ? AdditiveBlending : NormalBlending,
+  });
+  material.userData.glow = true;
+  return material;
 }
 
-// --- Добыча ---
+// Тёплое пятно на земле. Круг с резким краем читался выкошенной травой, и
+// дело не в цвете: у света края нет. Поэтому пятно — квадрат с радиальным
+// градиентом, который складывается с землёй, а не красит её.
+function lightPool(radius) {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255, 183, 77, 0.75)');
+  gradient.addColorStop(0.45, 'rgba(255, 152, 60, 0.3)');
+  gradient.addColorStop(1, 'rgba(255, 140, 50, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = new CanvasTexture(canvas);
+  texture.minFilter = LinearFilter;
+  const mesh = new Mesh(new PlaneGeometry(radius * 2, radius * 2), new MeshBasicMaterial({
+    map: texture, transparent: true, depthWrite: false, blending: AdditiveBlending,
+  }));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.03;
+  mesh.userData.glow = true;
+  return mesh;
+}
 
 export function buildPickup(type, materialFor) {
   const node = new Group();
