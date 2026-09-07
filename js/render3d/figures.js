@@ -53,6 +53,13 @@ const ARM_REACH = 0.85;
 const CAPE_LINKS = 3;
 const CAPE_LINK_LEN = 0.52;
 
+// Клетка с другом.
+const CAGE_RADIUS = 0.95;
+const CAGE_BARS = 10;
+const DOOR_FROM = -0.6;       // где начинается дуга дверцы
+const DOOR_SPAN = 1.35;       // какую часть клетки она занимает
+const DOOR_OPEN = 2.1;        // насколько распахивается настежь
+
 // Зомби-шарик. Подъём такой, чтобы ножки болтались над землёй, но тень всё
 // ещё падала рядом: оторвался — но не улетел.
 const BALLOON_LIFT = 1.35;
@@ -476,18 +483,43 @@ export function buildProp(prop, materialFor) {
   return null;
 }
 
+// Клетка с другом. Прогресс открывает ДВЕРЦУ, а не поднимает прутья целиком:
+// поднятые прутья исчезали вместе с клеткой, и на карте пропадала отметка
+// «здесь уже был» — в плоской версии распахнутая пустая клетка как раз ею и
+// служит.
+//
+// У открытой клетки пленника нет вовсе. Он остаётся внутри ровно до тех пор,
+// пока сидит: спасли — вышел, и клетка пустая. Ребёнок должен видеть, что
+// его старание кончилось делом.
 function buildCage(prop, materialFor) {
   const node = new Group();
-  const bars = new Group();
   const metal = materialFor('#b9c4d0');
-  const BAR_COUNT = 10;
-  for (let i = 0; i < BAR_COUNT; i++) {
-    const a = (i / BAR_COUNT) * Math.PI * 2;
-    bars.add(cylinder(0.05, 1.7, metal, Math.cos(a) * 0.95, 0.85, Math.sin(a) * 0.95));
+  const bar = (x, z) => cylinder(0.05, 1.7, metal, x, 0.85, z);
+
+  // Дверца висит на своей петле, и петля стоит на самом кольце — поэтому
+  // дверца ОТКРЫВАЕТСЯ, а не съезжает по кругу. Внутри петли ещё один узел,
+  // сдвинутый обратно к центру: так прутья и рейки дверцы можно ставить в тех
+  // же координатах, что и всю клетку, и они не разъезжаются.
+  const hinge = new Group();
+  hinge.position.set(Math.cos(DOOR_FROM) * CAGE_RADIUS, 0, Math.sin(DOOR_FROM) * CAGE_RADIUS);
+  const leaf = new Group();
+  leaf.position.set(-hinge.position.x, 0, -hinge.position.z);
+  hinge.add(leaf);
+  node.add(hinge);
+
+  for (let i = 0; i < CAGE_BARS; i++) {
+    const angle = (i / CAGE_BARS) * Math.PI * 2;
+    const inDoor = angleBetween(angle, DOOR_FROM, DOOR_FROM + DOOR_SPAN);
+    const target = inDoor ? leaf : node;
+    target.add(bar(Math.cos(angle) * CAGE_RADIUS, Math.sin(angle) * CAGE_RADIUS));
   }
-  bars.add(torusRing(0.95, 0.06, metal, 1.7));
-  bars.add(torusRing(0.95, 0.06, metal, 0.06));
-  node.add(bars);
+  // Рейки сверху и снизу: без них прутья рассыпаются на палочки, а у дверцы —
+  // ещё и на отдельные, уплывающие от клетки при открывании.
+  for (const y of [1.7, 0.06]) {
+    node.add(arc(CAGE_RADIUS, 0.06, metal, y, DOOR_FROM + DOOR_SPAN,
+      Math.PI * 2 - DOOR_SPAN));
+    leaf.add(arc(CAGE_RADIUS, 0.06, metal, y, DOOR_FROM, DOOR_SPAN));
+  }
 
   // Внутри сидит друг — ради него клетку и открывают. Строим его тем же
   // конструктором героя: в 2D клетка тоже получает геройский look.
@@ -499,13 +531,28 @@ function buildCage(prop, materialFor) {
     node,
     parts: { legs: [], arms: [] },
     kind: 'cage',
-    tick: () => {
-      // Прутья поднимаются по мере накопления прогресса, а не разом в конце:
+    tick: (cage, phase) => {
+      // Дверца отходит по мере накопления прогресса, а не разом в конце:
       // ребёнок должен видеть, что стояние рядом работает.
-      bars.position.y = (prop.open ? 1 : prop.progress || 0) * 2.4;
-      bars.visible = bars.position.y < 2.35;
+      const progress = cage.open ? 1 : clamp01(cage.progress || 0);
+      hinge.rotation.y = progress * DOOR_OPEN;
+      friend.node.visible = !cage.open;
+      // Пока сидит — потихоньку переминается: неподвижный пленник выглядит
+      // статуей, а не тем, кого надо спасать.
+      if (friend.node.visible) poseFigure(friend, phase * 1.6);
     },
   };
+}
+
+// Попадает ли угол в дугу дверцы. Углы сравниваем через приведённую разницу:
+// дуга легко перескакивает через ноль, и сравнение «больше и меньше» на ней
+// врёт.
+function angleBetween(angle, from, to) {
+  const span = to - from;
+  let delta = angle - from;
+  while (delta < 0) delta += Math.PI * 2;
+  while (delta >= Math.PI * 2) delta -= Math.PI * 2;
+  return delta <= span;
 }
 
 // Костёр — цель главы «Разожги костёр», и на него ребёнок смотрит всю главу.
@@ -718,17 +765,24 @@ export function buildPickup(type, materialFor) {
 
 // Кольцо из тонкого цилиндра-обода. Настоящий тор Three умеет, но кольцо из
 // плоского цилиндра дешевле и в мультяшной картинке неотличимо.
-function torusRing(radius, thickness, material, y) {
-  const ring = new Group();
-  const SEGMENTS = 16;
-  for (let i = 0; i < SEGMENTS; i++) {
-    const a = (i / SEGMENTS) * Math.PI * 2;
-    const piece = box(radius * 0.42, thickness, thickness, thickness / 2, material,
-      Math.cos(a) * radius, y, Math.sin(a) * radius);
-    piece.rotation.y = -a;
-    ring.add(piece);
+// Дуга из коротких отрезков (TorusGeometry не берём: отрезок — тот же box,
+// что и везде, и материалы кэшируются по цвету как у всего остального).
+//
+// Разворот отрезка КАСАТЕЛЬНЫЙ, и промах здесь дорогой: с ошибкой на
+// четверть оборота отрезки встают поперёк, и дуга превращается в звёздочку
+// из палочек — клетка выглядела кучей хвороста.
+function arc(radius, thickness, material, y, from, span) {
+  const group = new Group();
+  const segments = Math.max(2, Math.round((span / (Math.PI * 2)) * 16));
+  const step = span / segments;
+  for (let i = 0; i < segments; i++) {
+    const a = from + step * (i + 0.5);
+    const piece = box(radius * step * 1.06, thickness, thickness,
+      thickness / 2, material, Math.cos(a) * radius, y, Math.sin(a) * radius);
+    piece.rotation.y = -a - Math.PI / 2;
+    group.add(piece);
   }
-  return ring;
+  return group;
 }
 
 
