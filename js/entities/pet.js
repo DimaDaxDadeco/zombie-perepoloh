@@ -134,7 +134,7 @@ class DogPet extends Pet {
     world.damageEnemy(target, this.spec.damage);
     target.applyKnockback(this.x, this.y, this.spec.force);
     world.particles.addBurst(target.x, target.y, 6, 0.6);
-    world.audio.bite();
+    world.audio.bite({ x: target.x, y: target.y });
     this.attackTimer = this.spec.cooldown;
     this.attackAnim = 0.18;
   }

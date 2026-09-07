@@ -7,7 +7,13 @@ main.js                 точка входа
   └── core/game.js      оркестратор: цикл, состояния, экраны
         ├── core/round.js       симуляция мира (герой, зомби, снаряды)
         ├── screens/*           DOM-оверлеи и HUD
-        ├── core/audio.js       звук
+        ├── core/audio.js       звук и шины (см. audio.md)
+        │     └── core/music.js       мелодия: планировщик, темы, слои по напряжению
+        ├── core/voice.js       голос: очередь фраз с приоритетами (см. audio.md)
+        │     ├── core/voice-bank.js  записанные фразы из assets/voice
+        │     ├── core/speech.js      синтез речи как запас
+        │     ├── core/voice-text.js  нормализация текста для озвучки
+        │     └── core/phrases.js     все фразы игры и их полный перечень
         ├── core/input.js       клавиатура и геймпад (см. input.md)
         ├── core/storage.js     сохранение
         ├── core/upgrades.js    бонусы героя на старте раунда (чистая арифметика)

@@ -15,6 +15,7 @@ export const STANDS = [
   { id: 'firetrail', load: () => import('./firetrail.js') },
   { id: 'props',     load: () => import('./props.js') },
   { id: 'figures3d', load: () => import('./figures3d.js') },
+  { id: 'audio',     load: () => import('./audio.js') },
 ];
 
 // Названия вкладок держим здесь, а не тянем из модулей: иначе показать
@@ -29,4 +30,5 @@ export const TAB_NAMES = {
   firetrail: 'Дорожка',
   props: 'Объекты',
   figures3d: 'Объём',
+  audio: 'Звук',
 };

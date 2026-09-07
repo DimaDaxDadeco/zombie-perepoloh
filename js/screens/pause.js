@@ -9,6 +9,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describeArsenalWeapon } from '../core/phrases.js';
 
 export class PauseScreen extends Overlay {
   constructor(rootId, { onResume, onMenu, onSpeak }) {
@@ -44,7 +45,7 @@ export class PauseScreen extends Overlay {
   renderWeapons(weapons) {
     const items = weapons.map((weapon) => `
       <div class="weapon-chip">
-        ${Overlay.speakButton(describeWeapon(weapon))}
+        ${Overlay.speakButton(describeArsenalWeapon(weapon))}
         <span class="weapon-chip__emoji">${icon(weapon.icon)}</span>
         <span class="weapon-chip__stars">
           ${icon('ui-star').repeat(weapon.stars)}${icon('ui-star-empty').repeat(CONFIG.maxStars - weapon.stars)}
@@ -60,12 +61,4 @@ export class PauseScreen extends Overlay {
   }
 }
 
-function describeWeapon(weapon) {
-  return `${weapon.name}, ${weapon.stars} ${starWord(weapon.stars)}`;
-}
 
-function starWord(count) {
-  if (count === 1) return 'звезда';
-  if (count >= 2 && count <= 4) return 'звезды';
-  return 'звёзд';
-}

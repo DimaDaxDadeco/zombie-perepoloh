@@ -5,6 +5,7 @@
 import { CONFIG } from '../config.js';
 import { CardKind } from '../systems/levelup.js';
 import { Overlay } from './overlay.js';
+import { describeCard } from '../core/phrases.js';
 import { icon } from '../render/icons.js';
 
 export class CardsScreen extends Overlay {
@@ -92,18 +93,4 @@ export class CardsScreen extends Overlay {
 }
 
 // Фраза для голоса: что это и насколько прокачано.
-function describeCard(card) {
-  if (!card) return '';
-  if (card.kind === CardKind.HEAL) return 'Сердечко. Плюс одна жизнь';
-  if (card.kind === CardKind.NEW_WEAPON) return `Новое оружие: ${card.title}`;
-  // Здесь голос обязателен: ребёнок должен понять, что случилось нечто
-  // большее, чем «плюс одна звезда».
-  if (card.kind === CardKind.EVOLVE) return `${card.title}! Твоё оружие выросло. ${card.about}`;
-  return `${card.title}, ${card.stars} ${starWord(card.stars)}`;
-}
 
-function starWord(count) {
-  if (count === 1) return 'звезда';
-  if (count >= 2 && count <= 4) return 'звезды';
-  return 'звёзд';
-}

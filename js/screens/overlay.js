@@ -205,6 +205,10 @@ export class Overlay {
     paintSticker(canvas, options, paint, scale);
   }
 
+  // Куда сообщать про подписи экрана, чтобы их файлы успели загрузиться.
+  // Ставится один раз из core/game.js; экраны про голос ничего не знают.
+  static onPrefetch = null;
+
   // Кнопка-динамик: ребёнок не читает, поэтому любую подпись можно послушать.
   // Возвращает разметку; обработчики вешает bindSpeakButtons().
   static speakButton(text) {
@@ -214,13 +218,23 @@ export class Overlay {
   }
 
   // Клик по динамику не должен выбирать карточку, на которой он стоит.
+  //
+  // source: 'button' говорит очереди голоса, что это ОСОЗНАННОЕ нажатие: такое
+  // не отбрасывается и не ждёт дебаунса, в отличие от автоозвучки при
+  // прокрутке стрелками.
+  //
+  // Заодно подтягиваем файлы всех подписей этого экрана: они уже перечислены
+  // в разметке, и первое нажатие не будет ждать сети.
   bindSpeakButtons(onSpeak) {
+    const texts = [];
     this.root.querySelectorAll('.speak').forEach((el) => {
+      texts.push(el.dataset.speak);
       el.addEventListener('click', (event) => {
         event.stopPropagation();
-        onSpeak(el.dataset.speak);
+        onSpeak(el.dataset.speak, { source: 'button' });
       });
     });
+    if (texts.length) Overlay.onPrefetch?.(texts);
   }
 }
 

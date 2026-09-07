@@ -1,9 +1,10 @@
 // Кадры истории: завязка кампании и финал.
 //
-// Один кадр за раз — крупная картинка, одна фраза, кнопка «дальше». Так
-// устроено не для простоты, а потому что иначе нельзя: Speech.speak обрывает
-// предыдущую реплику, очереди у него нет и события «договорил» тоже. Две фразы
-// подряд ребёнок услышал бы как одну оборванную.
+// Один кадр за раз — крупная картинка, фраза, кнопка «дальше». Кадр может
+// нести и несколько строк (frame.lines): у голоса есть очередь, и следующая
+// строка начинается, когда договорена предыдущая. Раньше это было невозможно —
+// speak обрывал предыдущую реплику, и две фразы подряд ребёнок услышал бы как
+// одну оборванную.
 //
 // Фраза произносится САМА при показе кадра. Кнопка 🔈 — это повтор, а не
 // единственный путь: ребёнок, который не читает, не должен догадываться, что
@@ -17,9 +18,12 @@ import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
 
 export class StoryScreen extends Overlay {
-  constructor(rootId, { onSpeak }) {
+  constructor(rootId, { onSpeak, onNarrate }) {
     super(rootId);
     this.onSpeak = onSpeak;
+    // Рассказ идёт объявлениями, а не подписями: подпись отбрасывается, если
+    // в этот момент говорит что-то важнее, и кадр остался бы немым.
+    this.onNarrate = onNarrate;
     this.frames = [];
     this.at = 0;
     this.onDone = () => {};
@@ -30,7 +34,8 @@ export class StoryScreen extends Overlay {
     });
   }
 
-  // frames — [{ emoji, line }]. onDone зовётся после последнего кадра.
+  // frames — [{ icon, line }] либо [{ icon, lines: [...] }].
+  // onDone зовётся после последнего кадра.
   play(frames, onDone) {
     this.frames = frames;
     this.at = 0;
@@ -45,19 +50,20 @@ export class StoryScreen extends Overlay {
       this.onDone();
       return;
     }
+    const lines = frame.lines || [frame.line];
     const last = this.at === this.frames.length - 1;
     this.setContent(`
       <div class="panel panel--end panel--story">
-        ${Overlay.speakButton(frame.line)}
+        ${Overlay.speakButton(lines.join(' '))}
         <div class="menu-hero story-art">${icon(frame.icon)}</div>
-        <p class="big-line story-line">${frame.line}</p>
+        ${lines.map((line) => `<p class="big-line story-line">${line}</p>`).join('')}
         <button class="btn btn--big" data-action="next">${last ? 'В ПУТЬ!' : 'ДАЛЬШЕ'} ${icon('ui-play')}</button>
       </div>
     `);
     this.on('[data-action="next"]', () => this.next());
     this.bindSpeakButtons(this.onSpeak);
     this.show();
-    this.onSpeak(frame.line);
+    this.onNarrate(lines);
   }
 
   next() {

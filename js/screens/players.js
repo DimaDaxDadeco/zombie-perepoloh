@@ -4,21 +4,22 @@
 
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describePlayers, PLAYER_OPTIONS } from '../core/phrases.js';
 
-const OPTIONS = [
-  {
-    count: 1, icon: 'ui-hero', name: 'Один',
-    about: 'Играешь сам',
-    // Подпись со стрелками — не украшение, а инструкция, как ходить. Значки
-    // тут поэтому такие же нарисованные, как всё остальное.
-    hint: `${icon('ui-arrow-left')}${icon('ui-arrow-up')}${icon('ui-arrow-right')}`
-      + `${icon('ui-arrow-down')} или ${icon('ui-gamepad')} геймпад`,
-  },
-  {
-    count: 2, icon: 'ui-heroes', name: 'Вдвоём',
-    about: 'Вдвоём на одном экране', hint: 'первый — стрелки, второй — WASD или геймпад',
-  },
-];
+// Значки и подсказка с раскладкой — дело экрана; имя и пояснение живут в
+// core/phrases.js, потому что их читает голос.
+//
+// Подпись со стрелками — не украшение, а инструкция, как ходить. Значки тут
+// поэтому такие же нарисованные, как всё остальное.
+const HINTS = {
+  1: `${icon('ui-arrow-left')}${icon('ui-arrow-up')}${icon('ui-arrow-right')}`
+    + `${icon('ui-arrow-down')} или ${icon('ui-gamepad')} геймпад`,
+  2: 'первый — стрелки, второй — WASD или геймпад',
+};
+const ICONS = { 1: 'ui-hero', 2: 'ui-heroes' };
+const OPTIONS = PLAYER_OPTIONS.map((option) => ({
+  ...option, icon: ICONS[option.count], hint: HINTS[option.count],
+}));
 
 export class PlayersScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -91,6 +92,3 @@ export class PlayersScreen extends Overlay {
   }
 }
 
-function describePlayers(option) {
-  return `${option.name}. ${option.about}`;
-}

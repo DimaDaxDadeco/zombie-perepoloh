@@ -7,6 +7,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describeView } from '../core/phrases.js';
 
 const SOLID_ID = 'solid'; // объёмный вариант; остальное — плоский
 
@@ -81,6 +82,3 @@ export class ViewScreen extends Overlay {
   }
 }
 
-function describeView(spec) {
-  return `${spec.name}. ${spec.about}`;
-}

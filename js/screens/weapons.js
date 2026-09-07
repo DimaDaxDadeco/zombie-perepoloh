@@ -6,6 +6,7 @@ import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { ALL_WEAPON_IDS } from '../weapons/weapons.js';
 import { icon } from '../render/icons.js';
+import { describeWeaponPick, WEAPON_HINTS } from '../core/phrases.js';
 
 export class WeaponsScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -70,7 +71,7 @@ export class WeaponsScreen extends Overlay {
     return `
       <div class="hero-card ${locked ? 'hero-card--locked hero-card--selected' : ''}"
            data-index="${index}">
-        ${Overlay.speakButton(describeWeapon(id))}
+        ${Overlay.speakButton(describeWeaponPick(id))}
         <span class="weapon-choice__emoji">${icon(spec.icon)}</span>
         <span class="hero-card__name">${spec.name}</span>
         <span class="hero-card__perk">${WEAPON_HINTS[id]}</span>
@@ -83,7 +84,7 @@ export class WeaponsScreen extends Overlay {
     const at = this.movePick(playerIndex, delta, ALL_WEAPON_IDS.length);
     if (at === null) return;
     this.highlight(playerIndex);
-    this.onSpeak(describeWeapon(ALL_WEAPON_IDS[at]));
+    this.onSpeak(describeWeaponPick(ALL_WEAPON_IDS[at]));
   }
 
   highlight(playerIndex = 0) {
@@ -101,24 +102,4 @@ export class WeaponsScreen extends Overlay {
 }
 
 // Короткие подсказки «на что это похоже» — детским языком, без цифр.
-const WEAPON_HINTS = {
-  water: 'Стреляет часто',
-  tomato: 'Взрывается кляксой',
-  lightning: 'Бьёт сразу нескольких',
-  spinner: 'Крутится вокруг тебя',
-  rocket: 'Редко, зато бабах!',
-  fire: 'Поджигает зомби',
-  ice: 'Замораживает зомби',
-  saber: 'Рубит всех рядом',
-  laser: 'Жжёт лучом насквозь',
-  boomerang: 'Улетает и возвращается',
-  bees: 'Летят и жалят сами',
-  firetrail: 'Горит там, где ты пробежал',
-  bubbles: 'Ловит зомби в пузырь',
-  tornado: 'Вихрь таскает зомби',
-  web: 'Липкие пятна замедляют',
-};
 
-function describeWeapon(id) {
-  return `${CONFIG.weapons[id].name}. ${WEAPON_HINTS[id]}`;
-}

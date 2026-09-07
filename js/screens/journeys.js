@@ -13,6 +13,7 @@
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
 import { journeyProgress } from '../core/campaign.js';
+import { describeJourneyProgress } from '../core/phrases.js';
 
 export class JourneysScreen extends Overlay {
   constructor(rootId, { onPick, onClose, onSpeak }) {
@@ -96,11 +97,9 @@ export class JourneysScreen extends Overlay {
   }
 }
 
-// Что скажет голос. Счёт словами, а не «семь из двенадцати»: цифры на слух
-// пятилетний не удержит, а «осталось пять» — вполне.
+// Что скажет голос. Прогресс считаем здесь, а саму фразу собирает
+// core/phrases.js: перечислить все её состояния в Node иначе нельзя.
 function describeJourney(journey) {
   const { open, total } = journeyProgress(journey);
-  if (open >= total) return `${journey.spec.title}. Пройдено целиком!`;
-  if (open === 0) return `${journey.spec.title}. Новое путешествие.`;
-  return `${journey.spec.title}. Осталось глав: ${total - open}.`;
+  return describeJourneyProgress(journey.spec.title, open, total);
 }

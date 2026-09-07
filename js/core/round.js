@@ -128,6 +128,11 @@ export class Round {
     this.rallyTimer = 0;
     this.rallyFactor = 1;
     this.shakeTimer = 0;
+    this.dangerTimer = 0;   // до нуля — значит музыке пора обновить уровень опасности
+    this.elapsed = 0;       // секунд с начала боя; нужен плотности убийств
+    // Времена последних убийств: по ним видно «пачку», за которую хвалят.
+    // Массив, а не счётчик, потому что важна именно плотность за секунды.
+    this.killTimes = [];
     this.shakeMaxTime = 1;
     this.shakeStrength = 0;
     this.finished = false;
@@ -232,7 +237,13 @@ export class Round {
     }
     if (this.finished) return;
 
+    this.elapsed += dt;
     this.updatePhase(dt);
+    // Откуда слушают: панорама и удаление считаются от первого игрока.
+    // Обычное присваивание, а не вызов Web Audio, — за кадр это ничего не стоит.
+    this.audio.listenerX = this.player.x;
+    this.audio.listenerY = this.player.y;
+    this.updateDanger(dt);
     this.freezeTimer = Math.max(0, this.freezeTimer - dt);
     this.shakeTimer = Math.max(0, this.shakeTimer - dt);
     // Принимаем и одиночный вектор: так старые сниппеты автотеста и консоли
@@ -277,6 +288,41 @@ export class Round {
     // Раунд проигран, только когда лежат все: падение одного не должно
     // заканчивать игру напарнику.
     if (this.players.every((p) => p.downed)) this.finish('defeat');
+  }
+
+  // Музыке нужен уровень опасности, но спрашивать его каждый кадр незачем:
+  // слой всё равно меняется только на границе такта. Дважды в секунду — это
+  // вдвое чаще, чем длится такт, и на порядок реже, чем кадр.
+  updateDanger(dt) {
+    this.dangerTimer -= dt;
+    if (this.dangerTimer > 0) return;
+    this.dangerTimer = 0.5;
+    this.audio.setDanger(this.dangerLevel());
+    this.checkGoalVoice();
+  }
+
+  // Черта, за которой голосу есть что сказать. Round сам ничего не произносит
+  // и про речь не знает: он сообщает событие, а решает Game.
+  //
+  // Считаем по hudLine, а не по внутренностям каждой цели: строка для HUD уже
+  // отдаёт done и target, и своя копия этих чисел разошлась бы с показанными
+  // ребёнку. У цели без счёта (продержись) target нет — значит, сообщать нечего.
+  checkGoalVoice() {
+    const line = this.goal.hudLine?.(this);
+    if (!line || line.target === null || line.target === undefined) return;
+    if (line.done >= line.target / 2) this.callbacks.onGoalHalf?.();
+    if (line.target - line.done === 1) this.callbacks.onGoalLast?.();
+  }
+
+  // Насколько сейчас страшно: 0 — пусто и цело, 1 — босс. Толпа и потерянные
+  // сердечки считаются по максимуму, а не в сумме: и то и другое по
+  // отдельности уже повод добавить музыке слой.
+  dangerLevel() {
+    if (this.bossPhase !== 'none') return 1;
+    const alive = this.enemies.length;
+    const crowd = Math.min(1, alive / Math.max(1, this.spawner.maxAlive));
+    const hurt = 1 - Math.min(...this.players.map((p) => p.hp / Math.max(1, p.maxHp)));
+    return Math.max(crowd, hurt * 0.9);
   }
 
   // Фаза раунда. Вся разница между целями — одна строка: что происходит, когда
@@ -325,7 +371,7 @@ export class Round {
     this.particles.addBossArrival(this.boss.x, this.boss.y, type.entrance, this.boss.radius);
     const shake = type.entrance === 'slam' ? CONFIG.boss.slamShake : CONFIG.boss.shake;
     this.shake(shake.strength, shake.time);
-    this.audio.boom();
+    this.audio.boom({ x: this.boss.x, y: this.boss.y });
   }
 
   // Пробел: суперспособность героя. Не готова — молча ничего, заряд остаётся.
@@ -352,7 +398,7 @@ export class Round {
   splat(x, y, radius) {
     this.particles.addRing(x, y, radius, '#ffd7e6');
     this.particles.addBurst(x, y, 14, 1);
-    this.audio.splat();
+    this.audio.splat({ x, y });
     for (const player of this.players) {
       if (Math.hypot(player.x - x, player.y - y) <= radius + player.radius) {
         player.takeHit(this);   // одно сердечко, неуязвимость работает
@@ -364,7 +410,7 @@ export class Round {
   strike(x, y, radius, from) {
     this.particles.addLightning([from, { x, y }]);
     this.particles.addRing(x, y, radius, '#ffe66d');
-    this.audio.zap();
+    this.audio.zap({ x, y });
     for (const player of this.players) {
       if (Math.hypot(player.x - x, player.y - y) <= radius + player.radius) {
         player.takeHit(this);
@@ -509,8 +555,12 @@ export class Round {
   // в безопасную сторону.
   damageEnemy(enemy, amount, source = 'weapon') {
     if (!enemy.alive) return;
+    const wasAbove = enemy.isBoss && enemy.hp > enemy.maxHp / 2;
     const killed = enemy.takeDamage(amount);
-    if (killed) this.onEnemyDefeated(enemy, source);
+    if (killed) return this.onEnemyDefeated(enemy, source);
+    // Половина здоровья босса: бой с ним самый длинный в раунде, и ребёнку
+    // важно услышать, что дело идёт к концу.
+    if (wasAbove && enemy.hp <= enemy.maxHp / 2) this.callbacks.onBossHalf?.();
   }
 
   // Урон по площади: помидор и ракета.
@@ -518,7 +568,7 @@ export class Round {
     const color = kind === 'tomato' ? '#e34b3a' : '#ffb703';
     this.particles.addRing(x, y, radius, color);
     this.particles.addBurst(x, y, 10, 0.9);
-    this.audio.boom();
+    this.audio.boom({ x, y });
 
     for (const enemy of [...this.enemies]) {
       if (!enemy.alive) continue;
@@ -550,7 +600,16 @@ export class Round {
     }
     if (ready) this.audio.abilityReady();
 
-    this.audio.pop();
+    this.audio.pop({ x: enemy.x, y: enemy.y });
+    // Толпа легла разом — это стоит отметить голосом. Порог высокий нарочно:
+    // «вот это да!» на каждых трёх зомби перестаёт быть похвалой.
+    const now = this.elapsed;
+    this.killTimes.push(now);
+    while (this.killTimes.length && now - this.killTimes[0] > 3) this.killTimes.shift();
+    if (this.killTimes.length >= 12) {
+      this.killTimes.length = 0;
+      this.callbacks.onStreak?.();
+    }
     this.particles.addBurst(enemy.x, enemy.y, enemy.isBoss ? 60 : 16, enemy.isBoss ? 2 : 1);
     this.dropLoot(enemy);
     this.modifier?.onLoot(enemy, this);
@@ -585,10 +644,10 @@ export class Round {
   collectPickup(pickup) {
     if (pickup.type === PickupType.MONEY) {
       this.coinsEarned += 1;
-      this.audio.money();
+      this.audio.money({ x: pickup.x, y: pickup.y });
       return;
     }
-    this.audio.medal();
+    this.audio.medal({ x: pickup.x, y: pickup.y });
     this.medalsCollected += 1;
     if (this.addXp(CONFIG.pickups.medalXp * this.coopFactor.xpFactor * this.xpFactor)) {
       this.audio.levelUp();
@@ -607,7 +666,7 @@ export class Round {
   }
 
   onPlayerHealed() {
-    this.audio.medal();
+    this.audio.medal({ x: this.player.x, y: this.player.y });
     this.particles.addBurst(this.player.x, this.player.y - this.player.radius, 6, 0.6);
   }
 
@@ -620,7 +679,7 @@ export class Round {
   // player приходит аргументом, а не берётся как this.player: вдвоём удар
   // может достаться второму, и частицы должны вспыхнуть на нём.
   onPlayerBlocked(player) {
-    this.audio.clank();
+    this.audio.clank({ x: player.x, y: player.y });
     this.particles.addRing(player.x, player.y, player.radius * 1.9, '#7fd8ff');
     this.particles.addBurst(player.x, player.y, 6, 0.7);
   }
@@ -630,7 +689,10 @@ export class Round {
     // клоуна, и молния огненного босса. Кому именно прилетело, она не знает,
     // поэтому медаль «ни царапины» командная: вдвоём её теряют оба.
     this.damageTaken += 1;
-    this.audio.hurt();
+    this.audio.hurt({ x: this.player.x, y: this.player.y });
+    // Последнее сердечко: словами, а не только полоской, — ребёнок в бою
+    // смотрит на зомби, а не на угол экрана.
+    if (this.players.some((p) => !p.downed && p.hp === 1)) this.callbacks.onLowHp?.();
     this.particles.addBurst(this.player.x, this.player.y, 8, 0.8);
   }
 

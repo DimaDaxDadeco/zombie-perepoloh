@@ -26,6 +26,7 @@ import {
   drawMedalPickup, drawZombie,
 } from '../render/sprites.js';
 import { icon } from '../render/icons.js';
+import { describeStop } from '../core/phrases.js';
 import {
   journeyProgress, themeIcon, themeName, themeColors, bossOf, goalText,
 } from '../core/campaign.js';
@@ -295,10 +296,3 @@ function goalKind(chapter) {
   return typeof chapter.goal === 'string' ? chapter.goal : chapter.goal.kind;
 }
 
-function describeStop(stop) {
-  const { chapter, done, open, index } = stop;
-  const where = `${themeName(chapter.theme)}, глава ${index + 1}.`;
-  if (done) return `${where} Пройдено! Страница уже в альбоме.`;
-  if (!open) return `${where} Сюда ещё рано.`;
-  return `${where} ${chapter.about}. ${goalText(chapter)}`;
-}

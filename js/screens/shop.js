@@ -4,6 +4,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describeItem } from '../core/phrases.js';
 
 export class ShopScreen extends Overlay {
   constructor(rootId, { onBuy, onClose, onSpeak }) {
@@ -98,19 +99,4 @@ export class ShopScreen extends Overlay {
 }
 
 // Фраза для голоса: что это, сколько стоит и хватает ли денег.
-function describeItem(spec, price, isMaxed, affordable) {
-  if (isMaxed) return `${spec.name}. ${spec.about}. Уже куплено полностью`;
-  const cost = `${price} ${dollarWord(price)}`;
-  return affordable
-    ? `${spec.name}. ${spec.about}. Стоит ${cost}`
-    : `${spec.name}. ${spec.about}. Стоит ${cost}. Пока не хватает`;
-}
 
-function dollarWord(count) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'долларов';
-  if (last === 1) return 'доллар';
-  if (last >= 2 && last <= 4) return 'доллара';
-  return 'долларов';
-}

@@ -6,6 +6,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describeDifficulty } from '../core/phrases.js';
 
 export class DifficultyScreen extends Overlay {
   constructor(rootId, { onPick, onSpeak }) {
@@ -77,6 +78,3 @@ export class DifficultyScreen extends Overlay {
   }
 }
 
-function describeDifficulty(spec) {
-  return `${spec.name}. ${spec.about}`;
-}

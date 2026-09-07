@@ -4,6 +4,7 @@
 import { CONFIG } from '../config.js';
 import { Overlay, playerTitle } from './overlay.js';
 import { icon } from '../render/icons.js';
+import { describeCharacter } from '../core/phrases.js';
 const PREVIEW_SIZE = 150;
 
 export class CharactersScreen extends Overlay {
@@ -65,7 +66,7 @@ export class CharactersScreen extends Overlay {
                 data-hero="${character.id}"></canvas>
         <span class="hero-card__name">${character.name}</span>
         <span class="hero-card__perk">${character.about}</span>
-        <span class="hero-card__ability">${describeAbility(character)}</span>
+        <span class="hero-card__ability">${abilityLabel(character)}</span>
       </div>
     `;
   }
@@ -99,13 +100,13 @@ export class CharactersScreen extends Overlay {
 }
 
 // Фраза для голоса: имя героя и его бонус.
-function describeCharacter(character) {
-  return `${character.name}. ${character.about}. Способность: ${describeAbility(character)}`;
-}
 
 // Название способности с эмодзи — и на карточке, и в озвучке: ребёнок не
 // читает, а выбор героя теперь решает не только внешность.
-function describeAbility(character) {
+// Значок и название способности — для КАРТОЧКИ. Голос читает то же название
+// без значка (см. describeCharacter в core/phrases.js): раньше icon() попадал
+// и в озвучку, и ребёнок слушал строку SVG.
+function abilityLabel(character) {
   const ability = CONFIG.abilities[character.ability];
   return ability ? `${icon(ability.icon)} ${ability.name}` : '';
 }

@@ -50,11 +50,17 @@ export class Spawner {
     return this.availableTypes[0];
   }
 
+  // Сколько зомби разрешено держать на арене разом. Отдельным геттером, а не
+  // выражением внутри update: то же число спрашивает музыка, чтобы понять,
+  // насколько сейчас густо, и своя копия формулы разошлась бы на первой правке.
+  get maxAlive() {
+    return Math.round(CONFIG.spawner.maxAlive * this.spec.maxAlive
+      * this.coop.maxAliveFactor * this.hordeMaxAlive);
+  }
+
   // progress — доля пройденного раунда (0..1): чем ближе к боссу, тем чаще волны.
   update(dt, world, progress) {
-    const maxAlive = CONFIG.spawner.maxAlive * this.spec.maxAlive
-      * this.coop.maxAliveFactor * this.hordeMaxAlive;
-    if (world.enemies.length >= Math.round(maxAlive)) return;
+    if (world.enemies.length >= this.maxAlive) return;
 
     this.timer -= dt;
     if (this.timer > 0) return;

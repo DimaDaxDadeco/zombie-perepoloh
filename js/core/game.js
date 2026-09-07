@@ -9,6 +9,9 @@ import {
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Speech } from './speech.js';
+import { VoiceBank } from './voice-bank.js';
+import { Voice } from './voice.js';
+import { REACTIONS } from './phrases.js';
 import { Storage } from './storage.js';
 import { Album } from './album.js';
 import { Achievements } from './achievements.js';
@@ -36,6 +39,7 @@ import { Hud } from '../screens/hud.js';
 import { Overlay } from '../screens/overlay.js';
 import { TouchControls } from '../screens/touch.js';
 import { icon } from '../render/icons.js';
+import { getTheme } from '../render/background.js';
 
 export const GameState = {
   MENU: 'menu',
@@ -99,6 +103,18 @@ export class Game {
     this.pendingFinale = null;
     this.audio = new Audio(this.storage.data.soundOn);
     this.speech = new Speech(this.storage.data.soundOn);
+    // Голос собирается из трёх слоёв: банк записанных фраз, синтез как запас и
+    // очередь с приоритетами поверх обоих. Наружу торчит только this.voice.
+    this.bank = new VoiceBank(this.audio);
+    this.voice = new Voice({
+      audio: this.audio, speech: this.speech, bank: this.bank,
+      enabled: this.storage.data.soundOn,
+    });
+    this.streakLine = false;
+    // Манифест грузится в фоне: его отсутствие означает «эта копия говорит
+    // синтезом», и ждать его игра не должна ни кадра.
+    this.bank.load().then(() => this.prefetchCombatLines());
+    Overlay.onPrefetch = (texts) => this.voice.prefetch(texts);
     this.input = new Input();
     this.hud = new Hud();
 
@@ -119,6 +135,13 @@ export class Game {
     this.applyViewMode();
     // Первый клик разблокирует звук — требование браузеров.
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
+    // Свёрнутая вкладка: таймеры браузер придушивает до одного герца, и
+    // планировщик музыки проснулся бы с опозданием, высыпав накопившиеся ноты
+    // одним залпом. Плюс музыка из невидимой вкладки никому не нужна.
+    document.addEventListener('visibilitychange', () => {
+      this.audio.setVisible(!document.hidden);
+      if (document.hidden) this.voice.stop();
+    });
   }
 
   createScreens() {
@@ -133,37 +156,37 @@ export class Game {
       }),
       players: new PlayersScreen('players-overlay', {
         onPick: (count) => this.choosePlayers(count),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       difficulty: new DifficultyScreen('difficulty-overlay', {
         onPick: (id) => this.chooseDifficulty(id),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       view: new ViewScreen('view-overlay', {
         onPick: (solid) => this.chooseView(solid),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       characters: new CharactersScreen('characters-overlay', {
         onPick: (ids) => this.chooseCharacters(ids),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       weapons: new WeaponsScreen('weapons-overlay', {
         onPick: (ids) => this.chooseWeapons(ids),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       album: new AlbumScreen('album-overlay', {
         onClose: () => this.closeAlbum(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       confirm: new ConfirmScreen('confirm-overlay'),
       cards: new CardsScreen('cards-overlay', {
         onPick: (cards) => this.applyCards(cards),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       shop: new ShopScreen('shop-overlay', {
         onBuy: (itemId) => this.buyUpgrade(itemId),
         onClose: () => this.closeShop(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       end: new EndScreen('end-overlay', {
         // «ЕЩЁ РАЗ» обязан перезапускать именно то, что проиграли: после
@@ -173,12 +196,12 @@ export class Game {
           ? this.startChapter(this.chapter.id)
           : this.startRound(this.storage.data.round)),
         onMenu: () => this.goToMenu(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       journeys: new JourneysScreen('journeys-overlay', {
         onPick: (id) => this.enterJourney(id),
         onClose: () => this.goToMenu(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       map: new MapScreen('map-overlay', {
         onPlay: (chapterId) => this.startChapter(chapterId),
@@ -199,15 +222,16 @@ export class Game {
         // Переключить путешествие. Кнопки нет, пока открыто одно: мёртвый
         // контрол для нечитающего ребёнка хуже, чем его отсутствие.
         onClose: () => this.goToMenu(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
       story: new StoryScreen('story-overlay', {
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
+        onNarrate: (lines) => this.voice.script(lines),
       }),
       pause: new PauseScreen('pause-overlay', {
         onResume: () => this.togglePause(),
         onMenu: () => this.goToMenu(),
-        onSpeak: (text) => this.speech.speak(text),
+        onSpeak: (text, opts) => this.voice.label(text, opts),
       }),
     };
   }
@@ -486,7 +510,7 @@ export class Game {
 
   closeAlbum() {
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.goToMenu();
   }
 
@@ -505,7 +529,7 @@ export class Game {
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.players.hide();
     if (!this.afterPicking) {
       this.openDifficulty();
@@ -536,7 +560,7 @@ export class Game {
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.difficulty.hide();
     this.openView(); // картинка — второй шаг новой игры
   }
@@ -556,7 +580,7 @@ export class Game {
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.view.hide();
     if (solid) await this.enableView3d();
     else this.disableView3d();
@@ -598,7 +622,7 @@ export class Game {
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.characters.hide();
     // Сначала героев выбирают оба, и только потом оружие: так каждый видит,
     // кем будет играть напарник, прежде чем подбирать себе ствол.
@@ -634,7 +658,7 @@ export class Game {
     this.storage.save();
     this.audio.unlock();
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.weapons.hide();
     this.finishPicking();
   }
@@ -676,8 +700,10 @@ export class Game {
   // держать их в двух местах значило бы разойтись на первой же правке.
   launch(options) {
     this.hideAllScreens();
-    this.speech.stop(); // голос не должен договаривать поверх боя
+    this.voice.stop(); // голос не должен договаривать поверх боя
     this.audio.unlock();
+    this.speech.warmUp();
+    this.voice.resetReactions();
     this.state = GameState.PLAYING;
     this.lastOutcome = null;
     this.input.playerCount = this.playersCount;
@@ -690,8 +716,16 @@ export class Game {
       difficulty: this.getDifficulty(),
       callbacks: {
         onLevelUp: () => this.openCards(),
-        onBossAppear: (name) => this.speech.speak(`Осторожно! ${name}!`),
-        onBossRevive: () => this.speech.speak('Он встаёт!'),
+        onBossAppear: (name) => this.voice.alert(`Осторожно! ${name}!`),
+        onBossRevive: () => this.voice.alert('Он встаёт!'),
+        // Похвала и предупреждения. Round про голос ничего не знает: он лишь
+        // сообщает, что счётчик перешёл черту, а молчать или сказать — решает
+        // Voice по своему бюджету реплик.
+        onStreak: () => this.voice.react('streak', this.nextStreakLine(), { cooldown: 45, times: 2, delay: 0.25 }),
+        onLowHp: () => this.voice.react('lowHp', REACTIONS.lowHp, { oncePerRound: true, delay: 0.4 }),
+        onGoalHalf: () => this.voice.react('goalHalf', REACTIONS.goalHalf, { oncePerRound: true }),
+        onGoalLast: () => this.voice.react('goalLast', REACTIONS.goalLast, { oncePerRound: true }),
+        onBossHalf: () => this.voice.react('bossHalf', REACTIONS.bossHalf, { oncePerRound: true }),
         onVictory: (summary) => this.endRound('victory', summary),
         onDefeat: (summary) => this.endRound('defeat', summary),
       },
@@ -700,25 +734,46 @@ export class Game {
     // Камеру объёмного режима ставим на героя сразу: иначе она первую секунду
     // едет к нему из середины прошлого раунда.
     this.scene3d?.snap(this.round);
+    // Локация задаёт тональность и темп мелодии. Тему берём ту же, что и фон:
+    // у сюжетной главы она своя, у обычного раунда считается по номеру.
+    this.audio.setMusicTheme((options.theme || getTheme(options.round)).id);
     this.audio.startMusic();
+    // Бой мог начаться в свёрнутой вкладке (или страницу открыли в фоне):
+    // visibilitychange к тому моменту уже не сработает, а музыка из невидимой
+    // вкладки не нужна никому.
+    this.audio.setVisible(!document.hidden);
     this.announceRound();
   }
 
   // Что объявляется в начале боя. Попадает ровно в 2.5 секунды тишины, которые
-  // и без того предназначены «осмотреться». Голос один: speak прерывает
-  // предыдущую реплику, и две фразы подряд ребёнок услышал бы как одну
-  // оборванную. Поэтому задача главы важнее особого раунда — она объясняет,
-  // что вообще делать.
+  // и без того предназначены «осмотреться».
+  //
+  // Раньше объявление было ровно одно: speak обрывал предыдущую реплику, и две
+  // фразы подряд ребёнок услышал бы как одну оборванную, поэтому задача главы
+  // вытесняла особый раунд. Теперь у голоса есть очередь, и звучит и то и
+  // другое — по порядку, задача первой: она объясняет, что вообще делать.
   announceRound() {
     const goalAnnounce = this.chapter ? this.round.goal.announce : null;
     const modifier = this.round.modifier;
     if (modifier) this.audio.special();
-    if (goalAnnounce) {
-      this.round.showBanner(goalAnnounce);
-      this.speech.speak(goalAnnounce);
-    } else if (modifier) {
-      this.speech.speak(modifier.announce);
-    }
+    if (goalAnnounce) this.round.showBanner(goalAnnounce);
+    this.voice.script([goalAnnounce, modifier?.announce]);
+  }
+
+  // Похвала за большую пачку зомби идёт по очереди из двух фраз: одна и та же
+  // реплика во второй раз за раунд звучит заученно.
+  nextStreakLine() {
+    this.streakLine = !this.streakLine;
+    return this.streakLine ? REACTIONS.streakA : REACTIONS.streakB;
+  }
+
+  // Фразы, которые могут прозвучать в любом бою. Подтягиваем сразу после
+  // манифеста: иначе объявление босса, услышанное первым за сессию, скажет
+  // робот, пока файл летит по сети.
+  prefetchCombatLines() {
+    const lines = [...Object.values(REACTIONS), 'Он встаёт!'];
+    for (const type of CONFIG.bossTypes) lines.push(`Осторожно! ${type.name}!`);
+    this.voice.prefetch(lines);
   }
 
   // Уровень сложности, герой и бонусы считаются в upgrades.js — чистой
@@ -806,9 +861,13 @@ export class Game {
           : null,
       });
     }
-    // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Одну, даже
-    // если их несколько: список подряд он не дослушает.
-    if (medals.length) this.speech.speak(`Новая медаль! ${medals[0].name}`);
+    // Голосом — иначе для нечитающего ребёнка медаль пройдёт мимо. Больше не
+    // одну: у голоса есть очередь, и вторая фраза начинается, когда первая
+    // договорена. Но не больше двух — три названия подряд он не дослушает.
+    const lines = medals.slice(0, 2).map((m) => `Новая медаль! ${m.name}`);
+    if (outcome === 'victory') lines.unshift(REACTIONS.win);
+    this.voice.prefetch(lines);
+    this.voice.script(lines);
     this.storage.save();
   }
 
@@ -909,7 +968,7 @@ export class Game {
     this.round.particles.addFirework(player.x, player.y - 40);
     this.round.particles.addRing(player.x, player.y, 90, '#ffd93d');
     this.audio.evolve();
-    this.speech.speak(`${weapon.name}!`);
+    this.voice.announce(`${weapon.name}!`);
   }
 
   // Карточки всех игроков разом — так их отдаёт экран. Автотест из balance.md
@@ -919,7 +978,7 @@ export class Game {
     const list = Array.isArray(cards) ? cards : [cards];
     list.forEach((card, i) => this.applyCard(card, i));
     this.audio.click();
-    this.speech.stop();
+    this.voice.stop();
     this.screens.cards.hide();
     this.state = GameState.PLAYING;
   }
@@ -1017,8 +1076,9 @@ export class Game {
       this.storage.data.soundOn = on;
       this.storage.save();
       this.audio.unlock();
+      this.speech.warmUp();
       this.audio.setEnabled(on);
-      this.speech.setEnabled(on); // одна кнопка выключает и звуки, и голос
+      this.voice.setEnabled(on); // одна кнопка выключает и звуки, и голос
       sync();
     });
     sync();
@@ -1048,6 +1108,9 @@ export class Game {
 
     this.arena.width = width;
     this.arena.height = height;
+    // Половина ширины арены — это «край панорамы»: звук у самой кромки экрана
+    // уезжает в сторону на PAN_MAX, ближе к герою — пропорционально меньше.
+    this.audio.panHalf = width / 2;
     this.round?.onArenaResize(this.arena);
     this.scene3d?.setArena(this.arena);
     // Поле изменилось — камере незачем доезжать до героя через пол-экрана.

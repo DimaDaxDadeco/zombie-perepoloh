@@ -17,6 +17,7 @@ import { Overlay } from './overlay.js';
 import { albumProgress } from '../core/album.js';
 import { achievementsProgress } from '../core/achievements.js';
 import { icon } from '../render/icons.js';
+import { describeSticker } from '../core/phrases.js';
 
 const CARD_SIZE = 110;
 
@@ -150,16 +151,3 @@ export class AlbumScreen extends Overlay {
   }
 }
 
-function describeSticker(sticker) {
-  if (sticker.kind === 'medals') {
-    // Закрытая медаль говорит УСЛОВИЕ, а не «???»: иначе для нечитающего
-    // ребёнка её попросту нет.
-    return sticker.open
-      ? `${sticker.spec.name}. ${sticker.spec.about}`
-      : `${sticker.spec.name}. ${sticker.spec.hint}`;
-  }
-  // Закрытая карточка тоже говорит: иначе ребёнок нажимает динамик, и ничего
-  // не происходит.
-  if (!sticker.open) return 'Этого зомби ты ещё не встречал. Найди его в игре!';
-  return `${sticker.spec.name}. ${sticker.spec.about}`;
-}
