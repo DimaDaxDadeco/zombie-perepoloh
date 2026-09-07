@@ -613,8 +613,12 @@ const SHOTS = {
   Bubble: { flat: true },
   Bee: { color: '#ffd93d', build: bee },
   SpiderMinion: { color: '#2a2320', build: spider },
-  Batmobile: { color: '#2a2750', build: car },
+  Batmobile: { color: '#1b1e26', build: car },
 };
+
+const PLATE_BEVEL = 0.03; // доли радиуса: только чтобы грань поймала свет
+
+const SHOT_MIN_STEP = 0.05; // пикселей за кадр: ниже — дрожание, а не полёт
 
 const DEFAULT_SHOT = { color: '#4fb3ff', build: blob };
 
@@ -625,18 +629,42 @@ export function buildShot(shot, materialFor) {
   const paint = (color, alpha) => materialFor(color, alpha ?? spec.alpha ?? 1);
   spec.build(node, paint(spec.color), paint);
 
+  const flight = { x: shot.x, y: shot.y, yaw: 0 };
+
   return {
     node,
     kind: 'shot',
     tick: (entity, phase) => {
-      // Летящее разворачиваем по скорости, вертящееся крутим. У навесных
-      // скорости нет вовсе — тогда оставляем как есть.
+      // Летящее разворачиваем по курсу, вертящееся крутим.
       // Своё вращение у снаряда важнее общего: снежинка крутится по
       // собственному spin, и в плоской версии по нему же.
       if (spec.spins) node.rotation.y = entity.spin ?? phase * 6;
-      else if (entity.vx || entity.vy) node.rotation.y = Math.atan2(entity.vx, entity.vy);
+      else node.rotation.y = shotHeading(entity, flight);
     },
   };
+}
+
+// Куда снаряд смотрит носом. Курс приходится собирать из трёх разных полей:
+// прямые снаряды хранят скорость (vx/vy), самонаводящиеся — угол (морковка,
+// пчела, паучок доворачивают его каждый кадр), бэтмобиль — только сторону
+// (dir). Морковка летела боком именно поэтому: vx/vy у Rocket нет вовсе,
+// проверка их не находила, и снаряд оставался в стартовом развороте.
+//
+// Последним средством — фактическое смещение за кадр: оно есть у чего угодно
+// движущегося, и новый класс снаряда не окажется снова заклиненным. Курс
+// запоминаем: на месте зависший снаряд должен смотреть туда же, куда летел.
+function shotHeading(entity, flight) {
+  const dx = entity.x - flight.x;
+  const dy = entity.y - flight.y;
+  flight.x = entity.x;
+  flight.y = entity.y;
+  // atan2(x, глубина): нос модели смотрит в +z, как у морковки и бэтмобиля.
+  if (entity.vx || entity.vy) flight.yaw = Math.atan2(entity.vx, entity.vy);
+  else if (typeof entity.angle === 'number') {
+    flight.yaw = Math.atan2(Math.cos(entity.angle), Math.sin(entity.angle));
+  } else if (entity.dir) flight.yaw = Math.atan2(entity.dir, 0);
+  else if (Math.hypot(dx, dy) > SHOT_MIN_STEP) flight.yaw = Math.atan2(dx, dy);
+  return flight.yaw;
 }
 
 // Капля воды: шарик с оттянутым назад хвостиком.
@@ -805,18 +833,94 @@ function cake(node, material, paint) {
 // Бэтмобиль: длинный корпус, кабина, острый нос и колёса. Колёса тут не
 // украшение — без них скруглённый корпус читается просто тёмным бруском, а
 // это машина Бэтмена, ребёнок её ждёт.
+// Бэтмобиль. Плоская версия рисует его в профиль (drawBatmobile: клин,
+// плавник, стекло, фара), но камера в объёме смотрит СВЕРХУ — и узнают
+// машину по плану: острый нос, узкая талия и раздвоенный хвост крыльями
+// летучей мыши. Поэтому корпус здесь — не выдавленный профиль, а выдавленный
+// СИЛУЭТ СВЕРХУ, двумя ярусами: широкое основание и сужённая надстройка.
+// Первая попытка была профилем, и с высоты получался фургончик.
+//
+// Плавник, стекло, фары и сопло добавлены сверх плана: они дочитывают машину
+// с земли, когда камеру опускают мышкой.
 function car(node, material, paint) {
-  node.add(box(1.5, 0.7, 3.2, 0.12, material, 0, 0.1, 0));
-  node.add(box(1.05, 0.6, 1.2, 0.12, material, 0, 0.65, -0.25));
-  node.add(cone(0.6, 1, material, 0, 0.1, 1.8, Math.PI / 2));   // нос
-  const tyre = paint('#141220');
+  const dark = paint('#0d0f14');
+  // Корпус одной пластиной: два яруса выглядели горой чёрных обломков, а
+  // машина должна читаться одним силуэтом. Низкая и длинная — этим бэтмобиль
+  // и отличается от машинки из «Объектов».
+  node.add(planPlate(CAR_PLAN, 1, 0.26, material, -0.14));
+  // Хребет: узкая полоса от носа к плавнику. Она и делает плоскую пластину
+  // машиной, а не кляксой.
+  node.add(sidePlate([[-0.66, 0.0], [-0.58, 0.16], [0.5, 0.16], [0.86, -0.02]], 0.3, material));
+  // Плавник на корме, скошенный назад: им машина опознаётся, когда камеру
+  // опускают к земле.
+  node.add(sidePlate([[-0.95, 0.02], [-0.7, 0.5], [-0.45, 0.04]], 0.1, material));
+  // Стекло кабины скошенным клином, а не коробкой: коробка лежала на крыше
+  // отдельным синим кубиком.
+  node.add(sidePlate([[-0.28, 0.14], [-0.02, 0.34], [0.36, 0.12]], 0.32, paint('#3f7fae')));
+  // Фары по краям носа.
+  for (const side of [-1, 1]) node.add(ball(0.08, paint('#ffe14d'), side * 0.13, 0.02, 1.0));
+  // Сопло турбины: горячее кольцо в корме. Сверху это единственное яркое
+  // пятно на чёрной машине — по нему видно, где у неё зад.
+  const jet = cylinder(0.15, 0.13, paint('#ff7a2b'), 0, -0.02, -1.0);
+  jet.rotation.x = Math.PI / 2;
+  node.add(jet);
+  // Колёса прижаты к борту: расставленные широко превращали машину в багги.
+  const hub = paint('#3a3f4a');
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const wheel = cylinder(0.42, 0.3, tyre, sx * 0.78, -0.15, sz * 1);
-      wheel.rotation.z = Math.PI / 2;
-      node.add(wheel);
+    for (const sz of [-0.5, 0.45]) {
+      const tyre = cylinder(0.24, 0.14, dark, sx * 0.34, -0.16, sz);
+      tyre.rotation.z = Math.PI / 2;
+      node.add(tyre);
+      const disc = cylinder(0.1, 0.16, hub, sx * 0.37, -0.16, sz);
+      disc.rotation.z = Math.PI / 2;
+      node.add(disc);
     }
   }
+}
+
+// Силуэт сверху: нос впереди (+z), к корме крылья с вырезом между ними.
+// Пары — [поперёк, вдоль]; вторая половина достраивается зеркально, чтобы
+// машина не оказалась кривой от опечатки в одной точке.
+const CAR_PLAN = [
+  [0, 1.18], [0.2, 0.75], [0.3, 0.15], [0.36, -0.45],
+  [0.8, -0.7], [0.46, -0.82], [0.52, -1.08], [0.13, -0.92],
+];
+
+// Пластина по силуэту сверху: контур задаётся половиной, отражается и
+// выдавливается вниз на height.
+function planPlate(plan, scale, height, material, y) {
+  const half = plan.map(([x, z]) => [x * scale, z * scale]);
+  const shape = new Shape();
+  shape.moveTo(half[0][0], half[0][1]);
+  for (const [x, z] of half.slice(1)) shape.lineTo(x, z);
+  for (const [x, z] of [...half].reverse()) shape.lineTo(-x, z);
+  shape.closePath();
+  const mesh = new Mesh(extrude(shape, height, PLATE_BEVEL), material);
+  mesh.rotation.x = Math.PI / 2;   // контур ложится в плоскость земли
+  mesh.position.set(0, y, 0);
+  return mesh;
+}
+
+// Пластина по профилю «вид сбоку»: точки задаются парами [вдоль машины,
+// вверх], выдавливание идёт поперёк. extrude() центрирует геометрию, поэтому
+// деталь возвращаем на её место в профиле сами — иначе каждая часть съезжала
+// бы к нулю и машина рассыпалась.
+//
+// Фаска задаётся МАЛЕНЬКОЙ и явно: по умолчанию extrude() берёт её от
+// толщины, а поперёк кузова толщина большая — фаска раздувала профиль на
+// полтора десятых радиуса в каждую сторону, и клин с плавником превращался в
+// скруглённый ящик.
+function sidePlate(points, width, material, bevel = PLATE_BEVEL) {
+  const shape = new Shape();
+  points.forEach(([z, y], i) => (i ? shape.lineTo(z, y) : shape.moveTo(z, y)));
+  shape.closePath();
+  const mesh = new Mesh(extrude(shape, width, bevel), material);
+  mesh.rotation.y = -Math.PI / 2;   // ось профиля (+x) смотрит вперёд, в +z
+  const zs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  mesh.position.set(0, (Math.min(...ys) + Math.max(...ys)) / 2,
+    (Math.min(...zs) + Math.max(...zs)) / 2);
+  return mesh;
 }
 
 function blob(node, material) {
