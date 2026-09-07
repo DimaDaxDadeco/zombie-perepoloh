@@ -15,7 +15,8 @@
 // константы FLOOR_* рядом с пропорциями.
 
 import {
-  Group, Mesh, SphereGeometry, CylinderGeometry, ConeGeometry, Shape,
+  Group, Mesh, SphereGeometry, CylinderGeometry, ConeGeometry, TorusGeometry,
+  PlaneGeometry, CanvasTexture, MeshBasicMaterial, LinearFilter, Shape, DoubleSide,
 } from 'three';
 import { roundedRect, starShape, boltShape, extrude } from './shapes.js';
 
@@ -34,11 +35,18 @@ const FLAT_DEPTH = 0.12;
 // Размах шага и рук. Тот же источник, что в 2D: sin(walkPhase).
 const LEG_SWING = 0.5;
 const ARM_SWING = 0.35;
+const CAPE_FLARE = 0.22;   // насколько плащ откинут назад в покое
+const CAPE_WAVE = 0.17;
 
 const BODY_WIDTH = { normal: 1, thin: 0.82, fat: 1.28 };
 const EYE_WHITE = '#ffffff';
 const DARK = '#2a2320';
 const DEFAULT_SKIN = '#c8c8c8';
+// Рот — половинка тора: дуга, открытая вверх, читается улыбкой, вниз —
+// недовольством. Лежит в плоскости лица, поэтому смотрит туда же, куда глаза.
+const MOUTH_GEOMETRY = new TorusGeometry(1, 0.17, 5, 14, Math.PI);
+const CAPE_LINKS = 3;
+const CAPE_LINK_LEN = 0.52;
 
 // --- Сборка ---
 
@@ -89,12 +97,7 @@ function buildHero(look, materialFor) {
   const bodyW = 1 * build;
   node.add(box(bodyW, 1.0, BODY_DEPTH, 0.3, materialFor(shirtColor), 0, up(0.1), 0));
 
-  if (look.cape) {
-    const cape = box(bodyW * 0.95, 1.15, FLAT_DEPTH, 0.2, materialFor(look.cape),
-      0, up(0.15), -BODY_DEPTH / 2 - FLAT_DEPTH * 0.6);
-    cape.rotation.x = -0.12;   // плащ отстаёт от спины, а не приклеен к ней
-    node.add(cape);
-  }
+  if (look.cape) addCape(node, parts, look.cape, bodyW, up(-0.42), materialFor);
 
   addChestEmblem(node, look, bodyW, up(0.15), materialFor);
 
@@ -112,6 +115,10 @@ function buildHero(look, materialFor) {
   head.position.set(0, up(-0.85), 0);
   head.add(ball(0.52, materialFor(look.skin)));
   addEyes(head, 0.52, 0.16, materialFor);
+  // Маска закрывает лицо целиком и рисует свои глаза — рот под ней не нужен,
+  // это же правило и в drawFace.
+  if (!look.mask) addMouth(head, 0.52, materialFor);
+  if (look.hairStyle === 'ears') addWhiskers(head, 0.52, materialFor);
   addHair(head, look.hairStyle, look.hair, materialFor);
   if (look.hat) addBeanie(head, look.hat, materialFor);
   parts.head = head;
@@ -160,8 +167,15 @@ function buildZombie(look, materialFor) {
     addHair(head, look.hair, look.hair === 'bald' ? '#dfe3e0' : shade(look.skin, -0.35),
       materialFor);
   }
-  // Глаза врастопырку и разного размера — это зомби и в 2D, и здесь.
-  addEyes(head, 0.5, 0.15, materialFor, { skew: true });
+  // Маска охранника закрывает лицо целиком и рисует свой знак — глаза и рот
+  // под ней не нужны, ровно как в drawBossFace.
+  const masked = look.face === 'guardmask';
+  if (!masked) {
+    // Глаза врастопырку и разного размера, ухмылка набок с одним зубом — это
+    // зомби и в 2D, и здесь.
+    addEyes(head, 0.5, 0.15, materialFor, { skew: true });
+    if (look.head !== 'pumpkin') addMouth(head, 0.5, materialFor, { tilt: 0.22, tooth: true });
+  }
   if (look.helmet) addHelmet(head, look.helmet, materialFor);
   // Шляпа босса приходит СТРОКОЙ (cylinder, crown и прочие), а у героя это
   // объект с цветом и буквой. По типу их и различаем: заводить второе поле
@@ -173,10 +187,37 @@ function buildZombie(look, materialFor) {
     // версии у каждого своя примета.
     addBossChest(node, look, 0.96 * width, up(0.05), materialFor);
     if (look.back === 'spiderlegs') addSpiderLegs(node, look, up(0.1), materialFor);
-    if (look.face) addMask(head, look.accent || DARK, materialFor);
+    if (look.face === 'guardmask') addGuardMask(head, materialFor);
+    else if (look.face) addMask(head, look.accent || DARK, materialFor);
   }
   if (look.mask) addMask(head, look.mask, materialFor);
   if (look.beard) node.add(box(0.5, 0.32, 0.2, 0.1, materialFor(look.beard), 0, up(-0.45), 0.36));
+
+  // Тросточка деда: палка сбоку и загнутая ручка. В плоской версии по ней он
+  // и опознаётся — без неё это просто зелёный старик.
+  if (look.cane) {
+    const wood = materialFor(look.cane);
+    node.add(cylinder(0.07, 1.5, wood, 0.95, up(0.5), 0.2));
+    const grip = new Mesh(new TorusGeometry(0.15, 0.07, 5, 10, Math.PI), wood);
+    grip.position.set(0.88, up(-0.22), 0.2);
+    grip.rotation.z = -Math.PI / 2;
+    node.add(grip);
+  }
+
+  // Ролики: платформа и два колеса под каждой ногой. Ноги у роликового зомби
+  // не шагают (stride: 0) — он катится, и ролики это объясняют.
+  if (look.skates) {
+    const board = materialFor(look.skates);
+    const wheel = materialFor('#2f3550');
+    for (const side of [-1, 1]) {
+      node.add(box(0.42, 0.12, 0.5, 0.05, board, side * 0.26, up(1.02), 0.05));
+      for (const at of [-0.16, 0.2]) {
+        const w = cylinder(0.09, 0.1, wheel, side * 0.26, up(1.16), at);
+        w.rotation.z = Math.PI / 2;
+        node.add(w);
+      }
+    }
+  }
   parts.head = head;
   node.add(head);
 
@@ -215,6 +256,7 @@ function buildBeast(look, materialFor) {
   head.add(ball(0.09, materialFor(DARK), 0, -0.06, 0.32 + snout));   // нос
   addBeastEars(head, look.beast, skin);
   addEyes(head, 0.4, 0.12, materialFor);
+  addMouth(head, 0.4, materialFor, { width: 0.34 });
   parts.head = head;
   node.add(head);
 
@@ -253,14 +295,20 @@ function addBeastEars(head, beast, material) {
 
 function buildBalloon(look, materialFor) {
   const node = new Group();
+  // Покачивание вешаем на ВНУТРЕННИЙ узел. Раньше оно двигало сам node, а его
+  // позицией распоряжается сцена — шарик уезжал из своей клетки и на стенде
+  // пропадал вовсе.
+  const float = new Group();
+  node.add(float);
   const color = look.balloon || look.clothes || look.skin;
-  node.add(ball(0.85, materialFor(color), 0, 1.15, 0));
-  node.add(cone(0.16, 0.3, materialFor(color), 0, 0.35, 0));
+  float.add(ball(0.85, materialFor(color), 0, 1.15, 0));
+  float.add(cone(0.16, 0.3, materialFor(color), 0, 0.35, 0));
   const head = new Group();
   head.position.set(0, 1.3, 0);
   addEyes(head, 0.85, 0.16, materialFor);
-  node.add(head);
-  return { node, parts: { legs: [], arms: [], head, float: true }, kind: 'balloon' };
+  addMouth(head, 0.85, materialFor, { width: 0.3 });
+  float.add(head);
+  return { node, parts: { legs: [], arms: [], head, float }, kind: 'balloon' };
 }
 
 function buildSnowman(look, materialFor) {
@@ -335,12 +383,14 @@ function buildHankey(look, materialFor) {
 // Дрон-питомец: корпус, глаз и винт. Ног нет, поэтому висит над землёй.
 function buildDrone(look, materialFor) {
   const node = new Group();
+  const float = new Group();
+  node.add(float);
   const body = materialFor(look.body || '#8fa3b8');
-  node.add(ball(0.5, body, 0, 1.2, 0));
-  node.add(ball(0.2, materialFor(look.eye || '#4fc3f7'), 0, 1.2, 0.42));
+  float.add(ball(0.5, body, 0, 1.2, 0));
+  float.add(ball(0.2, materialFor(look.eye || '#4fc3f7'), 0, 1.2, 0.42));
   const rotor = cylinder(0.62, 0.05, materialFor('#cfd8e3'), 0, 1.72, 0);
-  node.add(rotor);
-  return { node, parts: { legs: [], arms: [], rotor, float: true }, kind: 'drone' };
+  float.add(rotor);
+  return { node, parts: { legs: [], arms: [], rotor, float }, kind: 'drone' };
 }
 
 // --- Объекты целей ---
@@ -610,16 +660,24 @@ function tomato(node, material, paint) {
   node.add(cylinder(0.12, 0.5, green, 0, 1.05, 0));
 }
 
-// Огненный шар: раскалённое ядро в облаке пламени и короткий хвост следом.
-// Именно шар, а не язык пламени: конус читался наконечником стрелы, а из
-// огнемёта должен лететь огонь.
+// Огонь. Не шар: языки пламени, разной длины и с разным наклоном, вокруг
+// светлого ядра. Шар читался мячиком — а из огнемёта должно лететь пламя,
+// и узнаётся оно именно по рваному краю.
 function fireball(node, material, paint) {
-  node.add(ball(1, material, 0, 0, 0));
-  node.add(ball(0.68, paint('#ffb03b'), 0, 0, 0.08));
-  node.add(ball(0.38, paint('#ffe14d'), 0, 0, 0.14));
-  // Хвост: пламя тянется за шаром, и по нему видно, куда он летит.
-  const tail = cone(0.62, 1.5, paint('#ff7a2b', 0.7), 0, 0, -1, -Math.PI / 2);
-  node.add(tail);
+  node.add(ball(0.55, paint('#ffe14d'), 0, 0, 0.1));
+  node.add(ball(0.8, paint('#ffb03b', 0.9), 0, 0, -0.1));
+  // Языки: назад и в стороны, разной длины — ровный веер выглядит цветком.
+  const tongues = [
+    [0, 0.55, -0.2, 2.1], [0, -0.5, -0.3, 1.7],
+    [0.6, 0.1, -0.2, 1.9], [-0.6, 0.15, -0.25, 1.6],
+    [0, 0, 0, 2.4],
+  ];
+  tongues.forEach(([x, y, z, len], i) => {
+    const tongue = cone(0.42 - i * 0.03, len, material, x, y, z - len * 0.35, -Math.PI / 2);
+    tongue.rotation.z = x * 0.5;
+    tongue.rotation.x += y * 0.5;
+    node.add(tongue);
+  });
 }
 
 // Ледяной шип.
@@ -696,10 +754,11 @@ function spider(node, material, paint) {
   }
 }
 
-// Бумеранг: два колена под углом.
+// Бумеранг: два колена под углом. Тонкий и небольшой — он и в плоской игре
+// пластинка, а объёмный брус в две длины радиуса выглядел бревном.
 function boomerang(node, material) {
   for (const side of [-1, 1]) {
-    const arm = box(0.5, 0.3, 2, 0.15, material, side * 0.55, 0, 0);
+    const arm = box(0.34, 0.2, 1.25, 0.1, material, side * 0.34, 0, 0);
     arm.rotation.y = side * 0.6;
     node.add(arm);
   }
@@ -769,7 +828,7 @@ function webWad(node, material, paint) {
 function addEyes(head, headRadius, eyeRadius, materialFor, { skew = false } = {}) {
   const white = materialFor(EYE_WHITE);
   const dark = materialFor(DARK);
-  const z = headRadius * 0.82;
+  const z = faceDepth(headRadius, headRadius * 0.1) * 0.9;
   const spread = headRadius * 0.36;
   const pairs = skew
     ? [[-spread, headRadius * 0.1, eyeRadius], [spread * 0.95, headRadius * 0.16, eyeRadius * 0.78]]
@@ -778,6 +837,103 @@ function addEyes(head, headRadius, eyeRadius, materialFor, { skew = false } = {}
     head.add(ball(r, white, x, y, z));
     head.add(ball(r * 0.5, dark, x, y, z + r * 0.62));
   }
+}
+
+// Плащ из трёх звеньев, подвешенных друг за друга. Плоская панель за спиной
+// не годится: в 2D плащ ВОЛНУЕТСЯ — его контур пересчитывается от walkPhase,
+// и это половина всего образа Супер-мэна и Бэтмена. Цепочка звеньев даёт то
+// же самое: качается каждое, и волна бежит сверху вниз.
+function addCape(node, parts, color, bodyW, topY, materialFor) {
+  const mat = materialFor(color);
+  const links = [];
+  let parent = node;
+  for (let i = 0; i < CAPE_LINKS; i++) {
+    const link = new Group();
+    if (i === 0) link.position.set(0, topY, -BODY_DEPTH / 2 - FLAT_DEPTH * 0.5);
+    else link.position.set(0, -CAPE_LINK_LEN, 0);
+    // Книзу плащ сужается — иначе он висит доской.
+    const w = bodyW * (1.02 - i * 0.13);
+    link.add(box(w, CAPE_LINK_LEN, FLAT_DEPTH, 0.08, mat, 0, -CAPE_LINK_LEN / 2, 0));
+    parent.add(link);
+    parent = link;
+    links.push(link);
+  }
+  parts.cape = links;
+}
+
+// Надпись на груди — настоящим текстом на холсте. Выдавить её фигурой нельзя:
+// «67» Супер-Егора на игровом размере превращается в две кляксы, а ребёнок
+// узнаёт героя именно по ней.
+const textures = new Map();
+
+function textPlate(text, color) {
+  const key = `${text}|${color}`;
+  if (textures.has(key)) return textures.get(key);
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = color;
+  ctx.font = `bold ${Math.round(size * 0.62)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, size / 2, size / 2);
+  const texture = new CanvasTexture(canvas);
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  const material = new MeshBasicMaterial({ map: texture, transparent: true, side: DoubleSide });
+  textures.set(key, material);
+  return material;
+}
+
+// Рот. В плоской игре он есть у всех — у героя дуга под глазами, у зомби
+// кривая ухмылка с зубом, — и без него лицо выходит пустым.
+//
+// tilt перекашивает ухмылку, tooth добавляет зуб: ровно то, чем зомби
+// отличается от героя, и ровно то, что рисует drawZombie.
+function addMouth(head, headRadius, materialFor, { tilt = 0, tooth = false, width = 0.42 } = {}) {
+  const y = -headRadius * 0.3;
+  // Глубину считаем по САМОЙ сфере, а не долей радиуса: голова круглая, и на
+  // уровне рта её поверхность ближе к центру, чем на уровне глаз. Первый
+  // вариант с фиксированной долей утопил рты внутрь головы, и лица остались
+  // без них.
+  const z = faceDepth(headRadius, y);
+  const mouth = new Mesh(MOUTH_GEOMETRY, materialFor(DARK));
+  mouth.scale.setScalar(headRadius * width);
+  mouth.position.set(0, y, z);
+  // Полоборота: дуга рождается сверху, а улыбка — это дуга снизу.
+  mouth.rotation.z = Math.PI + tilt;
+  head.add(mouth);
+  if (tooth) {
+    head.add(box(headRadius * 0.16, headRadius * 0.22, 0.1, 0.03,
+      materialFor('#ffffff'), 0, y + headRadius * 0.06, z + 0.02));
+  }
+}
+
+// Где поверхность головы на заданной высоте. Чуть снаружи — иначе деталь
+// наполовину тонет в сфере и выглядит вдавленной.
+function faceDepth(headRadius, y) {
+  const inside = Math.max(0.02, headRadius * headRadius - y * y);
+  return Math.sqrt(inside) * 0.99;
+}
+
+// Усы и носик кота. В плоской версии их рисует drawWhiskers, и именно по ним
+// кот отличается от медведя — круглых ушей для этого мало.
+function addWhiskers(head, headRadius, materialFor) {
+  const hair = materialFor('#6b5540');
+  for (const side of [-1, 1]) {
+    for (const dy of [-0.06, 0.06]) {
+      const y = headRadius * (dy - 0.12);
+      const whisker = box(headRadius * 0.66, 0.05, 0.05, 0.02, hair,
+        side * headRadius * 0.6, y, faceDepth(headRadius, y) * 0.8);
+      whisker.rotation.z = -side * dy * 2.4;
+      head.add(whisker);
+    }
+  }
+  const noseY = -headRadius * 0.12;
+  head.add(cone(headRadius * 0.13, headRadius * 0.16, materialFor('#ff9db1'),
+    0, noseY, faceDepth(headRadius, noseY), Math.PI));
 }
 
 // Причёски. Те же варианты, что в 2D: список закрытый, и незнакомое значение
@@ -806,8 +962,18 @@ function addHair(head, style, color, materialFor) {
       head.add(cylinder(0.04, 0.36, mat, 0, 0.66, 0));
       head.add(ball(0.12, mat, 0, 0.88, 0));
       break;
+    // Кошачьи уши ОСТРЫЕ и с розовой серединкой. Круглые шарики читались
+    // медвежьими — это была главная причина, по которой Котик не выглядел
+    // котом.
     case 'ears':
-      for (const side of [-1, 1]) head.add(ball(0.19, mat, side * 0.42, 0.36, 0));
+      for (const side of [-1, 1]) {
+        const ear = cone(0.22, 0.52, mat, side * 0.32, 0.5, 0);
+        ear.rotation.z = -side * 0.3;
+        head.add(ear);
+        const inner = cone(0.12, 0.34, materialFor('#ff9db1'), side * 0.32, 0.52, 0.06);
+        inner.rotation.z = -side * 0.3;
+        head.add(inner);
+      }
       break;
     case 'pikaears':
       for (const side of [-1, 1]) {
@@ -823,10 +989,13 @@ function addHair(head, style, color, materialFor) {
         head.add(ear);
       }
       break;
+    // Ирокез: гребень колючек по центру головы, откинутый назад. Раньше это
+    // был веер вбок — со спины он читался, а спереди пропадал совсем.
     case 'quills':
-      for (let i = -2; i <= 2; i++) {
-        const q = cone(0.14, 0.7, mat, i * 0.16, 0.32, -0.34);
-        q.rotation.x = 1.1;
+      for (let i = 0; i < 4; i++) {
+        const len = 0.85 - i * 0.12;
+        const q = cone(0.17, len, mat, 0, 0.46 - i * 0.06, -0.1 - i * 0.24);
+        q.rotation.x = 0.55 + i * 0.12;   // чем дальше к затылку, тем ниже
         head.add(q);
       }
       break;
@@ -837,7 +1006,15 @@ function addHair(head, style, color, materialFor) {
       head.add(squash(halfBall(0.55, mat, 0, 0.18, 0), 0.62));
       head.add(ball(0.22, mat, 0, 0.6, -0.18));
       break;
+    // Лысина с двумя кустиками над ушами — дедовская классика, и в плоской
+    // версии это отдельная ветка, а не отсутствие волос.
     case 'bald':
+      for (const side of [-1, 1]) {
+        const tuft = ball(0.16, mat, side * 0.42, 0.16, 0);
+        tuft.scale.set(1, 0.62, 0.8);
+        head.add(tuft);
+      }
+      break;
     default:
       break;
   }
@@ -946,6 +1123,13 @@ function addBossChest(node, look, bodyW, y, materialFor) {
     case 'bolt':
       node.add(flat(boltShape(0.3), accent, 0, y, z));
       break;
+    case 'belt': {
+      // Пояс с пряжкой: у охранника на комбинезоне больше ничего нет, и
+      // раньше он оставался единственным боссом без приметы на груди.
+      node.add(flat(roundedRect(bodyW, 0.18, 0.06), materialFor('#2b2b3d'), 0, y - 0.32, z));
+      node.add(flat(roundedRect(0.22, 0.24, 0.06), accent, 0, y - 0.32, z + 0.03));
+      break;
+    }
     case 'badge':
       node.add(flat(roundedRect(0.42, 0.14, 0.05), materialFor('#ffffff'), 0, y, z));
       node.add(flat(roundedRect(0.14, 0.42, 0.05), materialFor('#ffffff'), 0, y, z));
@@ -967,6 +1151,19 @@ function addSpiderLegs(node, look, y, materialFor) {
       node.add(leg);
     }
   }
+}
+
+// Маска охранника: тёмный щиток во всё лицо, съехавший набок, и светлый
+// треугольник-знак. Щиток чуть БОЛЬШЕ головы и сдвинут вперёд — вписанный в
+// сферу, он оказывался внутри неё и пропадал совсем.
+function addGuardMask(head, materialFor) {
+  const shell = ball(0.54, materialFor('#1c1a2e'), 0, 0.0, 0.12);
+  shell.scale.set(0.96, 1.02, 0.72);
+  shell.rotation.z = 0.08;
+  head.add(shell);
+  const sign = flat(triangleShape(0.22), materialFor('#f2f2f7'), 0, 0.0, 0.53);
+  sign.rotation.z = -Math.PI / 2;
+  head.add(sign);
 }
 
 function addHelmet(head, color, materialFor) {
@@ -992,6 +1189,10 @@ function addChestEmblem(node, look, bodyW, y, materialFor) {
     node.add(flat(boltShape(0.3), materialFor('#ffd93d'), 0, y, z));
   } else if (chest === 'spider') {
     node.add(flat(starShape(0.3, 8, 0.3), materialFor(DARK), 0, y, z));
+  } else if (chest === 'text' && look.chestText) {
+    const plate = new Mesh(new PlaneGeometry(0.62 * bodyW, 0.62 * bodyW), textPlate(look.chestText, '#1c1c1c'));
+    plate.position.set(0, y, z + 0.02);
+    node.add(plate);
   } else {
     node.add(flat(roundedRect(0.5 * bodyW, 0.34, 0.08), white, 0, y, z));
   }
@@ -1017,9 +1218,15 @@ export function poseFigure(figure, walkPhase) {
   if (kind === 'hero') {
     parts.arms.forEach((arm, i) => { arm.rotation.x = swing * ARM_SWING * (i ? 1 : -1); });
   }
+  // Волна по плащу: каждое звено отстаёт от предыдущего, и складка бежит
+  // сверху вниз. Постоянный отклон назад — чтобы плащ не прилипал к спине.
+  parts.cape?.forEach((link, i) => {
+    link.rotation.x = -CAPE_FLARE - Math.sin(walkPhase * 1.7 - i * 0.8) * CAPE_WAVE;
+  });
   if (parts.float) {
-    // Шарик не шагает, он покачивается.
-    figure.node.position.y = Math.sin(walkPhase * 0.6) * 0.12;
+    // Шарик не шагает, он покачивается. Двигаем внутренний узел: позиция
+    // самой фигурки принадлежит сцене.
+    parts.float.position.y = Math.sin(walkPhase * 0.6) * 0.12;
   }
 }
 
