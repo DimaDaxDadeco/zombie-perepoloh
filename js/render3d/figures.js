@@ -64,6 +64,7 @@ export function buildFigure(look = {}, kind, materialFor) {
   // beast, без shape, потому что в плоской игре форму знает сам класс питомца
   // и признак ему не нужен. Без этой ветки собака выходила человеком.
   if (kind === 'beast' || look.shape === 'beast') return buildBeast(look, materialFor);
+  if (kind === 'thief') return buildZombie(look, materialFor, { thief: true });
   if (look.shape === 'balloon') return buildBalloon(look, materialFor);
   if (look.shape === 'snow') return buildSnowman(look, materialFor);
   if (look.shape === 'golem') return buildGolem(look, materialFor);
@@ -133,7 +134,7 @@ function buildHero(look, materialFor) {
 
 // Зомби. Из drawZombie: руки вытянуты ВПЕРЁД — это его главная примета, и в
 // объёме она наконец работает буквально, а не намёком.
-function buildZombie(look, materialFor) {
+function buildZombie(look, materialFor, { thief = false } = {}) {
   const node = new Group();
   const parts = { legs: [], arms: [] };
   const width = BODY_WIDTH[look.body] || 1;
@@ -179,6 +180,14 @@ function buildZombie(look, materialFor) {
     // зомби и в 2D, и здесь.
     addEyes(head, 0.5, 0.15, materialFor, { skew: true });
     if (look.head !== 'pumpkin') addMouth(head, 0.5, materialFor, { tilt: 0.22, tooth: true });
+  }
+  // Маска воришки — ЧАСТЬ ГОЛОВЫ, а не наклейка поверх фигурки. Наклейка
+  // всегда повёрнута к зрителю, а голова — по направлению бега: стоило
+  // воришке отвернуться, и маска оказывалась на затылке.
+  if (thief) {
+    addThiefMask(head, 0.5, materialFor);
+    // Мешок с добычей за спиной — вторая его примета.
+    node.add(ball(0.42, materialFor('#c9a23c'), 0, up(-0.35), -BODY_DEPTH / 2 - 0.28));
   }
   if (look.helmet) addHelmet(head, look.helmet, materialFor);
   // Шляпа босса приходит СТРОКОЙ (cylinder, crown и прочие), а у героя это
@@ -911,20 +920,37 @@ function addMouth(head, headRadius, materialFor, { tilt = 0, tooth = false, widt
   // вариант с фиксированной долей утопил рты внутрь головы, и лица остались
   // без них.
   const z = faceDepth(headRadius, y);
-  const mouth = new Mesh(MOUTH_GEOMETRY, materialFor(DARK));
-  mouth.scale.setScalar(headRadius * width);
-  mouth.position.set(0, y, z);
-  // Полоборота: дуга рождается сверху, а улыбка — это дуга снизу.
-  mouth.rotation.z = Math.PI + tilt;
-  head.add(mouth);
-  if (tooth) {
-    // Два зуба, а не один: одинокий читался как блик, а пара сразу говорит
-    // «щербатая ухмылка». Верхний крупнее — они и растут неровно.
-    const white = materialFor('#ffffff');
-    head.add(box(headRadius * 0.2, headRadius * 0.26, 0.12, 0.03, white,
-      -headRadius * 0.13, y + headRadius * 0.08, z + 0.03));
-    head.add(box(headRadius * 0.16, headRadius * 0.2, 0.12, 0.03, white,
-      headRadius * 0.15, y + headRadius * 0.05, z + 0.03));
+
+  if (!tooth) {
+    // Улыбка — дуга под глазами. Полоборота: тор рождается сверху, а улыбка
+    // это дуга снизу.
+    const mouth = new Mesh(MOUTH_GEOMETRY, materialFor(DARK));
+    mouth.scale.setScalar(headRadius * width);
+    mouth.position.set(0, y, z);
+    mouth.rotation.z = Math.PI + tilt;
+    head.add(mouth);
+    return;
+  }
+
+  // Щербатая ухмылка зомби — ОТКРЫТЫЙ рот: тёмное пятно, и зубы внутри него.
+  // Раньше зубы висели поверх тонкой дуги и читались белыми пятнами на лице,
+  // а не зубами во рту: у дуги нет внутренней области, куда их поставить.
+  const mouthW = headRadius * 0.62;
+  const mouthH = headRadius * 0.34;
+  const cavity = flat(roundedRect(mouthW, mouthH, headRadius * 0.12), materialFor(DARK), 0, y, z);
+  cavity.rotation.z = tilt;
+  head.add(cavity);
+
+  // Зубы свисают с верхней кромки, не выходя за пятно, — потому и читаются
+  // как зубы во рту. Разной длины: они и растут неровно.
+  const white = materialFor('#ffffff');
+  for (const [side, w, h] of [[-0.22, 0.17, 0.2], [0.2, 0.14, 0.15]]) {
+    const tw = headRadius * w;
+    const th = headRadius * h;
+    const tip = box(tw, th, FLAT_DEPTH * 0.7, tw * 0.2, white,
+      headRadius * side, y + mouthH / 2 - th / 2, z + 0.03);
+    tip.rotation.z = tilt;
+    head.add(tip);
   }
 }
 
@@ -1181,6 +1207,27 @@ function addGuardMask(head, materialFor) {
   const sign = flat(triangleShape(0.22), materialFor('#f2f2f7'), 0, 0.0, 0.53);
   sign.rotation.z = -Math.PI / 2;
   head.add(sign);
+}
+
+// Маска воришки: тёмная полоса ровно по глазам, с прорезями. По ней ребёнок
+// понимает, что этого догоняют, а не убивают.
+function addThiefMask(head, headRadius, materialFor) {
+  const y = headRadius * 0.1;                 // высота глаз
+  const z = faceDepth(headRadius, y);
+  // Полоса ОБЛЕГАЕТ голову, а не лежит на ней плашкой: приплюснутый шар чуть
+  // крупнее головы. Прямой брус, вписанный в сферу, оказывается внутри — на
+  // лице тогда остаются одни белые прорези, и маски будто нет. На этом я
+  // обжёгся дважды: так же пряталась маска охранника.
+  const band = ball(headRadius * 1.08, materialFor('#2a2320'), 0, y, headRadius * 0.26);
+  band.scale.set(1, 0.3, 0.8);
+  head.add(band);
+  // Прорези для глаз кладём поверх ПОЛОСЫ, а не поверх головы: полоса
+  // выступает дальше, и отмеренные от головы щёлки в ней утонули бы.
+  const bandFront = headRadius * 0.26 + headRadius * 1.08 * 0.8;
+  for (const side of [-1, 1]) {
+    head.add(box(headRadius * 0.32, headRadius * 0.15, 0.1, headRadius * 0.05,
+      materialFor('#ffffff'), side * headRadius * 0.32, y, bandFront * 0.99));
+  }
 }
 
 function addHelmet(head, color, materialFor) {

@@ -32,8 +32,7 @@ import { CONFIG } from '../config.js';
 import {
   drawCatchBubble, drawTornado, drawBossRage, drawBossBones,
   drawArmorShield, drawDownedTimer, drawAbilitySparks, drawAbilityEffect,
-  drawWeaponInHand, drawMoleMound, drawSmokePuff, drawWeb, drawLoot, drawThiefMask,
-  drawSoapBubble,
+  drawWeaponInHand, drawMoleMound, drawSmokePuff, drawWeb, drawSoapBubble,
 } from '../render/sprites.js';
 import { drawEntrance } from '../systems/particles.js';
 import { stickerTexture, StickerPool, step } from './sticker.js';
@@ -255,24 +254,30 @@ export class WorldFx {
 
     // Луч лазерных глаз.
     //
-    // Точки глаз приходят из плоской версии мировыми координатами, но их
-    // вторая координата — это экранное «вверх», а не глубина. Взятая как
-    // глубина, она уводила начало луча ЗА голову, и лучи висели над героем.
-    // Поэтому подъём глаза считается той же формулой, что и вся геометрия
-    // фигурки: высота = низ ступней минус экранный y.
-    if (weapon.beamOn && !player.downed && typeof weapon.eyes === 'function') {
+    // Точки глаз НЕ берём из плоской версии: там они посчитаны для позы на
+    // плоскости — от facing и покачивания, — и вторая координата у них это
+    // экранное «вверх», а не глубина. Взятая как глубина, она уводила начало
+    // луча за голову.
+    //
+    // Считаем сами и от ПРИЦЕЛА: голова в объёме тоже повёрнута к цели (см.
+    // Scene3D.turnHead), значит глаза — это две точки поперёк направления
+    // выстрела, на высоте головы.
+    if (weapon.beamOn && !player.downed && weapon.beamLen) {
       const r = player.radius;
+      const aim = weapon.aimAngle;
+      const ahead = { x: Math.cos(aim), z: Math.sin(aim) };
+      const across = { x: -ahead.z, z: ahead.x };
       const tip = {
-        x: player.x + Math.cos(weapon.aimAngle) * weapon.beamLen,
+        x: player.x + ahead.x * weapon.beamLen,
         y: r * HERO_MID,
-        z: player.y + Math.sin(weapon.aimAngle) * weapon.beamLen,
+        z: player.y + ahead.z * weapon.beamLen,
       };
       const color = weapon.stat('beamColor');
-      for (const eye of weapon.eyes(player)) {
+      for (const side of [-1, 1]) {
         this.beam({
-          x: eye.x,
-          y: r * HERO_MID - (eye.y - player.y),
-          z: player.y,
+          x: player.x + across.x * r * EYE_SPREAD * side + ahead.x * r * 0.45,
+          y: r * HERO_EYE,
+          z: player.y + across.z * r * EYE_SPREAD * side + ahead.z * r * 0.45,
         }, tip, color);
       }
     }
@@ -361,20 +366,6 @@ export class WorldFx {
         false, 0.5 - thaw * 0.18);
     }
 
-    // Воришка: мешок за спиной и маска. Без них он неотличим от обычного
-    // зомби, а правило у него другое — его нельзя убить, только догнать.
-    if (enemy.lootPhase !== undefined) {
-      this.stickers.show(
-        stickerTexture(`loot:${step(enemy.lootPhase % 1, 6)}`,
-          (ctx, R) => drawLoot(ctx, { radius: R * 0.5, phase: enemy.lootPhase })),
-        enemy.x, r * 1.5, enemy.y, r * 0.9,
-      );
-      this.stickers.show(
-        stickerTexture('thiefmask', (ctx, R) => drawThiefMask(ctx, R)),
-        enemy.x, r * HERO_MID, enemy.y, r,
-      );
-    }
-
     if (enemy.isBoss) this.bossFx(enemy, r);
   }
 
@@ -417,6 +408,10 @@ const UP = new Vector3(0, 1, 0);
 // радиуса. Совпадает с HERO_FLOOR из figures.js — там же и объяснено, почему
 // это единственная формула перевода.
 const HERO_MID = 1.1;
+// Высота глаз и разлёт между ними, в долях радиуса. Совпадают с фигуркой из
+// figures.js: голова там на 1.95, глаза на 0.19 от её центра.
+const HERO_EYE = 1.95;
+const EYE_SPREAD = 0.19;
 // Молния идёт на уровне груди зомби: по земле она читается как трещина, а
 // высоко над головами — как чужой эффект.
 const BOLT_HEIGHT = 26;

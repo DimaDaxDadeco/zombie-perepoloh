@@ -42,6 +42,13 @@ export class MenuScreen extends Overlay {
   // здесь, до боя: менять вид посреди раунда — значит на пару кадров
   // подменить ребёнку всю картинку, пока за ним бежит толпа. Выбор вида —
   // это настройка, а не игровое действие.
+  //
+  // Подписи на кнопке нет намеренно. Слово «Объём» пятилетний не читает и не
+  // понимает; работает то же, что и у кнопки звука, — ЗНАЧОК ТЕКУЩЕГО
+  // СОСТОЯНИЯ: плоский квадрат или кубик. Кнопки «послушать» тут тоже нет, и
+  // по той же причине: у звука её нет, ребёнок этот приём уже знает, а вложить
+  // её внутрь маленькой кнопки не выходит — её стиль рассчитан на карточку и
+  // уезжает в угол панели.
   render(save, storage, view3d = false) {
     const character = CONFIG.characters.find((c) => c.id === save.character);
     // Уровень сложности в HUD намеренно не показывается (он не меняется по
@@ -90,7 +97,7 @@ export class MenuScreen extends Overlay {
           ${canContinue ? `<button class="btn btn--secondary" data-action="new">${icon('ui-spark')} Новая игра</button>` : ''}
           <button class="btn btn--secondary" data-action="shop">${icon('ui-shop')} Магазин</button>
           <button class="btn btn--secondary" data-action="album">${icon('ui-album')} Альбом ${albumOpen(save)}</button>
-          <button class="btn btn--secondary" data-action="view">${icon('ui-cube')} Объём: ${view3d ? 'да' : 'нет'}</button>
+          <button class="btn btn--secondary btn--icon" data-action="view" title="${view3d ? 'Объёмная картинка' : 'Плоская картинка'}">${icon(view3d ? 'ui-cube' : 'ui-flat')}</button>
         </div>
         <p class="hint">Выбирай стрелками, нажимай пробел. В бою бегай стрелками —
            оружие стреляет само!</p>

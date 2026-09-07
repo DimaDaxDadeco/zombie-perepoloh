@@ -32,6 +32,8 @@ const DEFAULT_COLOR = '#c8c8c8';
 // вертится от миллиметровых толчков расталкивания.
 const HEADING_MIN_STEP = 0.05;
 const HEADING_LERP = 0.25;
+// Насколько герой может повернуть голову к цели, не отрывая её от плеч.
+const HEAD_TURN_LIMIT = 1.15;
 
 // Как выглядит попадание, заморозка и горение. Цвета и доли — те же, что в
 // drawZombie: белая вспышка, слабая синева (сильная сливает зомби с глыбой),
@@ -353,7 +355,7 @@ export class Scene3D {
   // warnAboutMissed ниже.
   collect(world) {
     for (const player of world.players) this.place(player, HERO_SPEC);
-    for (const enemy of world.enemies) this.place(enemy, ENEMY_SPEC);
+    for (const enemy of world.enemies) this.place(enemy, enemySpec(enemy));
     for (const pet of world.pets) this.place(pet, petSpec(pet));
     for (const prop of world.props) this.place(prop, PROP_SPEC);
     for (const pickup of world.pickups) this.place(pickup, PICKUP_SPEC);
@@ -383,7 +385,9 @@ export class Scene3D {
     if (figure.tick) {
       figure.tick(entity, this.phase);
     } else if (figure.parts) {
-      figure.node.rotation.y = this.headingOf(entity, figure);
+      const heading = this.headingOf(entity, figure);
+      figure.node.rotation.y = heading;
+      this.turnHead(figure, entity, heading);
       poseFigure(figure, entity.walkPhase || 0);
       this.applyMood(figure, moodOf(entity));
       // Мигание неуязвимости: в плоской игре герой полупрозрачен через кадр,
@@ -392,6 +396,25 @@ export class Scene3D {
       // на каждом мигании.
       figure.node.visible = !blinking(entity);
     }
+  }
+
+  // Голова смотрит туда, куда целится оружие, а не туда, куда бегут ноги.
+  // Без этого лазерные глаза стреляли из затылка: тело развёрнуто по
+  // движению, а луч уходит к ближайшему зомби.
+  //
+  // Поворот ограничен: свернуть голову за плечо человек не может, и фигурка,
+  // которая это делает, выглядит сломанной, а не внимательной.
+  turnHead(figure, entity, heading) {
+    const head = figure.parts?.head;
+    if (!head) return;
+    const aim = entity.activeWeapon?.aimAngle;
+    if (aim === undefined) { head.rotation.y = 0; return; }
+    // Мировой угол прицела в той же системе, что и heading: у него первым
+    // аргументом идёт x, вторым — глубина.
+    const wanted = Math.atan2(Math.cos(aim), Math.sin(aim));
+    let delta = wanted - heading;
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+    head.rotation.y = Math.max(-HEAD_TURN_LIMIT, Math.min(HEAD_TURN_LIMIT, delta));
   }
 
   // Настроение фигурки: белая вспышка от попадания, синева заморозки,
@@ -554,6 +577,14 @@ function shakeOf(world) {
 // слеплены стоящими на нуле. У шарика половина его высоты, иначе он утонет.
 const HERO_SPEC = { kind: 'hero', radius: CONFIG.player.radius, lift: 0 };
 const ENEMY_SPEC = { kind: 'zombie', radius: CONFIG.player.radius, lift: 0 };
+const THIEF_SPEC = { kind: 'thief', radius: CONFIG.player.radius, lift: 0 };
+
+// Воришка — тот же зомби, но в маске и с мешком. Опознаём по lootPhase: это
+// его собственное поле, и заводить ради картинки признак в самой сущности
+// значило бы трогать логику.
+function enemySpec(enemy) {
+  return enemy.lootPhase !== undefined ? THIEF_SPEC : ENEMY_SPEC;
+}
 
 const PROP_SPEC = { kind: 'prop', radius: CONFIG.player.radius, lift: 0 };
 // Медалька и монетка висят над травой, иначе плоский кружок в ней тонет.
