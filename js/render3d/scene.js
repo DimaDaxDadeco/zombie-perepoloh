@@ -21,7 +21,9 @@ import {
 } from 'three';
 import { CONFIG } from '../config.js';
 import { Camera3D } from './camera.js';
-import { buildFigure, buildProp, buildPickup, buildShot, poseFigure } from './figures.js';
+import {
+  buildFigure, buildProp, buildPickup, buildShot, poseFigure, lookOf,
+} from './figures.js';
 import { Effects } from './effects.js';
 import { Decor } from './decor.js';
 import { WorldFx } from './worldfx.js';
@@ -598,10 +600,6 @@ const PICKUP_SPEC = { kind: 'pickup', radius: 10, lift: 1.1 };
 // питомца — spec.look: класс питомца в плоской версии берёт её оттуда сам, и
 // поля look у него просто нет. Без этой развилки собака красилась цветом по
 // умолчанию и выходила серой.
-function lookOf(entity) {
-  return entity.look || entity.spec?.look || entity.type?.look || {};
-}
-
 // Питомец-друг — тот же герой: в 2D его рисует drawHero, и look у него
 // геройский. Пёс — зверь, дрон — своя форма. Вид передаём явно: у собаки в
 // look нет shape, и без этого она выходила человеком.

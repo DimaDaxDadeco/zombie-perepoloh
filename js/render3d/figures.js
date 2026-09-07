@@ -523,7 +523,11 @@ function buildCage(prop, materialFor) {
 
   // Внутри сидит друг — ради него клетку и открывают. Строим его тем же
   // конструктором героя: в 2D клетка тоже получает геройский look.
-  const friend = buildFigure(prop.look || {}, 'hero', materialFor);
+  // ЧЕРЕЗ lookOf, а не prop.look: у клетки вид пленника лежит в spec.look —
+  // ровно там, откуда его берёт плоская версия. Прямое обращение к .look
+  // отдавало undefined, и в клетке сидел серый человечек по умолчанию. Той же
+  // ошибкой однажды посерели питомцы.
+  const friend = buildFigure(lookOf(prop), 'hero', materialFor);
   friend.node.scale.setScalar(0.55);
   node.add(friend.node);
 
@@ -1614,6 +1618,14 @@ export function poseFigure(figure, walkPhase) {
   // Тельце на ниточке болтается от того же walkPhase, что у всех: отдельный
   // таймер был бы лишней сущностью, и в плоской версии он тоже один.
   if (parts.dangle) parts.dangle.rotation.z = Math.sin(walkPhase) * 0.25;
+}
+
+// Где у сущности её вид. Полей три и все настоящие: у героя и зомби это
+// look, у пропа и питомца — spec.look, у зомби-типа — type.look. Проверять
+// нужно все три: каждый раз, когда кто-нибудь брал только первое, персонаж
+// выходил серым по умолчанию.
+export function lookOf(entity) {
+  return entity.look || entity.spec?.look || entity.type?.look || {};
 }
 
 // --- Примитивы ---
