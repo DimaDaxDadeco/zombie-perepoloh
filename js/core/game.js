@@ -23,6 +23,7 @@ import { ShopScreen } from '../screens/shop.js';
 import { EndScreen } from '../screens/endscreen.js';
 import { CharactersScreen } from '../screens/characters.js';
 import { DifficultyScreen } from '../screens/difficulty.js';
+import { ViewScreen } from '../screens/view.js';
 import { PlayersScreen } from '../screens/players.js';
 import { AlbumScreen } from '../screens/album.js';
 import { MapScreen } from '../screens/map.js';
@@ -45,6 +46,7 @@ export const GameState = {
   ROUND_END: 'round-end',
   PLAYERS: 'players',
   DIFFICULTY: 'difficulty',
+  VIEW: 'view', // плоская картинка или объёмная
   CHARACTERS: 'characters',
   WEAPONS: 'weapons',
   CONFIRM: 'confirm',
@@ -135,6 +137,10 @@ export class Game {
       }),
       difficulty: new DifficultyScreen('difficulty-overlay', {
         onPick: (id) => this.chooseDifficulty(id),
+        onSpeak: (text) => this.speech.speak(text),
+      }),
+      view: new ViewScreen('view-overlay', {
+        onPick: (solid) => this.chooseView(solid),
         onSpeak: (text) => this.speech.speak(text),
       }),
       characters: new CharactersScreen('characters-overlay', {
@@ -532,7 +538,29 @@ export class Game {
     this.audio.click();
     this.speech.stop();
     this.screens.difficulty.hide();
-    this.openCharacters(); // выбор героя — второй шаг новой игры
+    this.openView(); // картинка — второй шаг новой игры
+  }
+
+  openView() {
+    this.state = GameState.VIEW;
+    this.hideAllScreens();
+    this.screens.view.render(Boolean(this.scene3d));
+  }
+
+  // Режим показа живёт в сохранении и не сбрасывается «новой игрой»
+  // (KEEP_ON_RESET), так что здесь мы его просто подтверждаем или меняем.
+  // Ждём enableView3d: Three грузится импортом, и без ожидания герой успел бы
+  // выбраться раньше, чем встанет сцена.
+  async chooseView(solid) {
+    this.storage.data.view3d = solid;
+    this.storage.save();
+    this.audio.unlock();
+    this.audio.click();
+    this.speech.stop();
+    this.screens.view.hide();
+    if (solid) await this.enableView3d();
+    else this.disableView3d();
+    this.openCharacters(); // выбор героя — третий шаг новой игры
   }
 
   // Ключи сохранения для игрока N. Сами функции живут в upgrades.js рядом с
